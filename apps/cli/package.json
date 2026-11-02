@@ -1,0 +1,23 @@
+{
+  "name": "@re-hydra/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "hydra": "./src/main.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@effect/platform-node": "^4.1.1",
+    "@re-hydra/api": "*",
+    "effect": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "tsx": "^4.20.6"
+  }
+}

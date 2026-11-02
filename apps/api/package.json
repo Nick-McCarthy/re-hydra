@@ -1,0 +1,29 @@
+{
+  "name": "@re-hydra/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./Api": "./src/Api.ts",
+    "./http/Authorization": "./src/http/Authorization.ts",
+    "./domain/Bundle": "./src/domain/Bundle.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
+    "start": "tsx --env-file-if-exists=.env src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
+    "seed": "tsx --env-file-if-exists=.env src/db/seed.ts"
+  },
+  "dependencies": {
+    "@effect/platform-node": "^4.1.1",
+    "@effect/sql-pg": "^4.1.1",
+    "effect": "^4.1.1",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.20.6"
+  }
+}

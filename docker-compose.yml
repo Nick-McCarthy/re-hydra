@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rehydra
+      POSTGRES_PASSWORD: rehydra
+      POSTGRES_DB: rehydra
+    ports:
+      - "5432:5432"
+    volumes:
+      - rehydra_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rehydra -d rehydra"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  matchd:
+    build:
+      context: ./apps/matchd
+    environment:
+      MATCHD_PORT: "3001"
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_GCC: gcc
+      MATCHD_GXX: g++
+      MATCHD_LD: ld
+      MATCHD_NM: nm
+      MATCHD_OBJDUMP: objdump
+      MATCHD_TIMEOUT_MS: "30000"
+    ports:
+      - "3001:3001"
+
+volumes:
+  rehydra_pg:

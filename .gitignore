@@ -137,6 +137,9 @@ dist
 !.yarn/sdks
 !.yarn/versions
 
+# Sample object file produced by fixtures/sample/build.mjs
+fixtures/sample/*.o
+
 # Vite files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*

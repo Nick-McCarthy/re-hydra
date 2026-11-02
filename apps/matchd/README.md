@@ -1,0 +1,50 @@
+# @re-hydra/matchd
+
+Compile + normalized instruction compare, plus a link step that places matched functions at their original addresses. The API is the only client (service bearer token).
+
+Prefer `docker compose up -d matchd` on Windows. The image includes gcc, g++, and binutils. See `docs/status.md`.
+
+## Local
+
+Needs `gcc` and `objdump` on PATH (Linux/macOS/WSL), or run via Docker:
+
+```bash
+# from repo root
+docker compose up -d matchd
+# or without docker tools on the host:
+npm run matchd
+```
+
+- Health: http://localhost:3001/v1/health
+- Docs: http://localhost:3001/docs
+- Auth: `Authorization: Bearer <MATCHD_TOKEN>` (default `dev-matchd-token`)
+
+## Job
+
+`POST /v1/jobs`
+
+```json
+{
+  "jobId": "…",
+  "arch": "x86_64",
+  "toolchain": { "compiler": "gcc", "version": "…", "flags": ["-O2"], "image": "…" },
+  "entrySymbol": "parse_header",
+  "originalBytesBase64": "…",
+  "sources": [
+    { "path": "candidate.c", "text": "…" },
+    { "path": "types.h", "text": "…" }
+  ]
+}
+```
+
+`language` is `c` (default, `gcc`, `candidate.c`) or `cpp` (`g++`, `candidate.cpp`). C++ symbols may be Itanium-mangled; matchd resolves them back to the chunk name.
+
+Compiles with `-c`. The match takes the symbol's bytes from `objdump -d -r` and `nm -S`, blanks relocation fields on both sides, and compares what remains. Opcodes are never blanked, so `add` and `and` cannot compare equal. A linked call displacement is blanked, so an isolated call can match. An unknown relocation type fails closed. `matched` is true only when the masked sequences have the same length and the same bytes.
+
+`toolchainDigest` is `sha256:v2:` plus the hashes of `cc1` or `cc1plus`, `as`, and the recipe flags. `expectedToolchainDigest` on a job refuses the compile when those binaries differ. An older `sha256:` digest is not a pin. A different recipe with the same binaries is allowed and returns a new digest.
+
+## Link job
+
+`POST /v1/link-jobs`
+
+Same auth. Body is `language`, `headers`, and `units[]` of `{ symbol, address, size, originalBytesBase64, source }`. Each unit is compiled alone with `-ffunction-sections`, then `ld` places `.text.<symbol>` at `address`. The section has to be the same length as the original range, and those bytes have to match. A longer section fails even when the original bytes are a prefix. `compilerOk` is false when the compiler or the link itself fails. A unit with `passed: false` is the chunk to reopen. Unresolved calls are left unresolved so one missing callee does not fail the link.

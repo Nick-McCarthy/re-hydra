@@ -1,0 +1,33 @@
+{
+  "name": "re-hydra",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Crowdsourced reverse engineering — exclusive chunk checkout with byte-perfect matching",
+  "license": "MIT",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "api": "npm run dev -w @re-hydra/api",
+    "api:typecheck": "npm run typecheck -w @re-hydra/api",
+    "api:migrate": "npm run migrate -w @re-hydra/api",
+    "api:seed": "npm run seed -w @re-hydra/api",
+    "hydra": "npm run start -w @re-hydra/cli --",
+    "cli:typecheck": "npm run typecheck -w @re-hydra/cli",
+    "matchd": "npm run dev -w @re-hydra/matchd",
+    "matchd:typecheck": "npm run typecheck -w @re-hydra/matchd",
+    "matchd:test": "npm run test -w @re-hydra/matchd",
+    "web": "npm run dev -w @re-hydra/web",
+    "web:typecheck": "npm run typecheck -w @re-hydra/web",
+    "web:build": "npm run build -w @re-hydra/web",
+    "prepare": "effect-tsgo patch --typescript --no-oxlint",
+    "typecheck": "npm run api:typecheck && npm run cli:typecheck && npm run matchd:typecheck && npm run web:typecheck"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "0.63.0",
+    "typescript": "7.0.2"
+  }
+}

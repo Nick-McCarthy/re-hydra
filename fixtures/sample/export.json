@@ -1,0 +1,52 @@
+{
+  "binarySha256": "b0137dbcf744f0cdfbf57e0db67b8945d724ef61d7e1cc776a540bf8aa7104cc",
+  "binaryBase64": "f0VMRgIBAQAAAAAAAAAAAAEAPgABAAAAAAAAAAAAAAAAAAAAAAAAAIACAAAAAAAAAAAAAEAAAAAAAEAADAALADHAgD8gD5TAww8fgAAAAACLBzHShcAPSMLDZg8fRAAASIn6SIn36AAAAACFwHUJMcDDZg8fRAAASInX69MAR0NDOiAoRGViaWFuIDEyLjIuMC0xNCtkZWIxMnUxKSAxMi4yLjAAAAAAFAAAAAAAAAABelIAAXgQARsMBwiQAQAAEAAAABwAAAAAAAAACQAAAAAAAAAQAAAAMAAAAAAAAAAKAAAAAAAAABQAAABEAAAAAAAAAB0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAEAPH/AAAAAAAAAAAAAAAAAAAAAAAAAAADAAEAAAAAAAAAAAAAAAAAAAAAAAkAAAASAAEAAAAAAAAAAAAJAAAAAAAAABQAAAASAAEAEAAAAAAAAAAKAAAAAAAAACAAAAASAAEAIAAAAAAAAAAdAAAAAAAAAABmdW5jcy5jAHNraXBfc3BhY2UAaGVhZGVyX3NpemUAcGFyc2VfaGVhZGVyAAAAACcAAAAAAAAABAAAAAMAAAD8/////////yAAAAAAAAAAAgAAAAIAAAAAAAAAAAAAADQAAAAAAAAAAgAAAAIAAAAQAAAAAAAAAEgAAAAAAAAAAgAAAAIAAAAgAAAAAAAAAAAuc3ltdGFiAC5zdHJ0YWIALnNoc3RydGFiAC5yZWxhLnRleHQALmRhdGEALmJzcwAuY29tbWVudAAubm90ZS5HTlUtc3RhY2sALnJlbGEuZWhfZnJhbWUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAQAAAAYAAAAAAAAAAAAAAAAAAABAAAAAAAAAAD0AAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAGwAAAAQAAABAAAAAAAAAAAAAAAAAAAAAwAEAAAAAAAAYAAAAAAAAAAkAAAABAAAACAAAAAAAAAAYAAAAAAAAACYAAAABAAAAAwAAAAAAAAAAAAAAAAAAAH0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAsAAAACAAAAAMAAAAAAAAAAAAAAAAAAAB9AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAMQAAAAEAAAAwAAAAAAAAAAAAAAAAAAAAfQAAAAAAAAAoAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAADoAAAABAAAAAAAAAAAAAAAAAAAAAAAAAKUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAABPAAAAAQAAAAIAAAAAAAAAAAAAAAAAAACoAAAAAAAAAFgAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAASgAAAAQAAABAAAAAAAAAAAAAAAAAAAAA2AEAAAAAAABIAAAAAAAAAAkAAAAHAAAACAAAAAAAAAAYAAAAAAAAAAEAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAkAAAAAAAAAAKAAAAAwAAAAgAAAAAAAAAGAAAAAAAAAAJAAAAAwAAAAAAAAAAAAAAAAAAAAAAAACQAQAAAAAAAC0AAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAEQAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAIAIAAAAAAABZAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAA==",
+  "arch": "x86_64",
+  "name": "sample.o",
+  "language": "c",
+  "toolchain": {
+    "compiler": "gcc",
+    "version": "12",
+    "flags": [
+      "-O2"
+    ],
+    "image": "ghcr.io/re-hydra/gcc:host"
+  },
+  "types": "#ifndef SAMPLE_TYPES_H\n#define SAMPLE_TYPES_H\n\nstruct Header {\n  int length;\n  int flags;\n};\n\nint skip_space(const char *p);\nint header_size(const struct Header *h);\nint parse_header(const struct Header *h, const char *p);\n\n#endif\n",
+  "functions": [
+    {
+      "name": "skip_space",
+      "address": "0x0",
+      "size": 16,
+      "bytesBase64": "McCAPyAPlMDDDx+AAAAAAA==",
+      "pseudocode": "int skip_space(const char *p) {\n  return *p == ' ';\n}\n",
+      "disassembly": "skip_space:\n  xor %eax,%eax\n  cmpb $0x20,(%rdi)\n  sete %al\n  ret\n  nopl 0x0(%rax)\n"
+    },
+    {
+      "name": "header_size",
+      "address": "0x10",
+      "size": 16,
+      "bytesBase64": "iwcx0oXAD0jCw2YPH0QAAA==",
+      "pseudocode": "int header_size(Header *h) {\n  if (h->length < 0) {\n    return 0;\n  }\n  return h->length;\n}\n",
+      "disassembly": "header_size:\n  mov (%rdi),%eax\n  xor %edx,%edx\n  test %eax,%eax\n  cmovs %edx,%eax\n  ret\n  nopw 0x0(%rax,%rax,1)\n",
+      "typesUsed": [
+        "Header"
+      ]
+    },
+    {
+      "name": "parse_header",
+      "address": "0x20",
+      "size": 29,
+      "bytesBase64": "SIn6SIn36AAAAACFwHUJMcDDZg8fRAAASInX69M=",
+      "pseudocode": "int parse_header(Header *h, const char *p) {\n  if (skip_space(p)) {\n    return header_size(h);\n  }\n  return 0;\n}\n",
+      "disassembly": "parse_header:\n  mov %rdi,%rdx\n  mov %rsi,%rdi\n  call 2b <parse_header+0xb>\n  test %eax,%eax\n  jne 38 <parse_header+0x18>\n  xor %eax,%eax\n  ret\n  nopw 0x0(%rax,%rax,1)\n  mov %rdx,%rdi\n  jmp 10 <header_size>\n",
+      "callees": [
+        "0x0",
+        "0x10"
+      ],
+      "typesUsed": [
+        "Header"
+      ]
+    }
+  ]
+}
