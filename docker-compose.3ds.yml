@@ -1,0 +1,13 @@
+# Nintendo 3DS matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.3ds.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-3ds
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.3ds
+    environment:
+      MATCHD_3DS_GCC: 3ds-gcc
+      MATCHD_3DS_GXX: 3ds-g++
+      MATCHD_3DS_NM: arm-none-eabi-nm
+      MATCHD_3DS_OBJDUMP: arm-none-eabi-objdump

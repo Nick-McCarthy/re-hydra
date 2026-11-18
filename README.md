@@ -4,9 +4,9 @@ Crowdsourced reverse engineering: exclusive chunk checkout, local translation, b
 
 ## Status
 
-**Milestone 1 is done.** Milestone 2 API is done (web UI pending). See **[docs/status.md](docs/status.md)** for the handoff checklist, runbook, and next steps.
+**Milestones 1–4 are done.** See **[docs/roadmap.md](docs/roadmap.md)** for compilers, capacity, and what is next.
 
-Product rules: [docs/planning.md](docs/planning.md) · Schema: [docs/db-schema/schema.md](docs/db-schema/schema.md) · Agent notes: [AGENTS.md](AGENTS.md)
+Architecture: [docs/architecture.md](docs/architecture.md) · Schema: [docs/db-schema/schema.md](docs/db-schema/schema.md) · Agent notes: [AGENTS.md](AGENTS.md)
 
 ## Workspace
 

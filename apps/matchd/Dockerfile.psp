@@ -1,0 +1,48 @@
+# psp-gcc target. pspdev GCC 15.2.0 targets Allegrex and ships psp-objdump.
+# The v20261101 debian archive needs glibc 2.38, so this image is trixie.
+# The Sony SN Systems compiler is a different binary. This image also keeps host gcc.
+FROM node:22-trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    gcc g++ binutils ca-certificates bubblewrap wget \
+    libgmp10 libmpfr6 libmpc3 libzstd1 \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN wget -O /tmp/pspdev.tar.gz \
+    https://github.com/pspdev/pspdev/releases/download/v20261101/pspdev-debian-latest.tar.gz \
+  && echo "a5d688f7dd88f0bcb2e36336c62da7da718e28b562fed488c836e46d5ec337fa  /tmp/pspdev.tar.gz" | sha256sum -c \
+  && tar -xzf /tmp/pspdev.tar.gz -C /usr/local \
+  && ln -s /usr/local/pspdev/libexec/gcc/psp/15.2.0/cc1 /usr/local/pspdev/lib/gcc/psp/15.2.0/cc1 \
+  && ln -s /usr/local/pspdev/libexec/gcc/psp/15.2.0/cc1plus /usr/local/pspdev/lib/gcc/psp/15.2.0/cc1plus \
+  && rm /tmp/pspdev.tar.gz
+
+ENV PSPDEV=/usr/local/pspdev
+ENV PATH="/usr/local/pspdev/bin:${PATH}"
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY tsconfig.json ./
+COPY src ./src
+
+ENV MATCHD_PORT=3001
+ENV MATCHD_GCC=gcc
+ENV MATCHD_GXX=g++
+ENV MATCHD_LD=ld
+ENV MATCHD_NM=nm
+ENV MATCHD_OBJDUMP=objdump
+ENV MATCHD_PSP_GCC=psp-gcc
+ENV MATCHD_PSP_GXX=psp-g++
+ENV MATCHD_PSP_NM=psp-nm
+ENV MATCHD_PSP_OBJDUMP=psp-objdump
+ENV MATCHD_TIMEOUT_MS=30000
+ENV MATCHD_SANDBOX=bwrap
+ENV MATCHD_TOKEN=dev-matchd-token
+
+EXPOSE 3001
+CMD ["npx", "tsx", "src/main.ts"]

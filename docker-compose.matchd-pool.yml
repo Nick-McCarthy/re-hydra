@@ -1,0 +1,235 @@
+# Extra matchd processes, one per compiler image. The default compose file's
+# `matchd` service stays on host gcc at port 3001. This file adds the others
+# on their own host ports so they can stay up at the same time.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.matchd-pool.yml up -d --build matchd-dc
+#
+# Point the API at a process with MATCHD_ROUTES (see apps/api/.env.example).
+# The container still listens on 3001. The host port is the first number below.
+
+x-matchd-build: &matchd-build
+  context: ./apps/matchd
+
+services:
+  matchd-gba:
+    image: re-hydra-matchd-gba
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.agbcc
+    ports: ["3010:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_AGBCC: agbcc-cc
+      MATCHD_AGBCC_BIN: /opt/tools/agbcc/bin/agbcc
+      MATCHD_ARM_AS: arm-none-eabi-as
+      MATCHD_ARM_CPP: arm-none-eabi-cpp
+      MATCHD_ARM_NM: arm-none-eabi-nm
+      MATCHD_ARM_OBJDUMP: arm-none-eabi-objdump
+      MATCHD_AGBCC_INCLUDE: /opt/tools/agbcc/include
+
+  matchd-n64:
+    image: re-hydra-matchd-n64
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.n64
+    ports: ["3011:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_N64_GCC: /opt/n64/bin/mips-linux-gnu-gcc
+      MATCHD_MIPS_NM: mips-linux-gnu-nm
+      MATCHD_MIPS_OBJDUMP: mips-linux-gnu-objdump
+
+  matchd-mwcc:
+    image: re-hydra-matchd-mwcc
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.mwcc
+    ports: ["3012:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_MWCC: mwcc-cc
+      MATCHD_MWCC_BIN: /opt/mwcc/bin/mwcc
+      MATCHD_PPC_NM: powerpc-linux-gnu-nm
+      MATCHD_PPC_OBJDUMP: powerpc-linux-gnu-objdump
+
+  matchd-coff:
+    image: re-hydra-matchd-coff
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.coff
+    ports: ["3013:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_CLANG: coff-clang
+      MATCHD_CLANG_BIN: /usr/bin/clang
+      MATCHD_LLVM_NM: llvm-nm
+      MATCHD_LLVM_OBJDUMP: llvm-objdump
+
+  matchd-switch:
+    image: re-hydra-matchd-switch
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.switch
+    ports: ["3014:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_CLANG: switch-clang
+      MATCHD_CLANG_BIN: /usr/bin/clang
+      MATCHD_LLVM_NM: llvm-nm
+      MATCHD_LLVM_OBJDUMP: llvm-objdump
+
+  matchd-ps1:
+    image: re-hydra-matchd-ps1
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.ps1
+    ports: ["3015:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_PS1_GCC: mipsel-linux-gnu-gcc
+      MATCHD_PS1_GXX: mipsel-linux-gnu-g++
+      MATCHD_MIPSEL_NM: mipsel-linux-gnu-nm
+      MATCHD_MIPSEL_OBJDUMP: mipsel-linux-gnu-objdump
+
+  matchd-ps2:
+    image: re-hydra-matchd-ps2
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.ps2
+    ports: ["3016:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_PS2_GCC: ps2-gcc
+      MATCHD_PS2_GXX: ps2-g++
+      MATCHD_PS2_NM: mips64el-linux-gnuabi64-nm
+      MATCHD_PS2_OBJDUMP: mips64el-linux-gnuabi64-objdump
+
+  matchd-psp:
+    image: re-hydra-matchd-psp
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.psp
+    ports: ["3017:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_PSP_GCC: psp-gcc
+      MATCHD_PSP_GXX: psp-g++
+      MATCHD_PSP_NM: psp-nm
+      MATCHD_PSP_OBJDUMP: psp-objdump
+      PSPDEV: /usr/local/pspdev
+
+  matchd-ps3:
+    image: re-hydra-matchd-ps3
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.ps3
+    ports: ["3018:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_PS3_GCC: powerpc64-linux-gnu-gcc
+      MATCHD_PS3_GXX: powerpc64-linux-gnu-g++
+      MATCHD_PS3_NM: powerpc64-linux-gnu-nm
+      MATCHD_PS3_OBJDUMP: ps3-objdump
+
+  matchd-ps4:
+    image: re-hydra-matchd-ps4
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.ps4
+    ports: ["3019:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_CLANG: ps4-clang
+      MATCHD_CLANG_BIN: /usr/bin/clang
+      MATCHD_LLVM_NM: llvm-nm
+      MATCHD_LLVM_OBJDUMP: llvm-objdump
+
+  matchd-xbox:
+    image: re-hydra-matchd-xbox
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.xbox
+    ports: ["3020:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_CLANG: xbox-clang
+      MATCHD_CLANG_BIN: /usr/bin/clang
+      MATCHD_LLVM_NM: llvm-nm
+      MATCHD_LLVM_OBJDUMP: llvm-objdump
+
+  matchd-wiiu:
+    image: re-hydra-matchd-wiiu
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.wiiu
+    ports: ["3021:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_WIIU_GCC: powerpc-linux-gnu-gcc
+      MATCHD_WIIU_GXX: powerpc-linux-gnu-g++
+      MATCHD_WIIU_NM: powerpc-linux-gnu-nm
+      MATCHD_WIIU_OBJDUMP: powerpc-linux-gnu-objdump
+
+  matchd-ds:
+    image: re-hydra-matchd-ds
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.ds
+    ports: ["3022:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_DS_GCC: arm-none-eabi-gcc
+      MATCHD_DS_GXX: arm-none-eabi-g++
+      MATCHD_DS_NM: arm-none-eabi-nm
+      MATCHD_DS_OBJDUMP: arm-none-eabi-objdump
+
+  matchd-3ds:
+    image: re-hydra-matchd-3ds
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.3ds
+    ports: ["3023:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_3DS_GCC: 3ds-gcc
+      MATCHD_3DS_GXX: 3ds-g++
+      MATCHD_3DS_NM: arm-none-eabi-nm
+      MATCHD_3DS_OBJDUMP: arm-none-eabi-objdump
+
+  matchd-dc:
+    image: re-hydra-matchd-dc
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.dc
+    ports: ["3024:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_DC_GCC: dc-gcc
+      MATCHD_DC_GXX: dc-g++
+      MATCHD_DC_NM: sh4-linux-gnu-nm
+      MATCHD_DC_OBJDUMP: dc-objdump
+
+  matchd-saturn:
+    image: re-hydra-matchd-saturn
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.saturn
+    ports: ["3025:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_SATURN_GCC: saturn-gcc
+      MATCHD_SATURN_NM: sh-elf-nm
+      MATCHD_SATURN_OBJDUMP: saturn-objdump
+
+  matchd-genesis:
+    image: re-hydra-matchd-genesis
+    build:
+      <<: *matchd-build
+      dockerfile: Dockerfile.genesis
+    ports: ["3026:3001"]
+    environment:
+      MATCHD_TOKEN: dev-matchd-token
+      MATCHD_GENESIS_GCC: genesis-gcc
+      MATCHD_GENESIS_GXX: genesis-g++
+      MATCHD_GENESIS_NM: m68k-linux-gnu-nm
+      MATCHD_GENESIS_OBJDUMP: m68k-linux-gnu-objdump

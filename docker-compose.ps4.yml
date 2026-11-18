@@ -1,0 +1,13 @@
+# PlayStation 4 matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.ps4.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-ps4
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.ps4
+    environment:
+      MATCHD_CLANG: ps4-clang
+      MATCHD_CLANG_BIN: /usr/bin/clang
+      MATCHD_LLVM_NM: llvm-nm
+      MATCHD_LLVM_OBJDUMP: llvm-objdump

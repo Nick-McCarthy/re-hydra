@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from "effect"
 import { Conflict, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
-import type { FollowState, ProjectEvent, UserSearchHit } from "../domain/Directory.js"
+import type { FollowedProject, FollowState, ProjectEvent, UserSearchHit } from "../domain/Directory.js"
 import { likeContains } from "../domain/Directory.js"
 import { Uuid } from "../domain/Uuid.js"
 
@@ -44,6 +44,8 @@ export class DirectoryRepo extends Context.Service<
     ) => Effect.Effect<ReadonlyArray<ProjectEvent>, NotFound>
     readonly feed: (userId: Uuid) => Effect.Effect<ReadonlyArray<ProjectEvent>>
     readonly searchUsers: (q: string | undefined) => Effect.Effect<ReadonlyArray<UserSearchHit>>
+    readonly followingUsers: (userId: Uuid) => Effect.Effect<ReadonlyArray<UserSearchHit>>
+    readonly followingProjects: (userId: Uuid) => Effect.Effect<ReadonlyArray<FollowedProject>>
     readonly followProject: (
       projectSlug: string,
       userId: Uuid
@@ -195,6 +197,71 @@ export class DirectoryRepo extends Context.Service<
         }))
       })
 
+      const followingUsers = Effect.fn("DirectoryRepo.followingUsers")(function*(userId: Uuid) {
+        const rows = yield* sql<{
+          readonly id: string
+          readonly display_name: string
+          readonly created_at: Date | string
+          readonly surviving: number
+          readonly regressions: number
+        }>`
+          SELECT
+            u.id,
+            u.display_name,
+            u.created_at,
+            (
+              SELECT COUNT(*)::int
+              FROM matches m
+              INNER JOIN chunks c ON c.current_match_id = m.id
+              WHERE m.user_id = u.id
+                AND m.invalidated_at IS NULL
+            ) AS surviving,
+            (
+              SELECT COUNT(*)::int
+              FROM proposal_regressions r
+              WHERE r.caused_by = u.id
+            ) AS regressions
+          FROM follows f
+          INNER JOIN users u ON u.id = f.followee_id
+          WHERE f.follower_id = ${userId}
+          ORDER BY u.display_name
+        `.pipe(Effect.orDie)
+
+        return rows.map((row): UserSearchHit => ({
+          id: row.id,
+          displayName: row.display_name,
+          survivingMatches: row.surviving,
+          regressions: row.regressions,
+          reputation: row.surviving - row.regressions,
+          createdAt: toIso(row.created_at)
+        }))
+      })
+
+      const followingProjects = Effect.fn("DirectoryRepo.followingProjects")(function*(
+        userId: Uuid
+      ) {
+        const rows = yield* sql<{
+          readonly slug: string
+          readonly name: string
+          readonly description: string
+          readonly language: string
+        }>`
+          SELECT p.slug, p.name, p.description, p.language
+          FROM follows f
+          INNER JOIN projects p ON p.id = f.project_id
+          WHERE f.follower_id = ${userId}
+            AND p.archived_at IS NULL
+          ORDER BY p.name
+        `.pipe(Effect.orDie)
+
+        return rows.map((row): FollowedProject => ({
+          slug: row.slug,
+          name: row.name,
+          description: row.description,
+          language: row.language
+        }))
+      })
+
       const followProject = Effect.fn("DirectoryRepo.followProject")(function*(
         projectSlug: string,
         userId: Uuid
@@ -339,6 +406,8 @@ export class DirectoryRepo extends Context.Service<
         activity,
         feed,
         searchUsers,
+        followingUsers,
+        followingProjects,
         followProject,
         unfollowProject,
         projectFollowState,

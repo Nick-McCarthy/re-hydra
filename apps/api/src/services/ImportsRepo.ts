@@ -1,19 +1,20 @@
 import { createHash, randomUUID } from "node:crypto"
 import { Context, Effect, Layer } from "effect"
 import {
-  BadRequest,
   Conflict,
   Forbidden,
   NotFound
 } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
-import type { GhidraExportPayload, ImportResult } from "../domain/Import.js"
+import { ImportRejected, type GhidraExportPayload, type ImportResult } from "../domain/Import.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { Blobs } from "./Blobs.js"
 import { ProjectChunkStats } from "./ProjectChunkStats.js"
 
-const parseAddress = (value: string): Effect.Effect<bigint, BadRequest> => {
+const reject = (detail: string) => new ImportRejected({ detail })
+
+const parseAddress = (value: string): Effect.Effect<bigint, ImportRejected> => {
   const trimmed = value.trim().toLowerCase()
   try {
     if (trimmed.startsWith("0x")) {
@@ -21,27 +22,75 @@ const parseAddress = (value: string): Effect.Effect<bigint, BadRequest> => {
     }
     return Effect.succeed(BigInt(trimmed))
   } catch {
-    return Effect.fail(new BadRequest())
+    return Effect.fail(reject(`Address "${value}" is not a number.`))
   }
 }
 
-const parseHexSha256 = (hex: string): Effect.Effect<Buffer, BadRequest> => {
+const parseHexSha256 = (hex: string): Effect.Effect<Buffer, ImportRejected> => {
   if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
-    return Effect.fail(new BadRequest())
+    return Effect.fail(reject("binarySha256 has to be 64 hexadecimal characters."))
   }
   return Effect.succeed(Buffer.from(hex, "hex"))
 }
 
-const decodeBase64 = (value: string): Effect.Effect<Buffer, BadRequest> => {
+const decodeBase64 = (value: string): Effect.Effect<Buffer, ImportRejected> => {
   try {
     const buf = Buffer.from(value, "base64")
     if (buf.byteLength === 0) {
-      return Effect.fail(new BadRequest())
+      return Effect.fail(reject("A block of bytes decoded to nothing."))
     }
     return Effect.succeed(buf)
   } catch {
-    return Effect.fail(new BadRequest())
+    return Effect.fail(reject("A block of bytes is not valid base64."))
   }
+}
+
+const maxInt8 = 9223372036854775807n
+
+const hexAddress = (start: bigint): string => "0x" + start.toString(16)
+
+const sameBytes = (left: Uint8Array, right: Uint8Array): boolean =>
+  left.byteLength === right.byteLength && Buffer.from(left).equals(Buffer.from(right))
+
+type RangeSpan = {
+  readonly name: string
+  readonly start: bigint
+  readonly end: bigint
+  readonly where: "export" | "project"
+}
+
+const spanLabel = (span: RangeSpan): string => {
+  const bytes = span.end - span.start
+  const place = span.where === "project" ? ", already on this project" : ""
+  const unit = bytes === 1n ? "byte" : "bytes"
+  return `${span.name} at ${hexAddress(span.start)} (${bytes} ${unit}${place})`
+}
+
+const describeOverlaps = (spans: ReadonlyArray<RangeSpan>): string | null => {
+  const ordered = [...spans].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0))
+  const lines: Array<string> = []
+  let total = 0
+  let touchesProject = false
+  for (let i = 0; i < ordered.length; i++) {
+    const left = ordered[i]!
+    for (let k = i + 1; k < ordered.length && ordered[k]!.start < left.end; k++) {
+      const right = ordered[k]!
+      if (left.start === right.start && left.end === right.end && left.where !== right.where) {
+        continue
+      }
+      total += 1
+      if (left.where === "project" || right.where === "project") touchesProject = true
+      if (lines.length < 8) {
+        lines.push(`${spanLabel(left)} overlaps ${spanLabel(right)}.`)
+      }
+    }
+  }
+  if (total === 0) return null
+  const more = total > lines.length ? `\n${total - lines.length} more overlapping pairs.` : ""
+  const why = touchesProject
+    ? "The board keeps one range per stretch of bytes, including functions already on this project."
+    : "The board keeps one range per stretch of bytes. If an entry point sits inside the function body, re-run ExportReHydra so the address is the start of the body."
+  return lines.join("\n") + more + "\n" + why
 }
 
 export class ImportsRepo extends Context.Service<
@@ -51,7 +100,7 @@ export class ImportsRepo extends Context.Service<
       projectSlug: string,
       userId: Uuid,
       payload: GhidraExportPayload
-    ) => Effect.Effect<ImportResult, NotFound | Forbidden | BadRequest | Conflict>
+    ) => Effect.Effect<ImportResult, NotFound | Forbidden | ImportRejected | Conflict>
   }
 >()("rehydra/services/ImportsRepo") {
   static readonly layer = Layer.effect(
@@ -106,7 +155,7 @@ export class ImportsRepo extends Context.Service<
             const binaryBytes = yield* decodeBase64(payload.binaryBase64)
             const actual = createHash("sha256").update(binaryBytes).digest()
             if (!actual.equals(binarySha)) {
-              return yield* new BadRequest()
+              return yield* reject("binarySha256 does not match binaryBase64.")
             }
             yield* blobs.put(binaryBytes, "application/octet-stream")
           } else {
@@ -173,12 +222,73 @@ export class ImportsRepo extends Context.Service<
               readonly typeNames: ReadonlyArray<string>
             }> = []
 
+            const occupied = yield* sql<{
+              readonly id: string
+              readonly name: string
+              readonly address: string | number | bigint
+              readonly size: number | string
+              readonly state: string
+              readonly bytes_sha256: Uint8Array
+              readonly fuse_parent_id: string | null
+            }>`
+              SELECT id, name, address, size, state, bytes_sha256, fuse_parent_id
+              FROM chunks
+              WHERE binary_id = ${binaryId}
+            `
+            const byRange = new Map<string, {
+              readonly id: string
+              readonly name: string
+              readonly state: string
+              readonly bytes: Uint8Array
+            }>()
+            const spans: Array<RangeSpan> = []
+            for (const row of occupied) {
+              const start = BigInt(row.address)
+              const size = BigInt(row.size)
+              byRange.set(`${start.toString()}:${size.toString()}`, {
+                id: row.id,
+                name: row.name,
+                state: row.state,
+                bytes: row.bytes_sha256
+              })
+              if (row.fuse_parent_id === null) {
+                spans.push({ name: row.name, start, end: start + size, where: "project" })
+              }
+            }
+            for (const fn of payload.functions) {
+              const start = yield* parseAddress(fn.address).pipe(
+                Effect.mapError(() =>
+                  reject(`Function ${fn.name} has address "${fn.address}", which is not a number.`)
+                )
+              )
+              const end = start + BigInt(fn.size)
+              if (start < 0n) {
+                return yield* reject(`Function ${fn.name} has address "${fn.address}", which is negative.`)
+              }
+              if (end > maxInt8) {
+                return yield* reject(
+                  `Function ${fn.name} at ${hexAddress(start)} extends past the address range this project can store.`
+                )
+              }
+              spans.push({ name: fn.name, start, end, where: "export" })
+            }
+            const overlap = describeOverlaps(spans)
+            if (overlap !== null) {
+              return yield* reject(overlap)
+            }
+
             for (const fn of payload.functions) {
               const address = yield* parseAddress(fn.address)
               const addressKey = address.toString()
-              const fnBytes = yield* decodeBase64(fn.bytesBase64)
+              const fnBytes = yield* decodeBase64(fn.bytesBase64).pipe(
+                Effect.mapError(() =>
+                  reject(`Function ${fn.name} has bytes that are not valid base64.`)
+                )
+              )
               if (fnBytes.byteLength !== fn.size) {
-                return yield* new BadRequest()
+                return yield* reject(
+                  `Function ${fn.name} says it is ${fn.size} bytes, but the decoded bytes are ${fnBytes.byteLength}.`
+                )
               }
 
               const bytesSha = yield* blobs.put(fnBytes, "application/octet-stream")
@@ -191,23 +301,17 @@ export class ImportsRepo extends Context.Service<
                 "text/x-asm"
               )
 
-              const existing = yield* sql<{
-                readonly id: string
-                readonly state: string
-              }>`
-                SELECT id, state
-                FROM chunks
-                WHERE binary_id = ${binaryId}
-                  AND bytes_sha256 = ${bytesSha}
-                  AND address = ${address}
-                  AND size = ${fn.size}
-                LIMIT 1
-              `
+              const existing = byRange.get(`${addressKey}:${fn.size}`)
+              if (existing !== undefined && !sameBytes(existing.bytes, bytesSha)) {
+                return yield* reject(
+                  `${fn.name} at ${hexAddress(address)} (${fn.size} bytes) covers the same range as ${existing.name}, which is already on this project with different bytes.`
+                )
+              }
 
-              if (existing[0] !== undefined) {
-                const chunkId = existing[0].id
+              if (existing !== undefined) {
+                const chunkId = existing.id
                 addressToChunkId.set(addressKey, chunkId)
-                const state = existing[0].state
+                const state = existing.state
                 if (state === "open" || state === "stale" || state === "blocked") {
                   yield* sql`
                     UPDATE chunks SET
@@ -326,7 +430,13 @@ export class ImportsRepo extends Context.Service<
                 : new Date(createdAt ?? Date.now()).toISOString()
             } satisfies ImportResult
           })).pipe(
-            Effect.catchTag("SqlError", (e) => Effect.die(e))
+            Effect.catchTag("SqlError", (error) =>
+              error.message.includes("chunks_no_overlap")
+                ? Effect.fail(reject(
+                  "Two functions cover the same bytes. The board keeps one range per stretch of bytes. If an entry point sits inside the function body, re-run ExportReHydra so the address is the start of the body."
+                ))
+                : Effect.die(error)
+            )
           )
         }
       )

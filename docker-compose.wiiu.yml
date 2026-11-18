@@ -1,0 +1,13 @@
+# Wii U matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.wiiu.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-wiiu
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.wiiu
+    environment:
+      MATCHD_WIIU_GCC: powerpc-linux-gnu-gcc
+      MATCHD_WIIU_GXX: powerpc-linux-gnu-g++
+      MATCHD_WIIU_NM: powerpc-linux-gnu-nm
+      MATCHD_WIIU_OBJDUMP: powerpc-linux-gnu-objdump

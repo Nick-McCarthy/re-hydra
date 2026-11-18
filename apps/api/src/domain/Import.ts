@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { HttpApiSchema } from "effect/http-api"
+import { HttpApiError, HttpApiSchema } from "effect/http-api"
 import { Toolchain } from "./Project.js"
 import { Uuid } from "./Uuid.js"
 
@@ -56,3 +56,10 @@ export const ImportResult = Schema.Struct({
 export type ImportResult = typeof ImportResult.Type
 
 export const ImportAccepted = ImportResult.pipe(HttpApiSchema.status("Created"))
+
+/** A readable reason the export cannot become chunks. */
+export class ImportRejected extends HttpApiError.Problem<ImportRejected>()("ImportRejected", {
+  type: "https://re-hydra.dev/problems/import-rejected",
+  status: 400,
+  title: "Export rejected"
+}) {}

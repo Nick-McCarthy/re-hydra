@@ -2,7 +2,7 @@
 
 Compile + normalized instruction compare, plus a link step that places matched functions at their original addresses. The API is the only client (service bearer token).
 
-Prefer `docker compose up -d matchd` on Windows. The image includes gcc, g++, and binutils. See `docs/status.md`.
+Prefer `docker compose up -d matchd` on Windows. The image includes gcc, g++, and binutils. See `docs/roadmap.md`.
 
 ## Local
 
@@ -39,7 +39,7 @@ npm run matchd
 
 `language` is `c` (default, `gcc`, `candidate.c`) or `cpp` (`g++`, `candidate.cpp`). C++ symbols may be Itanium-mangled; matchd resolves them back to the chunk name.
 
-Compiles with `-c`. The match takes the symbol's bytes from `objdump -d -r` and `nm -S`, blanks relocation fields on both sides, and compares what remains. Opcodes are never blanked, so `add` and `and` cannot compare equal. A linked call displacement is blanked, so an isolated call can match. An unknown relocation type fails closed. `matched` is true only when the masked sequences have the same length and the same bytes.
+Compiles with `-c` inside the image sandbox (`MATCHD_SANDBOX=bwrap`): no network, a read-only toolchain, and a private temp directory so one job cannot read another. The wall clock cap is 30 seconds, CPU time is 30 seconds, and an output file stops at 32 MiB. A function source stops at 256 KiB. `types.h` stops at 2 MiB. Host `npm run matchd` leaves `MATCHD_SANDBOX` off. The match takes the symbol's bytes from `objdump -d -r` and `nm -S`, blanks relocation fields on both sides, and compares what remains. Opcodes are never blanked, so `add` and `and` cannot compare equal. A linked call displacement is blanked, so an isolated call can match. An unknown relocation type fails closed. `matched` is true only when the masked sequences have the same length and the same bytes.
 
 `toolchainDigest` is `sha256:v2:` plus the hashes of `cc1` or `cc1plus`, `as`, and the recipe flags. `expectedToolchainDigest` on a job refuses the compile when those binaries differ. An older `sha256:` digest is not a pin. A different recipe with the same binaries is allowed and returns a new digest.
 

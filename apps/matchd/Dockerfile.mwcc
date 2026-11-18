@@ -1,0 +1,55 @@
+# gamecube-mwcc target. Also includes host gcc, so x86 jobs still run in this image.
+# mwcc is the open reimplementation at zcanann/mwcc-rs (commit c00fecef), not a Metrowerks SDK binary.
+FROM node:22-bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV RUSTUP_HOME=/opt/rustup
+ENV CARGO_HOME=/opt/cargo
+ENV PATH="/opt/cargo/bin:/opt/mwcc/bin:${PATH}"
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates bubblewrap curl git gcc g++ binutils \
+    binutils-powerpc-linux-gnu \
+    pkg-config \
+  && rm -rf /var/lib/apt/lists/* \
+  && curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain stable
+
+ARG MWCC_REV=c00fecefe48b73be47af50f447822697bd8a1683
+RUN git init /tmp/mwcc-rs \
+  && git -C /tmp/mwcc-rs remote add origin https://github.com/zcanann/mwcc-rs.git \
+  && git -C /tmp/mwcc-rs fetch --depth 1 origin "$MWCC_REV" \
+  && git -C /tmp/mwcc-rs checkout --detach FETCH_HEAD \
+  && cd /tmp/mwcc-rs \
+  && cargo build --release -p mwcc --bin mwcc \
+  && mkdir -p /opt/mwcc/bin \
+  && cp target/release/mwcc /opt/mwcc/bin/mwcc \
+  && rm -rf /tmp/mwcc-rs /opt/cargo/registry /opt/cargo/git
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY tsconfig.json ./
+COPY src ./src
+COPY drivers/mwcc-cc /usr/local/bin/mwcc-cc
+RUN sed -i 's/\r$//' /usr/local/bin/mwcc-cc && chmod +x /usr/local/bin/mwcc-cc
+
+ENV MATCHD_PORT=3001
+ENV MATCHD_GCC=gcc
+ENV MATCHD_GXX=g++
+ENV MATCHD_LD=ld
+ENV MATCHD_NM=nm
+ENV MATCHD_OBJDUMP=objdump
+ENV MATCHD_MWCC=mwcc-cc
+ENV MATCHD_MWCC_BIN=/opt/mwcc/bin/mwcc
+ENV MATCHD_PPC_NM=powerpc-linux-gnu-nm
+ENV MATCHD_PPC_OBJDUMP=powerpc-linux-gnu-objdump
+ENV MATCHD_TIMEOUT_MS=30000
+ENV MATCHD_SANDBOX=bwrap
+ENV MATCHD_TOKEN=dev-matchd-token
+
+EXPOSE 3001
+CMD ["npx", "tsx", "src/main.ts"]

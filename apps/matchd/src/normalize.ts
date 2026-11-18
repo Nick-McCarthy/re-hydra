@@ -1,35 +1,18 @@
+import { allRelocationWidths } from "./families/index.js"
+import type { RelocField } from "./families/types.js"
+
 /**
  * Isolated match compares machine code, not objdump mnemonics.
  * Relocation fields from the object file are blanked on both sides so a
- * linked call displacement can match an unlinked one. Opcode bytes stay.
+ * linked address can match an unlinked one. Opcode bytes stay when the
+ * address field does not share their byte.
+ * Widths come from the job's CPU family. Callers that omit them use every
+ * registered family, which is what the unit tests do.
  */
 
-const RELOCATION_WIDTH: Readonly<Record<string, number>> = {
-  R_X86_64_8: 1,
-  R_X86_64_PC8: 1,
-  R_X86_64_16: 2,
-  R_X86_64_PC16: 2,
-  R_X86_64_32: 4,
-  R_X86_64_32S: 4,
-  R_X86_64_PC32: 4,
-  R_X86_64_PLT32: 4,
-  R_X86_64_GOTPCREL: 4,
-  R_X86_64_GOTPCRELX: 4,
-  R_X86_64_REX_GOTPCRELX: 4,
-  R_X86_64_TLSGD: 4,
-  R_X86_64_GOTTPOFF: 4,
-  R_X86_64_64: 8,
-  R_386_8: 1,
-  R_386_PC8: 1,
-  R_386_16: 2,
-  R_386_PC16: 2,
-  R_386_32: 4,
-  R_386_PC32: 4,
-  R_386_PLT32: 4,
-  R_386_GOT32: 4,
-  R_386_GOTOFF: 4,
-  R_386_GOTPC: 4
-}
+export type ObjectEndian = "little" | "big"
+
+type RelocationWidths = Readonly<Record<string, RelocField>>
 
 export type Relocation = {
   readonly offset: number
@@ -45,8 +28,28 @@ export type MaskedCompare = {
   readonly candidateLines: ReadonlyArray<string>
 }
 
-export const relocationWidth = (type: string): number | undefined =>
-  RELOCATION_WIDTH[type]
+export const relocationWidth = (
+  type: string,
+  widths: RelocationWidths = allRelocationWidths()
+): RelocField | undefined => widths[type]
+
+const fieldSpan = (field: RelocField): number => (typeof field === "number" ? field : field.span)
+
+/** Bytes to blank, relative to the relocation offset. */
+const blankParts = (
+  field: RelocField,
+  endian: ObjectEndian
+): ReadonlyArray<{ readonly at: number; readonly width: number }> => {
+  if (typeof field === "number") {
+    return field === 0 ? [] : [{ at: 0, width: field }]
+  }
+  if (field.immediateBits % 8 !== 0) {
+    return [{ at: 0, width: field.span }]
+  }
+  const width = field.immediateBits / 8
+  const at = endian === "big" ? field.span - width : 0
+  return [{ at, width }]
+}
 
 const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -54,9 +57,72 @@ const escapeRegExp = (value: string): string =>
 const symbolHeader = (symbol: string): RegExp =>
   new RegExp(`^([0-9a-fA-F]+)\\s+<${escapeRegExp(symbol)}>:`)
 
-/** Byte length of a relocation field. Unknown types are rejected by the caller. */
-const parseHexByte = (token: string): number | undefined =>
-  /^[0-9a-fA-F]{2}$/.test(token) ? Number.parseInt(token, 16) : undefined
+/**
+ * `<name>` is the ELF text symbol. `<_name>` is the i386 COFF form.
+ * `<.name>` is the label objdump prints for an ELFv1 function whose symbol
+ * lives in `.opd` rather than `.text`.
+ */
+const findSymbolHeader = (
+  lines: ReadonlyArray<string>,
+  symbol: string
+): { readonly header: number; readonly start: number } | undefined => {
+  for (const name of [symbol, `_${symbol}`, `.${symbol}`]) {
+    const headerRe = symbolHeader(name)
+    for (let i = 0; i < lines.length; i++) {
+      const match = headerRe.exec(lines[i] ?? "")
+      if (match?.[1] !== undefined) {
+        return { header: i, start: Number.parseInt(match[1], 16) }
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * One objdump hex group, in memory order.
+ * x86 prints one byte (`48`). ARM and MIPS print the instruction integer
+ * (`b500`, `3c020000`). Little-endian memory stores that integer reversed.
+ * A token that is not hex ends the byte list.
+ */
+const parseHexGroup = (token: string, endian: ObjectEndian): ReadonlyArray<number> | undefined => {
+  if (!/^[0-9a-fA-F]+$/.test(token) || token.length % 2 !== 0 || token.length > 8) {
+    return undefined
+  }
+  const bytes: number[] = []
+  if (endian === "big") {
+    for (let i = 0; i < token.length; i += 2) {
+      bytes.push(Number.parseInt(token.slice(i, i + 2), 16))
+    }
+  } else {
+    for (let i = token.length; i > 0; i -= 2) {
+      bytes.push(Number.parseInt(token.slice(i - 2, i), 16))
+    }
+  }
+  return bytes
+}
+
+/**
+ * Bytes of one instruction. Objdump prints 2, 4, or 8 hex digits per group,
+ * separated by one space. The mnemonic follows a wider gap, so a name such
+ * as `fadd` is not read as another group.
+ */
+const instructionBytes = (rest: string, endian: ObjectEndian): ReadonlyArray<number> => {
+  const bytes: number[] = []
+  let i = 0
+  while (rest[i] === " " || rest[i] === "\t") i++
+  while (i < rest.length) {
+    const match = /^([0-9a-fA-F]{8}|[0-9a-fA-F]{4}|[0-9a-fA-F]{2})/.exec(rest.slice(i))
+    if (match?.[1] === undefined) break
+    const group = parseHexGroup(match[1], endian)
+    if (group === undefined) break
+    bytes.push(...group)
+    i += match[1].length
+    const next = rest[i + 1]
+    if (rest[i] !== " " || next === " " || next === undefined || !/[0-9a-fA-F]/.test(next)) break
+    i += 1
+  }
+  return bytes
+}
 
 /**
  * Take `size` bytes of one symbol from `objdump -d -r`, plus relocations
@@ -66,7 +132,9 @@ const parseHexByte = (token: string): number | undefined =>
 export const extractSymbolMachineCode = (
   dump: string,
   symbol: string,
-  size: number
+  size: number,
+  widths: RelocationWidths = allRelocationWidths(),
+  endian: ObjectEndian = "little"
 ):
   | { readonly ok: true; readonly bytes: Uint8Array; readonly relocations: ReadonlyArray<Relocation> }
   | { readonly ok: false; readonly reason: string } => {
@@ -74,23 +142,11 @@ export const extractSymbolMachineCode = (
     return { ok: false, reason: `symbol ${symbol} has no size` }
   }
   const lines = dump.split(/\r?\n/)
-  let header = -1
-  let start = 0
-  const headerRes = [symbolHeader(symbol), symbolHeader(`_${symbol}`)]
-  for (const headerRe of headerRes) {
-    for (let i = 0; i < lines.length; i++) {
-      const match = headerRe.exec(lines[i] ?? "")
-      if (match?.[1] !== undefined) {
-        header = i
-        start = Number.parseInt(match[1], 16)
-        break
-      }
-    }
-    if (header >= 0) break
-  }
-  if (header < 0) {
+  const found = findSymbolHeader(lines, symbol)
+  if (found === undefined) {
     return { ok: false, reason: `entry symbol '${symbol}' not found` }
   }
+  const { header, start } = found
 
   const end = start + size
   const bytes: number[] = []
@@ -101,15 +157,16 @@ export const extractSymbolMachineCode = (
     const line = lines[i] ?? ""
     if (/^[0-9a-fA-F]+\s+<[^>]+>:/.test(line)) break
 
-    const reloc = /^\s+([0-9a-fA-F]+):\s+(R_\S+)/.exec(line)
+    const reloc = /^\s+([0-9a-fA-F]+):\s+((?:R_|IMAGE_REL_)\S+)/.exec(line)
     if (reloc?.[1] !== undefined && reloc[2] !== undefined) {
       const offset = Number.parseInt(reloc[1], 16) - start
       const type = reloc[2]
-      const width = relocationWidth(type)
-      if (width === undefined) {
+      const field = relocationWidth(type, widths)
+      if (field === undefined) {
         return { ok: false, reason: `unsupported relocation ${type}` }
       }
-      if (offset < 0 || offset + width > size) {
+      const span = fieldSpan(field)
+      if (offset < 0 || offset + span > size) {
         return {
           ok: false,
           reason: `relocation ${type} at ${offset} does not fit in ${size} bytes`
@@ -123,13 +180,7 @@ export const extractSymbolMachineCode = (
     if (insn?.[1] === undefined || insn[2] === undefined) continue
     const address = Number.parseInt(insn[1], 16)
     if (address >= end) continue
-    const tokens = insn[2].trim().split(/\s+/)
-    const insnBytes: number[] = []
-    for (const token of tokens) {
-      const byte = parseHexByte(token)
-      if (byte === undefined) break
-      insnBytes.push(byte)
-    }
+    const insnBytes = instructionBytes(insn[2], endian)
     if (insnBytes.length === 0) continue
     if (address < start || address !== cursor) {
       return {
@@ -156,24 +207,60 @@ export const extractSymbolMachineCode = (
   return { ok: true, bytes: Uint8Array.from(bytes), relocations }
 }
 
+/**
+ * Byte length of one symbol in a dump whose symbol table stores no size.
+ * COFF `nm` reports size 0. The bytes run from the symbol header to the next one.
+ */
+export const disassemblySize = (
+  dump: string,
+  symbol: string,
+  endian: ObjectEndian = "little"
+): number | undefined => {
+  const lines = dump.split(/\r?\n/)
+  const found = findSymbolHeader(lines, symbol)
+  if (found === undefined) return undefined
+  const { header, start } = found
+
+  let cursor = start
+  let seen = false
+  for (let i = header + 1; i < lines.length; i++) {
+    const line = lines[i] ?? ""
+    if (/^[0-9a-fA-F]+\s+<[^>]+>:/.test(line)) break
+    if (/^\s+[0-9a-fA-F]+:\s+(?:R_|IMAGE_REL_)\S+/.test(line)) continue
+    const insn = /^\s*([0-9a-fA-F]+):\s+(.*)$/.exec(line)
+    if (insn?.[1] === undefined || insn[2] === undefined) continue
+    const address = Number.parseInt(insn[1], 16)
+    const insnBytes = instructionBytes(insn[2], endian)
+    if (insnBytes.length === 0) continue
+    if (address !== cursor) return undefined
+    cursor = address + insnBytes.length
+    seen = true
+  }
+  return seen ? cursor - start : undefined
+}
+
 const blank = (
   bytes: Uint8Array,
-  relocations: ReadonlyArray<Relocation>
+  relocations: ReadonlyArray<Relocation>,
+  widths: RelocationWidths,
+  endian: ObjectEndian
 ): { readonly bytes: Uint8Array; readonly masked: ReadonlyArray<boolean> } | { readonly reason: string } => {
   const out = new Uint8Array(bytes)
   const masked = Array.from({ length: bytes.length }, () => false)
   for (const relocation of relocations) {
-    const width = relocationWidth(relocation.type)
-    if (width === undefined) {
+    const field = relocationWidth(relocation.type, widths)
+    if (field === undefined) {
       return { reason: `unsupported relocation ${relocation.type}` }
     }
-    if (relocation.offset < 0 || relocation.offset + width > out.length) {
-      continue
-    }
-    for (let i = 0; i < width; i++) {
-      const index = relocation.offset + i
-      out[index] = 0
-      masked[index] = true
+    for (const part of blankParts(field, endian)) {
+      if (relocation.offset + part.at < 0 || relocation.offset + part.at + part.width > out.length) {
+        continue
+      }
+      for (let i = 0; i < part.width; i++) {
+        const index = relocation.offset + part.at + i
+        out[index] = 0
+        masked[index] = true
+      }
     }
   }
   return { bytes: out, masked }
@@ -186,7 +273,9 @@ const hexLines = (bytes: Uint8Array, masked: ReadonlyArray<boolean>): Array<stri
 export const scoreMaskedBytes = (
   original: Uint8Array,
   candidate: Uint8Array,
-  relocations: ReadonlyArray<Relocation>
+  relocations: ReadonlyArray<Relocation>,
+  widths: RelocationWidths = allRelocationWidths(),
+  endian: ObjectEndian = "little"
 ): MaskedCompare | { readonly reason: string } => {
   if (original.length === 0) {
     return {
@@ -198,9 +287,9 @@ export const scoreMaskedBytes = (
       candidateLines: []
     }
   }
-  const left = blank(original, relocations)
+  const left = blank(original, relocations, widths, endian)
   if ("reason" in left) return left
-  const right = blank(candidate, relocations)
+  const right = blank(candidate, relocations, widths, endian)
   if ("reason" in right) return right
 
   const comparable = Math.min(left.bytes.length, right.bytes.length)

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec arm-none-eabi-g++ -march=armv6k -mtune=mpcore "$@"

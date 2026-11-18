@@ -2,7 +2,7 @@
 
 Thin Effect CLI for the contributor loop: login, checkout a work bundle, submit, heartbeat, release.
 
-Part of **Milestone 1** (done). See `docs/status.md`.
+Part of **Milestone 1** (done). See `docs/roadmap.md`.
 
 ## Setup
 
@@ -54,8 +54,9 @@ chunks/<project>/<chunk>/
   disassembly.s
   types.h
   neighbors.json
+  instructions.agent # point an agent at this file
   attempt.c          # if a prior best attempt exists
-  candidate.c        # edit this, then hydra submit
+  candidate.c        # the agent writes this; then hydra submit
   .lease.json        # lease token + metadata
 ```
 

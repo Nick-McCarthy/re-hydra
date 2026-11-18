@@ -24,6 +24,7 @@ export function bundleFiles(bundle: WorkBundle): Array<{ name: string; data: Uin
     { name: "disassembly.s", data: encode(bundle.disassembly) },
     { name: "types.h", data: encode(bundle.types) },
     { name: "neighbors.json", data: encode(`${JSON.stringify(bundle.neighbors, null, 2)}\n`) },
+    { name: "instructions.agent", data: encode(bundle.agentInstructions) },
     { name: "candidate.c", data: encode(candidate) }
   ]
   if (bundle.bestAttemptSource !== undefined) {

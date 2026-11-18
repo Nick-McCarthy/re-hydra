@@ -1,0 +1,111 @@
+# re-hydra roadmap
+
+Milestones 1–4 are done. Compiler images through Genesis are registered. Match capacity on one site is in place through an extra copy of a busy image. The next capacity step is a second site, which is still design. How the system runs is [architecture.md](architecture.md). The tables are [db-schema/schema.md](db-schema/schema.md).
+
+## Product
+
+| Milestone | State |
+| --- | --- |
+| 1 — claim, translate, prove | Done. Magic-link auth, public projects, Ghidra import, exclusive lease, directory, web checkout and submit, CLI, one matchd image, stored proof |
+| 2 — shared types | Done. Proposals, revalidation, unresolved marks, fuse. A second privileged member accepts when the project has more than one |
+| 3 — directory | Done. Follows, activity, people search, reputation, competing leases (default 1, cap 2–8) |
+| 4 — integration | Done. Link matched functions at their original addresses. A miss reopens that chunk. The owner can pin C or C++. Isolated match stays the checkout success |
+
+The CLI covers milestone 1. Follow, search, the lease cap, language, and integration builds are API and web.
+
+Seed fixtures:
+
+| Slug | What it is |
+| --- | --- |
+| `demo` | One chunk, `parse_header`, a single `ret`. An empty function under `-O2` can match |
+| `sample` | `skip_space`, `header_size`, and `parse_header` compiled together. An isolated resubmit of `parse_header` will not match. The leaves can |
+| `link` | `leaf` and `caller` linked at `0x401000` and `0x401040`. `decoy` can match in isolation and then fail the integration build |
+
+## Capacity
+
+These steps add compile capacity and keep the lease, the digest, and the byte match.
+
+| Step | State |
+| --- | --- |
+| 1. Route by image | Done. `MATCHD_ROUTES` sends a job to the process for `toolchain.image`. `MATCHD_URL` is the fallback. `docker-compose.matchd-pool.yml` publishes one warm process per image |
+| 2. More claimers | Done. `MATCHD_WORKERS` defaults to 4. A claimer waits 2 seconds only when the queue is empty. One worker runs recipe rechecks, and only when no submit is waiting |
+| 3. Sandbox the compile | Done inside the image. No network, read-only toolchain, private temp directory, 30 second cap. A microVM and a 512 MB resident cap are still open |
+| 4. Grow the busy image | Done. `MATCHD_SCALE=docker` starts another local copy when an interactive job has waited 30 seconds, and removes it after the image has been idle. The warm process stays |
+| 5. A second site | Next. Read replicas, object storage, and a matchd pool in another region. The writer stays single. See the later section of [architecture.md](architecture.md) |
+
+## Compilers
+
+matchd grows as three directories: `families/` (relocation widths), `toolchains/` (how a compiler is pinned), and `targets/` (one registered image). A console is a new family when the relocation names are new, a new toolchain file when the driver is not GCC, and a new target once a compiler the operator can ship emits that object format. The link step stays on host `gcc` until a console linker exists.
+
+Licensed Nintendo, Sony, Microsoft, ARM, Metrowerks, and Hitachi SDKs are not installed. Each registered compiler below is a public build. The retail SDK compiler is a different binary, so a ROM built with the SDK will not match this one. Ghidra compiler specs describe calling conventions. They are not these binaries.
+
+Registered images: `host-gcc`, `gba-agbcc`, `ds-gcc`, `3ds-gcc`, `n64-gcc`, `gamecube-mwcc`, `msvc-x64`, `switch-clang`, `ps1-gcc`, `ps2-gcc`, `psp-gcc`, `ps3-gcc`, `ps4-clang`, `xbox-i386`, `wiiu-gcc`, `dc-gcc`, `saturn-gcc`, `genesis-gcc`.
+
+### MIPS
+
+One relocation table covers the family. Each console still has its own compiler image, endianness, and ABI.
+
+| Console | CPU | Compiler | Notes |
+| --- | --- | --- | --- |
+| Nintendo 64 | R4300i, big-endian | GNU GCC 2.8.1, `ghcr.io/re-hydra/n64-gcc:2.8.1`, `Dockerfile.n64` | `R_MIPS_*` widths are in `families/mips.ts`. `HI16` and `LO16` blank the immediate. `R_MIPS_26` blanks the whole `j`/`jal`. IDO and GCC 2.7.2 are still separate images |
+| PlayStation | R3000, little-endian | Debian `mipsel-linux-gnu-gcc`, `ghcr.io/re-hydra/ps1-gcc:mipsel`, `Dockerfile.ps1` | PSY-Q `ccpsx` is a different binary. A little-endian `HI16` blanks the low half of the word. `R_MIPS_26` blanks the whole `jal` and leaves the delay slot |
+| PlayStation 2 | Emotion Engine, little-endian | Debian `mips64el-linux-gnuabi64-gcc` with `-march=r5900 -msingle-float`, `ghcr.io/re-hydra/ps2-gcc:mips64el`, `Dockerfile.ps2` | Sony `ee-gcc` is a different binary. Objects are ELF64. `R_MIPS_26` keeps the paired `R_MIPS_NONE` records. VU microcode stays out |
+| PSP | Allegrex, little-endian | pspdev GCC 15.2.0, `ghcr.io/re-hydra/psp-gcc:allegrex`, `Dockerfile.psp` | The Sony SN Systems compiler is a different binary. `psp-objdump` decodes Allegrex. This compiler does not add paired `R_MIPS_NONE` records. `R_MIPS_GPREL16` blanks a `gp` load |
+
+### PowerPC
+
+CodeWarrior and GCC do not emit the same bytes.
+
+| Console | CPU | Compiler | Notes |
+| --- | --- | --- | --- |
+| GameCube and Wii | Gekko / Broadway, big-endian | Open `mwcc`, `ghcr.io/re-hydra/mwcc:gc`, `Dockerfile.mwcc` | The Metrowerks SDK is a different binary. `R_PPC_*` widths are in `families/ppc.ts`. `ADDR16_HA` / `ADDR16_LO` blank the immediate. `REL24` and `EMB_SDA21` blank the whole instruction |
+| Wii U | Espresso, big-endian | Debian `powerpc-linux-gnu-gcc`, `ghcr.io/re-hydra/wiiu-gcc:powerpc`, `Dockerfile.wiiu` | The Cafe SDK compiler is a different binary. `REL24` blanks the whole `bl` |
+| PlayStation 3 | Cell PPE, big-endian | Debian `powerpc64-linux-gnu-gcc`, `ghcr.io/re-hydra/ps3-gcc:powerpc64`, `Dockerfile.ps3` | SNC is a different binary. The function symbol is in `.opd` and `nm` prints it as `D`. `ps3-objdump` passes `-z`. `R_PPC64_REL24` blanks the whole `bl`. SPU code stays out |
+| Xbox 360 | Xenon, big-endian | Not registered | `IMAGE_REL_PPC_*` widths and the COFF reader are in place. Debian Clang cannot write PowerPC COFF. libxenon emits ELF. OpenXeChain has no released compiler to pin |
+
+### ARM and AArch64
+
+Thumb and ARM are different instruction streams. The chunk's flags name which one.
+
+| Console | CPU | Compiler | Notes |
+| --- | --- | --- | --- |
+| Game Boy Advance | ARM7TDMI | `agbcc`, `ghcr.io/re-hydra/agbcc:gba`, `Dockerfile.agbcc` | `R_ARM_*` widths are in `families/arm.ts`. ARM branches keep the opcode byte. Thumb `BL` blanks the whole pair. `armcc` is a different image |
+| Nintendo DS | ARM9 and ARM7 | Debian `arm-none-eabi-gcc`, `ghcr.io/re-hydra/ds-gcc:arm`, `Dockerfile.ds` | ARM9 is `-march=armv5te`. ARM7 is `-march=armv4t -mthumb`. `mwccarm` and `armcc` are different binaries |
+| Nintendo 3DS | ARM11 | Debian `arm-none-eabi-gcc` with `-march=armv6k -mtune=mpcore`, `ghcr.io/re-hydra/3ds-gcc:arm`, `Dockerfile.3ds` | ARM Compiler 5 is a different binary. Hard float is `-mfpu=vfp -mfloat-abi=hard` |
+| Switch | AArch64, little-endian | Debian Clang `--target=aarch64-none-elf`, `ghcr.io/re-hydra/clang:switch`, `Dockerfile.switch` | The Nintendo SDK Clang is a different binary. `R_AARCH64_CALL26` blanks the whole `bl` |
+
+### x86
+
+Host `gcc` does not reproduce these bytes. A native Windows C or C++ program uses the same COFF images as the Xbox rows.
+
+| System | CPU | Compiler | Notes |
+| --- | --- | --- | --- |
+| Windows, 64-bit | x86-64 | Debian Clang, Microsoft x64 COFF, `ghcr.io/re-hydra/clang:msvc-x64`, `Dockerfile.coff` | Same image as Xbox One and Series. Retail Visual C++ is a different binary. `IMAGE_REL_AMD64_REL32` blanks the call displacement |
+| Windows, 32-bit, and the original Xbox | Pentium III / x86 | Debian Clang `--target=i686-pc-windows-msvc`, `ghcr.io/re-hydra/clang:xbox`, `Dockerfile.xbox` | Visual C++ 6 and 7 are different binaries. COFF size comes from the disassembly. `IMAGE_REL_I386_REL32` blanks the call displacement |
+| Xbox One and Series | x86-64 | The Windows 64-bit image above | Retail Visual C++ is a different binary |
+| PlayStation 4 | x86-64 | Debian Clang `--target=x86_64-unknown-freebsd`, `ghcr.io/re-hydra/clang:ps4`, `Dockerfile.ps4` | The Orbis SDK Clang is a different binary. Objects are ELF. `R_X86_64_PLT32` blanks the call displacement |
+| PlayStation 5 | x86-64 | Not registered | Prospero Clang is a licensed SDK compiler. The PS4 relocation table applies when the object is ELF |
+
+### Other systems
+
+| Console | CPU | Compiler | Notes |
+| --- | --- | --- | --- |
+| Dreamcast | SH-4, little-endian | Debian `sh4-linux-gnu-gcc` with `-m4`, `ghcr.io/re-hydra/dc-gcc:sh4`, `Dockerfile.dc` | The Hitachi compiler is a different binary. `dc-objdump` passes `-z`. `R_SH_DIR32` blanks the literal pool. AICA sound code stays out. Windows CE is a separate image |
+| Saturn | SH-2, little-endian | Debian `sh-elf-gcc` with `-m2 -ml`, `ghcr.io/re-hydra/saturn-gcc:sh2`, `Dockerfile.saturn` | The Hitachi compiler and the Sega SDK GCC 2.7 compiler are different binaries. C only. Symbols have a leading underscore. A float add calls `___addsf3`. The SCU DSP stays out |
+| Genesis / Mega Drive | 68000, big-endian | Debian `m68k-linux-gnu-gcc` with `-m68000`, `ghcr.io/re-hydra/genesis-gcc:68000`, `Dockerfile.genesis` | SN Systems, Sierra C, and the Sega SDK C compiler are different binaries. `R_68K_32` blanks the address after `jsr`. Most Genesis games are assembly. The Z80 stays out |
+
+NES, Game Boy, Game Boy Color, and Super Nintendo games are almost all assembly. `cc65` and GBDK produce different bytes. Cover one of these after a specific game is known to have been built with a specific installable C compiler.
+
+## Still open
+
+- A second site, after this site's pool is dull. The writer stays single.
+- A microVM sandbox, and a 512 MB resident cap per compile. The image sandbox is the boundary that runs today.
+- Xbox 360 and PlayStation 5, until a public compiler emits the retail object format.
+- Retail SDK compilers. They stay unregistered.
+- What happens to member matches if a fused chunk is later split. Split is not implemented.
+- No automated test of the full checkout loop.
+- Blob bytes are local `blob_objects`, not object storage.
+- No web UI for Ghidra import. Owners POST the JSON.
+- The CLI does not follow, search, change the lease cap, pin a language, or start an integration build.
+- Integration compiles each matched function as its own translation unit. It does not search for a layout or a flag set.
+- A profile's follower count refreshes when the page reloads.

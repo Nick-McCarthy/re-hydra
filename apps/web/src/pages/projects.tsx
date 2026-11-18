@@ -1,11 +1,14 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ApiError, api, type ProjectSummary } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 
 export function ProjectsPage() {
+  const { user } = useAuth()
   const [projects, setProjects] = React.useState<Array<ProjectSummary> | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [q, setQ] = React.useState("")
@@ -49,11 +52,18 @@ export function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Open a board to browse chunks and check out work.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Open a board to browse chunks and check out work.
+          </p>
+        </div>
+        {user ? (
+          <Button asChild>
+            <Link to="/projects/new">New project</Link>
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

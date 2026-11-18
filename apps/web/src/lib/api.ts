@@ -72,6 +72,18 @@ export type ProjectSummary = {
   createdAt: string
 }
 
+export type ImportResult = {
+  id: string
+  projectId: string
+  binaryId: string
+  state: "uploaded" | "parsing" | "ready" | "failed"
+  functionsTotal: number
+  functionsCreated: number
+  functionsUpdated: number
+  typeRevision: number
+  createdAt: string
+}
+
 export type ChunkState = "open" | "leased" | "validating" | "matched" | "stale" | "blocked"
 
 export type ChunkSummary = {
@@ -115,6 +127,7 @@ export type WorkBundle = {
   types: string
   neighbors: Array<Neighbor>
   bestAttemptSource?: string
+  agentInstructions: string
 }
 
 export type LeaseWithBundle = {
@@ -209,6 +222,13 @@ export type UserSearchHit = {
   createdAt: string
 }
 
+export type FollowedProject = {
+  slug: string
+  name: string
+  description: string
+  language: string
+}
+
 export type ProjectMembership = {
   projectSlug: string
   role: "owner" | "maintainer" | "contributor"
@@ -292,6 +312,14 @@ export function saveSession(session: Session | null): void {
   }
 }
 
+function messageFromBody(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined
+  const record = body as { message?: unknown; detail?: unknown }
+  if (typeof record.detail === "string" && record.detail.trim().length > 0) return record.detail
+  if (typeof record.message === "string" && record.message.trim().length > 0) return record.message
+  return undefined
+}
+
 async function parseBody(res: Response): Promise<unknown> {
   if (res.status === 204) return undefined
   const text = await res.text()
@@ -319,9 +347,7 @@ async function request<T>(
   const res = await fetch(`/v1${path}`, { ...init, headers })
   const body = await parseBody(res)
   if (!res.ok) {
-    throw new ApiError(res.status, body, typeof body === "object" && body && "message" in body
-      ? String((body as { message: unknown }).message)
-      : undefined)
+    throw new ApiError(res.status, body, messageFromBody(body))
   }
   return body as T
 }
@@ -349,6 +375,35 @@ export const api = {
     return request<void>("/auth/logout", { method: "POST" }, token)
   },
 
+  createProject(
+    token: string,
+    body: {
+      slug: string
+      name: string
+      description?: string
+      homeRegion: string
+      language: SourceLanguage
+      toolchain: Toolchain
+    }
+  ) {
+    return request<ProjectSummary>("/projects", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }, token)
+  },
+
+  importExport(slug: string, jsonText: string, token: string) {
+    return request<ImportResult>(
+      `/projects/${encodeURIComponent(slug)}/imports`,
+      {
+        method: "POST",
+        body: jsonText,
+        headers: { "content-type": "application/json" }
+      },
+      token
+    )
+  },
+
   listProjects(filters?: { q?: string; language?: string; arch?: string }) {
     const params = new URLSearchParams()
     if (filters?.q) params.set("q", filters.q)
@@ -371,6 +426,14 @@ export const api = {
 
   feed(token: string) {
     return request<Array<ProjectEvent>>("/feed", {}, token)
+  },
+
+  followingUsers(token: string) {
+    return request<Array<UserSearchHit>>("/following/users", {}, token)
+  },
+
+  followingProjects(token: string) {
+    return request<Array<FollowedProject>>("/following/projects", {}, token)
   },
 
   projectFollowState(slug: string, token: string) {

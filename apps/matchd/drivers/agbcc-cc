@@ -1,0 +1,2 @@
+#!/bin/sh
+exec npx --prefix /app tsx /app/src/drivers/agbcc-cc.ts "$@"

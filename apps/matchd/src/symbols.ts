@@ -13,7 +13,7 @@ const parseNm = (dump: string): Array<NmRow> => {
   for (const line of dump.split(/\r?\n/)) {
     const sized = SIZED_NM.exec(line.trim())
     if (sized !== null && sized[3] !== undefined && sized[4] !== undefined) {
-      if (sized[3] !== "T" && sized[3] !== "t") continue
+      if (sized[3] !== "T" && sized[3] !== "t" && sized[3] !== "D" && sized[3] !== "d") continue
       const size = Number.parseInt(sized[2] ?? "", 16)
       rows.push({
         addr: sized[1] ?? "",
@@ -27,7 +27,7 @@ const parseNm = (dump: string): Array<NmRow> => {
     if (match === null || match[2] === undefined || match[3] === undefined) {
       continue
     }
-    if (match[2] !== "T" && match[2] !== "t") continue
+    if (match[2] !== "T" && match[2] !== "t" && match[2] !== "D" && match[2] !== "d") continue
     rows.push({
       addr: match[1] ?? "",
       size: undefined,
@@ -38,7 +38,10 @@ const parseNm = (dump: string): Array<NmRow> => {
   return rows
 }
 
-/** Byte length of one text symbol from `nm -S`. */
+/** Byte length of one text symbol from `nm -S`.
+ * ELFv1 PowerPC stores the function symbol in `.opd`, so `nm` prints `D`.
+ * That size is still the `.text` extent, including the traceback after `blr`.
+ */
 export const symbolSize = (nmDump: string, name: string): number | undefined => {
   const hits = parseNm(nmDump).filter((row) => row.name === name || row.name === `_${name}`)
   if (hits.length !== 1) return undefined

@@ -1,0 +1,13 @@
+# GameCube matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.mwcc.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-mwcc
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.mwcc
+    environment:
+      MATCHD_MWCC: mwcc-cc
+      MATCHD_MWCC_BIN: /opt/mwcc/bin/mwcc
+      MATCHD_PPC_NM: powerpc-linux-gnu-nm
+      MATCHD_PPC_OBJDUMP: powerpc-linux-gnu-objdump

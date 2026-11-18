@@ -1,10 +1,23 @@
 import { spawn } from "node:child_process"
-import { Effect } from "effect"
+import { Config, Effect } from "effect"
+import { sandboxedSpawn } from "./sandbox.js"
 
 export type RunResult = {
   readonly code: number | null
   readonly stdout: string
   readonly stderr: string
+}
+
+const stopChild = (child: ReturnType<typeof spawn>, sandboxed: boolean): void => {
+  if (sandboxed && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, "SIGKILL")
+      return
+    } catch {
+      // The process group is already gone.
+    }
+  }
+  child.kill("SIGKILL")
 }
 
 export const runProcess = (
@@ -13,37 +26,50 @@ export const runProcess = (
   cwd: string,
   timeoutMs: number
 ): Effect.Effect<RunResult, Error> =>
-  Effect.tryPromise({
-    try: () =>
-      new Promise<RunResult>((resolve, reject) => {
-        const child = spawn(cmd, [...args], {
-          cwd,
-          env: process.env,
-          windowsHide: true
-        })
-        let stdout = ""
-        let stderr = ""
-        const timer = setTimeout(() => {
-          child.kill("SIGKILL")
-          reject(new Error(`timeout after ${timeoutMs}ms: ${cmd}`))
-        }, timeoutMs)
-        child.stdout.on("data", (chunk: Buffer) => {
-          stdout += chunk.toString("utf8")
-        })
-        child.stderr.on("data", (chunk: Buffer) => {
-          stderr += chunk.toString("utf8")
-        })
-        child.on("error", (err) => {
-          clearTimeout(timer)
-          reject(err)
-        })
-        child.on("close", (code) => {
-          clearTimeout(timer)
-          resolve({ code, stdout, stderr })
-        })
-      }),
-    catch: (cause) =>
-      cause instanceof Error ? cause : new Error(String(cause))
+  Effect.gen(function*() {
+    const mode = yield* Config.String("MATCHD_SANDBOX").pipe(Config.withDefault("off"))
+    if (mode !== "off" && mode !== "bwrap") {
+      return yield* Effect.fail(new Error("MATCHD_SANDBOX must be off or bwrap"))
+    }
+    const sandboxed = mode === "bwrap"
+    const spawned = sandboxed ? sandboxedSpawn(cmd, args, cwd, process.env) : undefined
+    return yield* Effect.tryPromise({
+      try: () =>
+        new Promise<RunResult>((resolve, reject) => {
+          const child = spawn(
+            spawned?.command ?? cmd,
+            spawned ? [...spawned.args] : [...args],
+            {
+              cwd,
+              env: spawned?.env ?? process.env,
+              windowsHide: true,
+              detached: sandboxed
+            }
+          )
+          let stdout = ""
+          let stderr = ""
+          const timer = setTimeout(() => {
+            stopChild(child, sandboxed)
+            reject(new Error(`timeout after ${timeoutMs}ms: ${cmd}`))
+          }, timeoutMs)
+          child.stdout.on("data", (chunk: Buffer) => {
+            stdout += chunk.toString("utf8")
+          })
+          child.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString("utf8")
+          })
+          child.on("error", (err) => {
+            clearTimeout(timer)
+            reject(err)
+          })
+          child.on("close", (code) => {
+            clearTimeout(timer)
+            resolve({ code, stdout, stderr })
+          })
+        }),
+      catch: (cause) =>
+        cause instanceof Error ? cause : new Error(String(cause))
+    })
   })
 
 export const objdumpMachine = (arch: string): string => {

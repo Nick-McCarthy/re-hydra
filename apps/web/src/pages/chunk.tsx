@@ -516,8 +516,8 @@ export function ChunkPage() {
           <CardHeader>
             <CardTitle>Submit translation</CardTitle>
             <CardDescription>
-              Source must compile under the project toolchain. Download the bundle to edit
-              candidate.c locally, or paste it here.
+              Source must compile under the project toolchain. Download the bundle, unzip
+              it, and point an agent at instructions.agent. Or paste candidate.c here.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

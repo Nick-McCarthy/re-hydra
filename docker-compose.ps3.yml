@@ -1,0 +1,13 @@
+# PlayStation 3 matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.ps3.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-ps3
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.ps3
+    environment:
+      MATCHD_PS3_GCC: powerpc64-linux-gnu-gcc
+      MATCHD_PS3_GXX: powerpc64-linux-gnu-g++
+      MATCHD_PS3_NM: powerpc64-linux-gnu-nm
+      MATCHD_PS3_OBJDUMP: ps3-objdump

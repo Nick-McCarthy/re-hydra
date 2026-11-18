@@ -1,0 +1,13 @@
+# Switch matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.switch.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-switch
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.switch
+    environment:
+      MATCHD_CLANG: switch-clang
+      MATCHD_CLANG_BIN: /usr/bin/clang
+      MATCHD_LLVM_NM: llvm-nm
+      MATCHD_LLVM_OBJDUMP: llvm-objdump

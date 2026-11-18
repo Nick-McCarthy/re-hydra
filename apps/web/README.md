@@ -7,14 +7,14 @@ React client for re-hydra (Milestone 1 complete).
 - Magic-link login (`AUTH_EXPOSE_DEV_TOKEN` fills `devToken` locally)
 - Project list + chunk board with live stats
 - Chunk checkout / heartbeat / release / submit
-- Download a checkout as a zip (`candidate.c`, `types.h`, disassembly, original bytes)
+- Download a checkout as a zip (`instructions.agent`, `candidate.c`, `types.h`, disassembly, original bytes)
 - Match diagnostics: compile errors, or a side-by-side instruction diff
 - Auto-heartbeat every 5 minutes while the chunk page is open
 - Attempt history on the chunk page
 - Maintainer **Clear lease** (when membership is owner/maintainer)
 - Public user profiles (`/users/:userId`) with matched chunks
 
-Milestone 2 (type proposals, unresolved types, fuse) has a UI. See `docs/status.md`.
+Milestone 2 (type proposals, unresolved types, fuse) has a UI. See `docs/roadmap.md`.
 
 ## Stack
 

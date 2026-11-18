@@ -2,11 +2,10 @@
 
 ## Start here
 
-1. **`docs/status.md`** — what is built, runbook, next work (read first in a new chat)
-2. `docs/planning.md` — product rules (chunks, leases, matchd, types)
-3. `docs/architecture.md` — multi-region design (not implemented yet)
-4. `docs/db-schema/schema.md` — Postgres schema of record
-5. `docs/db-schema/schema-reasoning.md` — why the schema is shaped that way
+1. **`docs/roadmap.md`** — what is built, compilers, capacity, next work (read first in a new chat)
+2. `docs/architecture.md` — how the system runs today, and the later multi-site design
+3. `docs/db-schema/schema.md` — Postgres schema of record
+4. `docs/db-schema/schema-reasoning.md` — why the schema is shaped that way
 
 ## Effect (required reading)
 
@@ -55,7 +54,7 @@ git subtree pull --prefix=repos/effect https://github.com/Effect-TS/effect.git m
 - `apps/cli` — contributor CLI (`hydra`), typed against `@re-hydra/api` HttpApi
 - `apps/matchd` — compile + normalized compare (service-token only)
 - `apps/web` — Vite React client (login, profiles, project board, checkout/submit, attempts, auto-heartbeat)
-- `docs/` — planning, schema, **status.md handoff**
+- `docs/` — roadmap, architecture, schema
 - `docker-compose.yml` — local Postgres + matchd
 
 ## Local commands
@@ -79,4 +78,4 @@ npm run typecheck             # all workspaces
 ## Current milestone focus
 
 - **Done:** Milestones 1–4 (claim/match, types, directory, integration build and C++)
-- **Next:** see `docs/status.md`. Multi-region is design-only
+- **Next:** see `docs/roadmap.md`. A second site is design-only. One-site match capacity (route, claimers, sandbox, extra copies) is in place

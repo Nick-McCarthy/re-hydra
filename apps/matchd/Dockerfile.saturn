@@ -1,0 +1,41 @@
+# saturn-gcc target. Debian gcc-sh-elf targets SH-2 with -m2 -ml.
+# gcc-sh-elf is in trixie. Bookworm has no such package.
+# The Hitachi compiler is a different binary. This image also keeps host gcc.
+FROM node:22-trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    gcc g++ binutils ca-certificates bubblewrap \
+    gcc-sh-elf binutils-sh-elf \
+  && ln -s /usr/libexec/gcc/sh-elf/13/cc1 /usr/lib/gcc/sh-elf/13/cc1 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY tsconfig.json ./
+COPY src ./src
+COPY drivers/saturn-gcc /usr/local/bin/saturn-gcc
+COPY drivers/saturn-objdump /usr/local/bin/saturn-objdump
+RUN sed -i 's/\r$//' /usr/local/bin/saturn-gcc /usr/local/bin/saturn-objdump \
+  && chmod +x /usr/local/bin/saturn-gcc /usr/local/bin/saturn-objdump
+
+ENV MATCHD_PORT=3001
+ENV MATCHD_GCC=gcc
+ENV MATCHD_GXX=g++
+ENV MATCHD_LD=ld
+ENV MATCHD_NM=nm
+ENV MATCHD_OBJDUMP=objdump
+ENV MATCHD_SATURN_GCC=saturn-gcc
+ENV MATCHD_SATURN_NM=sh-elf-nm
+ENV MATCHD_SATURN_OBJDUMP=saturn-objdump
+ENV MATCHD_TIMEOUT_MS=30000
+ENV MATCHD_SANDBOX=bwrap
+ENV MATCHD_TOKEN=dev-matchd-token
+
+EXPOSE 3001
+CMD ["npx", "tsx", "src/main.ts"]

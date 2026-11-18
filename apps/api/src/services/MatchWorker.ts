@@ -1,5 +1,5 @@
 import { PgClient } from "@effect/sql-pg"
-import { Effect, Layer, Option } from "effect"
+import { Config, Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql"
 import { Activity } from "./Activity.js"
 import { Blobs } from "./Blobs.js"
@@ -154,7 +154,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         entry_symbol, original_sha256
     `
     const recipe = claimed[0]
-    if (recipe === undefined) return
+    if (recipe === undefined) return false
 
     const fail = (error: string) =>
       sql`
@@ -171,13 +171,13 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
     const sourceSha = attempts[0]?.source_sha256
     if (sourceSha === undefined) {
       yield* fail("source missing")
-      return
+      return true
     }
     const sourceOpt = yield* blobs.get(sourceSha)
     const originalOpt = yield* blobs.get(recipe.original_sha256)
     if (Option.isNone(sourceOpt) || Option.isNone(originalOpt)) {
       yield* fail("source missing")
-      return
+      return true
     }
 
     const headerRows = yield* sql<{ readonly headers_sha256: Uint8Array | null }>`
@@ -237,7 +237,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
 
     if (!matchResult.compilerOk) {
       yield* fail(matchResult.diagnostics)
-      return
+      return true
     }
 
     if (matchResult.matched) {
@@ -290,14 +290,15 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
       SET state = 'succeeded', finished_at = now(), result = ${pg.json(matchResult)}
       WHERE id = ${recipe.id}
     `
+    return true
   })
 
-  const processOnce = Effect.gen(function*() {
+  const processOnce = (index: number) => Effect.gen(function*() {
     const claimed = yield* sql<JobRow>`
       UPDATE jobs
       SET
         state = 'claimed',
-        claimed_by = ${"api-match-worker"},
+        claimed_by = ${`api-match-${index}`},
         claim_expires_at = now() + interval '2 minutes'
       WHERE id = (
         SELECT id FROM jobs
@@ -322,8 +323,9 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
 
     const job = claimed[0]
     if (job === undefined) {
-      yield* processRecipe
-      return
+      // One worker drains recipe rechecks, and only when no submit is waiting.
+      if (index !== 0) return false
+      return yield* processRecipe
     }
 
     if (job.attempt_id === null) {
@@ -334,7 +336,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
             result = ${pg.json({ error: "attempt missing" })}
         WHERE id = ${job.id}
       `
-      return
+      return true
     }
 
     const attempts = yield* sql<AttemptMeta>`
@@ -353,7 +355,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
             result = ${pg.json({ error: "attempt missing" })}
         WHERE id = ${job.id}
       `
-      return
+      return true
     }
 
     const sourceOpt = yield* blobs.get(attempt.source_sha256)
@@ -365,7 +367,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
             result = ${pg.json({ error: "source blob missing" })}
         WHERE id = ${job.id}
       `
-      return
+      return true
     }
     const sourceText = Buffer.from(sourceOpt.value).toString("utf8")
 
@@ -378,7 +380,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
             result = ${pg.json({ error: "original bytes missing" })}
         WHERE id = ${job.id}
       `
-      return
+      return true
     }
 
     let typesText = "/* empty */\n"
@@ -475,7 +477,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
             result = ${pg.json(matchResult)}
           WHERE id = ${job.id}
         `
-        return
+        return true
       }
       if (matchResult.matched) {
         yield* sql`
@@ -550,7 +552,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
       `
 
       yield* finalizeProposalIfDone(job.proposal_id)
-      return
+      return true
     }
 
     // Interactive path
@@ -638,15 +640,30 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         result = ${pg.json(matchResult)}
       WHERE id = ${job.id}
     `
+    return true
   }).pipe(Effect.orDie)
 
-  yield* Effect.logInfo("match worker started (matchd client)")
-  yield* processOnce.pipe(
-    Effect.catchCause((cause) =>
-      Effect.logWarning("match worker tick failed", cause)
-    ),
-    Effect.andThen(Effect.sleep("2 seconds")),
-    Effect.forever,
-    Effect.forkScoped
+  const configuredWorkers = yield* Config.Int("MATCHD_WORKERS").pipe(
+    Config.withDefault(4)
   )
+  const workerCount = Math.min(32, Math.max(1, configuredWorkers))
+
+  const runWorker = (index: number) =>
+    Effect.gen(function*() {
+      const worked = yield* processOnce(index).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning(`match worker ${index} tick failed`, cause).pipe(
+            Effect.as(false)
+          )
+        )
+      )
+      if (!worked) {
+        yield* Effect.sleep("2 seconds")
+      }
+    }).pipe(Effect.forever, Effect.forkScoped)
+
+  yield* Effect.logInfo(`match workers started (${workerCount})`)
+  for (let index = 0; index < workerCount; index++) {
+    yield* runWorker(index)
+  }
 }))

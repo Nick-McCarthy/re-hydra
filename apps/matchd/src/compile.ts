@@ -4,10 +4,13 @@ import { tmpdir } from "node:os"
 import * as path from "node:path"
 import { Config, Effect } from "effect"
 import type { MatchJobRequest } from "./domain/Job.js"
-import { extractSymbolMachineCode, scoreMaskedBytes } from "./normalize.js"
+import { disassemblySize, extractSymbolMachineCode, scoreMaskedBytes } from "./normalize.js"
 import { runProcess, truncate, type RunResult } from "./proc.js"
+import { maxFunctionSourceBytes, maxHeadersBytes } from "./sandbox.js"
 import { resolveEntrySymbol, symbolSize } from "./symbols.js"
-import { resolveToolchain, sameCompiler } from "./toolchain.js"
+import { resolveTarget } from "./targets/registry.js"
+import { sameCompiler } from "./toolchain.js"
+import { resolveToolchain } from "./toolchains/resolve.js"
 
 export type MatchEngineResult = {
   readonly matched: boolean
@@ -25,30 +28,11 @@ export const runMatchJob = (
 ): Effect.Effect<MatchEngineResult> =>
   Effect.gen(function*() {
     const language = job.language ?? "c"
-    const compilerName = language === "cpp" ? "MATCHD_GXX" : "MATCHD_GCC"
-    const compilerDefault = language === "cpp" ? "g++" : "gcc"
-    const compiler = yield* Config.String(compilerName).pipe(
-      Config.withDefault(compilerDefault)
-    )
-    const objdump = yield* Config.String("MATCHD_OBJDUMP").pipe(
-      Config.withDefault("objdump")
-    )
-    const nm = yield* Config.String("MATCHD_NM").pipe(Config.withDefault("nm"))
     const timeoutMs = yield* Config.Int("MATCHD_TIMEOUT_MS").pipe(
       Config.withDefault(30_000)
     )
     const candidateFile = language === "cpp" ? "candidate.cpp" : "candidate.c"
-
     const flags = [...(job.flags ?? job.toolchain.flags)]
-    const version = yield* runProcess(compiler, ["--version"], process.cwd(), timeoutMs).pipe(
-      Effect.catch((err) =>
-        Effect.succeed({
-          code: 1,
-          stdout: "",
-          stderr: String(err)
-        } satisfies RunResult)
-      )
-    )
     const emptySha = createHash("sha256").update("").digest("hex")
     const refused = (diagnostics: string, toolchainDigest: string): MatchEngineResult => ({
       matched: false,
@@ -61,6 +45,37 @@ export const runMatchJob = (
       canonicalSha256: emptySha
     })
 
+    const target = resolveTarget(job.toolchain.image)
+    if (target === undefined) {
+      return refused(
+        `no matchd target for image ${job.toolchain.image}`,
+        "sha256:v2:unavailable"
+      )
+    }
+    const compilerSpec = language === "cpp" ? target.tools.cpp : target.tools.c
+    if (compilerSpec === undefined) {
+      return refused(`${target.id} does not compile ${language}`, "sha256:v2:unavailable")
+    }
+    const compiler = yield* Config.String(compilerSpec.env).pipe(
+      Config.withDefault(compilerSpec.fallback)
+    )
+    const objdump = yield* Config.String(target.tools.objdump.env).pipe(
+      Config.withDefault(target.tools.objdump.fallback)
+    )
+    const nm = yield* Config.String(target.tools.nm.env).pipe(
+      Config.withDefault(target.tools.nm.fallback)
+    )
+
+    const version = yield* runProcess(compiler, ["--version"], process.cwd(), timeoutMs).pipe(
+      Effect.catch((err) =>
+        Effect.succeed({
+          code: 1,
+          stdout: "",
+          stderr: String(err)
+        } satisfies RunResult)
+      )
+    )
+
     if (version.code !== 0) {
       return refused(
         `${compiler} unavailable: ${version.stderr || version.stdout}`,
@@ -68,7 +83,14 @@ export const runMatchJob = (
       )
     }
 
-    const resolved = yield* resolveToolchain(compiler, language, flags, process.cwd(), timeoutMs)
+    const resolved = yield* resolveToolchain(
+      target.pin,
+      compiler,
+      language,
+      flags,
+      process.cwd(),
+      timeoutMs
+    )
     if (!resolved.ok) {
       return refused(resolved.reason, "sha256:v2:unavailable")
     }
@@ -79,6 +101,15 @@ export const runMatchJob = (
       )
     }
     const toolchainDigest = resolved.digest
+
+    for (const file of job.sources) {
+      const bytes = Buffer.byteLength(file.text, "utf8")
+      const name = path.basename(file.path)
+      const limit = name === "types.h" ? maxHeadersBytes : maxFunctionSourceBytes
+      if (bytes > limit) {
+        return refused(`${name} exceeds ${limit} bytes`, toolchainDigest)
+      }
+    }
 
     const work = yield* Effect.tryPromise({
       try: () => mkdtemp(path.join(tmpdir(), "rehydra-match-")),
@@ -187,7 +218,10 @@ export const runMatchJob = (
           size = symbolSize(sizedNm.stdout, resolved)
         }
       }
-      if (size === undefined) {
+      let dumpStdout = ""
+      const coffWithoutSize =
+        target.objectFormat === "coff-objdump" && (size === undefined || size === 0)
+      if (size === undefined && !coffWithoutSize) {
         return {
           matched: false,
           score: 0,
@@ -228,8 +262,47 @@ export const runMatchJob = (
           canonicalSha256: createHash("sha256").update("").digest("hex")
         }
       }
+      dumpStdout = candidateDump.stdout
+      if (coffWithoutSize) {
+        const measured = disassemblySize(dumpStdout, entrySymbol, target.endian)
+        if (measured === undefined || measured < 1) {
+          return {
+            matched: false,
+            score: 0,
+            originalInsns: 0,
+            equalInsns: 0,
+            compilerOk: true,
+            diagnostics: truncate(
+              `entry symbol '${entrySymbol}' has no COFF size\n${dumpStdout || sizedNm.stdout}`
+            ),
+            toolchainDigest,
+            canonicalSha256: createHash("sha256").update("").digest("hex")
+          }
+        }
+        size = measured
+      }
+      if (size === undefined) {
+        return {
+          matched: false,
+          score: 0,
+          originalInsns: 0,
+          equalInsns: 0,
+          compilerOk: true,
+          diagnostics: truncate(
+            `entry symbol '${entrySymbol}' not found in candidate.o\n${sizedNm.stdout || sizedNm.stderr}`
+          ),
+          toolchainDigest,
+          canonicalSha256: createHash("sha256").update("").digest("hex")
+        }
+      }
 
-      const extracted = extractSymbolMachineCode(candidateDump.stdout, entrySymbol, size)
+      const extracted = extractSymbolMachineCode(
+        dumpStdout,
+        entrySymbol,
+        size,
+        target.family.relocationWidth,
+        target.endian
+      )
       if (!extracted.ok) {
         return {
           matched: false,
@@ -244,7 +317,13 @@ export const runMatchJob = (
       }
 
       const original = new Uint8Array(Buffer.from(job.originalBytesBase64, "base64"))
-      const scored = scoreMaskedBytes(original, extracted.bytes, extracted.relocations)
+      const scored = scoreMaskedBytes(
+        original,
+        extracted.bytes,
+        extracted.relocations,
+        target.family.relocationWidth,
+        target.endian
+      )
       if ("reason" in scored) {
         return {
           matched: false,

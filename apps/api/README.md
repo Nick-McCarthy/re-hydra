@@ -2,7 +2,7 @@
 
 Effect 4 HTTP API for exclusive chunk checkout, matchd-backed normalized matching, and a later integration build that links those matches at their original addresses.
 
-Implementation status: **Milestones 1–4 complete**. See `docs/status.md`.
+Implementation status: **Milestones 1–4 complete**. See `docs/roadmap.md`.
 
 ## Stack
 
@@ -106,6 +106,8 @@ curl -s http://localhost:3000/v1/projects/demo/chunks/<chunkId>/bundle \
 | POST | `/v1/users/:userId/follow` | Bearer |
 | DELETE | `/v1/users/:userId/follow` | Bearer |
 | GET | `/v1/feed` | Bearer (activity from followed projects and people) |
+| GET | `/v1/following/users` | Bearer (users you follow) |
+| GET | `/v1/following/projects` | Bearer (projects you follow) |
 | GET | `/v1/projects?q=&language=&arch=` | no |
 | GET | `/v1/projects/:slug` | no |
 | GET | `/v1/projects/:slug/activity` | no |
@@ -141,7 +143,7 @@ curl -s http://localhost:3000/v1/projects/demo/chunks/<chunkId>/bundle \
 
 ## matchd
 
-Submit enqueues a `jobs` row. The API process claims jobs every 2s and POSTs them to `MATCHD_URL` (`http://127.0.0.1:3001` by default).
+Submit enqueues a `jobs` row. The API process runs `MATCHD_WORKERS` claimers (4 by default). Each claimer takes one queued job, using `FOR UPDATE SKIP LOCKED`, and POSTs it to the matchd that has that job's compiler image. A claimer waits 2 seconds only when it found nothing to do. Worker 0 runs a recipe recheck only when no submit is queued. `MATCHD_URL` (`http://127.0.0.1:3001` by default) is the process for images that are not listed. `MATCHD_ROUTES` is a comma-separated list of `image=url` pairs for the other images. Several copies of one image are `url|url`, and a job goes to the copy with the fewest compiles in flight. `docker-compose.matchd-pool.yml` publishes the warm processes on their own host ports so they can stay up beside the default matchd. When `MATCHD_SCALE=docker` (the default) and an interactive job for an image has waited 30 seconds, the API starts one more local container of that image, up to `MATCHD_SCALE_MAX` (4). The warm process stays up. A copy is removed after that image has been idle for 60 seconds. The queue stays in Postgres.
 
 ```bash
 docker compose up -d matchd

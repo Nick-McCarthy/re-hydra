@@ -1,0 +1,41 @@
+# dc-gcc target. Debian sh4-linux-gnu GCC targets SH-4 with -m4.
+# The Hitachi compiler is a different binary. This image also keeps host gcc.
+FROM node:22-bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    gcc g++ binutils ca-certificates bubblewrap \
+    gcc-sh4-linux-gnu g++-sh4-linux-gnu \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY tsconfig.json ./
+COPY src ./src
+COPY drivers/dc-gcc /usr/local/bin/dc-gcc
+COPY drivers/dc-g++ /usr/local/bin/dc-g++
+COPY drivers/dc-objdump /usr/local/bin/dc-objdump
+RUN sed -i 's/\r$//' /usr/local/bin/dc-gcc /usr/local/bin/dc-g++ /usr/local/bin/dc-objdump \
+  && chmod +x /usr/local/bin/dc-gcc /usr/local/bin/dc-g++ /usr/local/bin/dc-objdump
+
+ENV MATCHD_PORT=3001
+ENV MATCHD_GCC=gcc
+ENV MATCHD_GXX=g++
+ENV MATCHD_LD=ld
+ENV MATCHD_NM=nm
+ENV MATCHD_OBJDUMP=objdump
+ENV MATCHD_DC_GCC=dc-gcc
+ENV MATCHD_DC_GXX=dc-g++
+ENV MATCHD_DC_NM=sh4-linux-gnu-nm
+ENV MATCHD_DC_OBJDUMP=dc-objdump
+ENV MATCHD_TIMEOUT_MS=30000
+ENV MATCHD_SANDBOX=bwrap
+ENV MATCHD_TOKEN=dev-matchd-token
+
+EXPOSE 3001
+CMD ["npx", "tsx", "src/main.ts"]

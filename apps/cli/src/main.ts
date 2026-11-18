@@ -194,6 +194,7 @@ const checkout = Command.make(
     yield* Console.log(`  workdir:  ${dir}`)
     yield* Console.log(`  lease:    ${lease.leaseToken}`)
     yield* Console.log(`  expires:  ${lease.leaseExpiresAt}`)
+    yield* Console.log(`  agent:    ${path.join(dir, "instructions.agent")}`)
     yield* Console.log(`  edit:     ${path.join(dir, "candidate.c")}`)
     yield* Console.log("  submit:   hydra submit")
   })

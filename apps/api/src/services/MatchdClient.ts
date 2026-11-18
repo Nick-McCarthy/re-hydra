@@ -1,5 +1,6 @@
 import { Config, Context, Effect, flow, Layer, Redacted, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http"
+import { MatchdPool } from "./MatchdPool.js"
 
 const SourceLanguage = Schema.Literals(["c", "cpp"])
 
@@ -93,9 +94,7 @@ export class MatchdClient extends Context.Service<
   static readonly layer = Layer.effect(
     MatchdClient,
     Effect.gen(function*() {
-      const baseUrl = yield* Config.String("MATCHD_URL").pipe(
-        Config.withDefault("http://127.0.0.1:3001")
-      )
+      const pool = yield* MatchdPool
       const tokenPlain = yield* Config.String("MATCHD_TOKEN").pipe(
         Config.withDefault("dev-matchd-token")
       )
@@ -105,7 +104,6 @@ export class MatchdClient extends Context.Service<
       const client = http.pipe(
         HttpClient.mapRequest(
           flow(
-            HttpClientRequest.prependUrl(baseUrl),
             HttpClientRequest.bearerToken(Redacted.value(token)),
             HttpClientRequest.acceptJson,
             HttpClientRequest.setHeader("content-type", "application/json")
@@ -114,30 +112,34 @@ export class MatchdClient extends Context.Service<
       )
 
       const post = Effect.fn("MatchdClient.post")(function*(
+        image: string,
         path: string,
         body: unknown
       ) {
-        const request = HttpClientRequest.post(path).pipe(
-          HttpClientRequest.bodyJsonUnsafe(body)
-        )
-        const response = yield* client.execute(request).pipe(
-          Effect.mapError((err) => new Error(`matchd request failed: ${String(err)}`))
-        )
-        if (response.status < 200 || response.status >= 300) {
-          const text = yield* response.text.pipe(
-            Effect.orElseSucceed(() => "")
+        const baseUrl = yield* pool.acquire(image)
+        return yield* Effect.gen(function*() {
+          const request = HttpClientRequest.post(`${baseUrl}${path}`).pipe(
+            HttpClientRequest.bodyJsonUnsafe(body)
           )
-          return yield* Effect.fail(
-            new Error(`matchd HTTP ${response.status}: ${text}`)
+          const response = yield* client.execute(request).pipe(
+            Effect.mapError((err) => new Error(`matchd request to ${baseUrl} failed: ${String(err)}`))
           )
-        }
-        return response
+          if (response.status < 200 || response.status >= 300) {
+            const text = yield* response.text.pipe(
+              Effect.orElseSucceed(() => "")
+            )
+            return yield* Effect.fail(
+              new Error(`matchd HTTP ${response.status}: ${text}`)
+            )
+          }
+          return response
+        }).pipe(Effect.ensuring(pool.release(baseUrl)))
       })
 
       const runJob = Effect.fn("MatchdClient.runJob")(function*(
         job: MatchJobRequest
       ) {
-        const response = yield* post("/v1/jobs", job)
+        const response = yield* post(job.toolchain.image, "/v1/jobs", job)
         return yield* HttpClientResponse.schemaBodyJson(MatchJobResult)(response).pipe(
           Effect.mapError((err) => new Error(`matchd decode failed: ${String(err)}`))
         )
@@ -146,7 +148,7 @@ export class MatchdClient extends Context.Service<
       const runLink = Effect.fn("MatchdClient.runLink")(function*(
         job: LinkJobRequest
       ) {
-        const response = yield* post("/v1/link-jobs", job)
+        const response = yield* post(job.toolchain.image, "/v1/link-jobs", job)
         return yield* HttpClientResponse.schemaBodyJson(LinkJobResult)(response).pipe(
           Effect.mapError((err) => new Error(`matchd decode failed: ${String(err)}`))
         )

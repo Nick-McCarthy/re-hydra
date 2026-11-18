@@ -1,0 +1,2 @@
+#!/bin/sh
+exec mips64el-linux-gnuabi64-gcc -march=r5900 -msingle-float "$@"

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec sh-elf-gcc -m2 -ml "$@"

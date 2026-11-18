@@ -1,0 +1,14 @@
+# PlayStation Portable matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.psp.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-psp
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.psp
+    environment:
+      MATCHD_PSP_GCC: psp-gcc
+      MATCHD_PSP_GXX: psp-g++
+      MATCHD_PSP_NM: psp-nm
+      MATCHD_PSP_OBJDUMP: psp-objdump
+      PSPDEV: /usr/local/pspdev

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec m68k-linux-gnu-g++ -m68000 "$@"

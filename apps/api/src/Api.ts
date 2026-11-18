@@ -39,9 +39,11 @@ import {
 } from "./domain/Integration.js"
 import {
   GhidraExportPayload,
-  ImportAccepted
+  ImportAccepted,
+  ImportRejected
 } from "./domain/Import.js"
 import {
+  FollowedProject,
   FollowState,
   ProjectEvent,
   UpdateProjectSettings,
@@ -149,12 +151,25 @@ export const UsersGroup = HttpApiGroup.make("users")
     }).middleware(Authorization)
   )
 
-export const DirectoryGroup = HttpApiGroup.make("directory").add(
-  HttpApiEndpoint.get("feed", "/feed", {
-    success: Schema.Array(ProjectEvent),
-    error: [Unauthorized]
-  }).middleware(Authorization)
-)
+export const DirectoryGroup = HttpApiGroup.make("directory")
+  .add(
+    HttpApiEndpoint.get("feed", "/feed", {
+      success: Schema.Array(ProjectEvent),
+      error: [Unauthorized]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("followingUsers", "/following/users", {
+      success: Schema.Array(UserSearchHit),
+      error: [Unauthorized]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("followingProjects", "/following/projects", {
+      success: Schema.Array(FollowedProject),
+      error: [Unauthorized]
+    }).middleware(Authorization)
+  )
 
 export const ProjectsGroup = HttpApiGroup.make("projects")
   .add(
@@ -355,7 +370,7 @@ export const ImportsGroup = HttpApiGroup.make("imports").add(
     params: { projectSlug: ProjectSlug },
     payload: GhidraExportPayload,
     success: ImportAccepted,
-    error: [Unauthorized, Forbidden, NotFound, BadRequest, Conflict]
+    error: [Unauthorized, Forbidden, NotFound, BadRequest, ImportRejected, Conflict]
   }).middleware(Authorization)
 )
 

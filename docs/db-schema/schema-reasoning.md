@@ -1,6 +1,6 @@
 # Why the schema looks like this
 
-Status: design rationale for [schema.md](schema.md) (still accurate for the running M1–M2 schema). Product rules: [planning.md](planning.md). Scale: [architecture.md](architecture.md). Live progress: [status.md](../status.md).
+Status: rationale for [schema.md](schema.md), including migrations `001` through `008`. How the system runs: [architecture.md](../architecture.md). What is next: [roadmap.md](../roadmap.md).
 
 ## The lease is a column set, not a child table
 
@@ -14,13 +14,15 @@ If leases lived in a separate `leases` table, checkout would need to insert a le
 
 Putting `lease_user_id`, `lease_token`, `lease_expires_at`, and `hold_started_at` on `chunks` keeps the critical path on one row. Postgres locks that row for the update. Zero rows returned is a conflict. Heartbeat, release, submit-to-validating, and expiry are all mutations of the same columns plus `state`.
 
-A history of past leases is not required for the product. Attempts already record who submitted under which `lease_token`. If audit of abandoned leases is needed later, append to an event table from the application; do not move the live lock off `chunks`.
+A history of past leases is not required for the product. Attempts already record who submitted under which `lease_token`. Project activity is an append-only `project_events` row, written by the application. Do not move the live lock off `chunks`.
+
+When `projects.max_concurrent_leases` is above 1, extra holders are rows in `chunk_leases`. The chunk row still holds the primary lease, and checkout of that primary is still one conditional update. `validating` stays one row: a submit from an extra holder moves that token onto the chunk and parks the previous primary in `chunk_leases`. A match releases the side rows. The default cap is 1, so `chunk_leases` is empty on a normal project.
 
 ## State and lease columns are checked together
 
 An `open` chunk with a leftover `lease_token` would make expiry and checkout disagree. The `CHECK` on `chunks` ties each `chunk_state` to the legal nullness of the lease fields. That catches application bugs at write time instead of leaving a board that looks open while a token still works.
 
-`validating` keeps `lease_user_id` and `lease_token` so a failed match returns the chunk to the same person. `matched` / `stale` / `blocked` clear the lease so the sweeper and heartbeat ignore them.
+`validating` keeps `lease_user_id` and `lease_token` so a failed match returns the chunk to the same person. `matched` and `blocked` clear the lease so the sweeper and heartbeat ignore them. `stale` also clears the lease, and it stays `stale` after release, expiry, and a cleared lease. Checkout can lease a stale chunk again. Migration `007` only repaired rows that an earlier release had left `open` after their match was invalidated. It did not add a column.
 
 ## Attempts are append-only; matches are a separate proof
 
@@ -66,7 +68,7 @@ Callees are stored in `chunk_callees` so the work list can sort leaves first and
 
 Every lease and every match pins a `type_revision_id`. If headers were updated in place, old matches could not be revalidated and work bundles would silently change under an open lease.
 
-A proposal points at a base revision and a new headers blob. While `revalidating`, jobs fan out. Counters on the proposal row (`revalidation_total` / `done` / `failed`) give the UI a progress signal without aggregating the job table on every refresh. Accept creates a new `type_revisions` row and never edits the old one.
+A proposal points at a base revision and a new headers blob. `affected_types` names the structs the recheck must find. While `revalidating`, jobs fan out. Counters on the proposal row (`revalidation_total` / `done` / `failed`) give the UI a progress signal without aggregating the job table on every refresh. `revalidation_started_by` is who started that recheck. When it finishes and the project has a second owner or maintainer, the state becomes `ready` until a different privileged member accepts. `reviewed_by` is who accepted. Accept creates a new `type_revisions` row and never edits the old one. The revision's `created_by` stays the proposal author.
 
 ## Jobs live next to attempts so claim and commit share a writer
 
@@ -107,4 +109,4 @@ A project page needs open / leased / matched counts. Counting `chunks` by state 
 
 - Whether cleared `unresolved_types` rows are kept forever or archived after N days. The partial unique index allows history either way.
 - Whether `jobs.sources` should eventually drop hashes-only and require a side channel for inline hydration, or store a small inline cache for functions under a size cap. Start with hashes; measure cold-start latency before denormalizing bytes into the writer.
-- Whether fusion should delete member rows or only mark them. Prefer keep members with `fuse_parent_id` for undo and for "split later" in the product open questions; they must not occupy `addr_range` under the exclusion constraint, so member ranges are cleared or members are stored without conflicting ranges when the parent is created.
+- Whether fusion should delete member rows or only mark them. Members stay, with `fuse_parent_id` set, and they must not occupy `addr_range` under the exclusion constraint. What a later split does with a member that already matched is still open. See [roadmap.md](../roadmap.md).

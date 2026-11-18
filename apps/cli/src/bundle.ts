@@ -18,6 +18,7 @@ export const writeWorkBundle = (
     write("disassembly.s", bundle.disassembly)
     write("types.h", bundle.types)
     write("neighbors.json", `${JSON.stringify(bundle.neighbors, null, 2)}\n`)
+    write("instructions.agent", bundle.agentInstructions)
     if (bundle.bestAttemptSource !== undefined) {
       write("attempt.c", bundle.bestAttemptSource)
     }

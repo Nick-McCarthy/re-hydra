@@ -1,0 +1,13 @@
+# Microsoft x64 COFF matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.coff.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-coff
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.coff
+    environment:
+      MATCHD_CLANG: coff-clang
+      MATCHD_CLANG_BIN: /usr/bin/clang
+      MATCHD_LLVM_NM: llvm-nm
+      MATCHD_LLVM_OBJDUMP: llvm-objdump

@@ -1,0 +1,38 @@
+# ps3-gcc target. Debian powerpc64 GCC emits big-endian ELFv1 objects.
+# SNC and the Cell SDK GCC are different compilers. This image also keeps host gcc.
+FROM node:22-bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    gcc g++ binutils ca-certificates bubblewrap \
+    gcc-powerpc64-linux-gnu g++-powerpc64-linux-gnu \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY tsconfig.json ./
+COPY src ./src
+COPY drivers/ps3-objdump /usr/local/bin/ps3-objdump
+RUN sed -i 's/\r$//' /usr/local/bin/ps3-objdump && chmod +x /usr/local/bin/ps3-objdump
+
+ENV MATCHD_PORT=3001
+ENV MATCHD_GCC=gcc
+ENV MATCHD_GXX=g++
+ENV MATCHD_LD=ld
+ENV MATCHD_NM=nm
+ENV MATCHD_OBJDUMP=objdump
+ENV MATCHD_PS3_GCC=powerpc64-linux-gnu-gcc
+ENV MATCHD_PS3_GXX=powerpc64-linux-gnu-g++
+ENV MATCHD_PS3_NM=powerpc64-linux-gnu-nm
+ENV MATCHD_PS3_OBJDUMP=ps3-objdump
+ENV MATCHD_TIMEOUT_MS=30000
+ENV MATCHD_SANDBOX=bwrap
+ENV MATCHD_TOKEN=dev-matchd-token
+
+EXPOSE 3001
+CMD ["npx", "tsx", "src/main.ts"]

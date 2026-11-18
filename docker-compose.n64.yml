@@ -1,0 +1,12 @@
+# Nintendo 64 matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.n64.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-n64
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.n64
+    environment:
+      MATCHD_N64_GCC: /opt/n64/bin/mips-linux-gnu-gcc
+      MATCHD_MIPS_NM: mips-linux-gnu-nm
+      MATCHD_MIPS_OBJDUMP: mips-linux-gnu-objdump

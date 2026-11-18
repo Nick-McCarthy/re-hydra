@@ -43,11 +43,26 @@ export const UsersLive = HttpApiBuilder.group(Api, "users", (handlers) =>
 )
 
 export const DirectoryLive = HttpApiBuilder.group(Api, "directory", (handlers) =>
-  handlers.handle("feed", () =>
-    Effect.gen(function*() {
-      const user = yield* CurrentUser
-      const repo = yield* DirectoryRepo
-      return yield* repo.feed(user.id)
-    })
-  )
+  handlers
+    .handle("feed", () =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const repo = yield* DirectoryRepo
+        return yield* repo.feed(user.id)
+      })
+    )
+    .handle("followingUsers", () =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const repo = yield* DirectoryRepo
+        return yield* repo.followingUsers(user.id)
+      })
+    )
+    .handle("followingProjects", () =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const repo = yield* DirectoryRepo
+        return yield* repo.followingProjects(user.id)
+      })
+    )
 )

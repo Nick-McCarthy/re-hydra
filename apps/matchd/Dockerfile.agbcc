@@ -1,0 +1,50 @@
+# gba-agbcc target. Also includes host gcc, so x86 jobs still run in this image.
+# agbcc is pret's reconstructed GBA compiler (commit da598c1d), not a Nintendo SDK.
+FROM node:22-bookworm-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    gcc g++ binutils ca-certificates bubblewrap \
+    gcc-arm-none-eabi binutils-arm-none-eabi \
+    make bison flex git \
+  && rm -rf /var/lib/apt/lists/*
+
+ARG AGBCC_REV=da598c1d918402c42c0c0d7128ba14567f3175e9
+RUN git init /tmp/agbcc \
+  && git -C /tmp/agbcc remote add origin https://github.com/pret/agbcc.git \
+  && git -C /tmp/agbcc fetch --depth 1 origin "$AGBCC_REV" \
+  && git -C /tmp/agbcc checkout --detach FETCH_HEAD \
+  && cd /tmp/agbcc \
+  && ./build.sh \
+  && ./install.sh /opt \
+  && rm -rf /tmp/agbcc
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY tsconfig.json ./
+COPY src ./src
+COPY drivers/agbcc-cc /usr/local/bin/agbcc-cc
+RUN sed -i 's/\r$//' /usr/local/bin/agbcc-cc && chmod +x /usr/local/bin/agbcc-cc
+
+ENV MATCHD_PORT=3001
+ENV MATCHD_GCC=gcc
+ENV MATCHD_GXX=g++
+ENV MATCHD_LD=ld
+ENV MATCHD_NM=nm
+ENV MATCHD_OBJDUMP=objdump
+ENV MATCHD_AGBCC=agbcc-cc
+ENV MATCHD_AGBCC_BIN=/opt/tools/agbcc/bin/agbcc
+ENV MATCHD_ARM_AS=arm-none-eabi-as
+ENV MATCHD_ARM_CPP=arm-none-eabi-cpp
+ENV MATCHD_ARM_NM=arm-none-eabi-nm
+ENV MATCHD_ARM_OBJDUMP=arm-none-eabi-objdump
+ENV MATCHD_AGBCC_INCLUDE=/opt/tools/agbcc/include
+ENV MATCHD_TIMEOUT_MS=30000
+ENV MATCHD_SANDBOX=bwrap
+ENV MATCHD_TOKEN=dev-matchd-token
+
+EXPOSE 3001
+CMD ["npx", "tsx", "src/main.ts"]

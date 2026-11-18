@@ -1,0 +1,13 @@
+# Genesis matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.genesis.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-genesis
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.genesis
+    environment:
+      MATCHD_GENESIS_GCC: genesis-gcc
+      MATCHD_GENESIS_GXX: genesis-g++
+      MATCHD_GENESIS_NM: m68k-linux-gnu-nm
+      MATCHD_GENESIS_OBJDUMP: m68k-linux-gnu-objdump

@@ -37,7 +37,9 @@ export const WorkBundle = Schema.Struct({
   types: Schema.String,
   neighbors: Schema.Array(Neighbor),
   /** Highest-scoring prior submission source, if any. */
-  bestAttemptSource: Schema.optionalKey(Schema.String)
+  bestAttemptSource: Schema.optionalKey(Schema.String),
+  /** Contents of instructions.agent. */
+  agentInstructions: Schema.String
 }).annotate({ identifier: "WorkBundle" })
 
 export type WorkBundle = typeof WorkBundle.Type

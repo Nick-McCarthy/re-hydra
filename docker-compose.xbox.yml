@@ -1,0 +1,13 @@
+# Original Xbox matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.xbox.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-xbox
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.xbox
+    environment:
+      MATCHD_CLANG: xbox-clang
+      MATCHD_CLANG_BIN: /usr/bin/clang
+      MATCHD_LLVM_NM: llvm-nm
+      MATCHD_LLVM_OBJDUMP: llvm-objdump

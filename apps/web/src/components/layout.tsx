@@ -1,16 +1,17 @@
 import { Link, Outlet } from "react-router-dom"
+import { AccountMenu } from "@/components/account-menu"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { useTheme } from "@/lib/theme"
 
 export function AppShell() {
-  const { user, ready, logout } = useAuth()
+  const { user, ready } = useAuth()
   const { theme, toggle } = useTheme()
   const dark = theme === "dark"
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-card/80 backdrop-blur">
+      <header className="relative z-20 border-b bg-card/80 backdrop-blur">
         <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-2">
           <Link to="/" className="inline-flex items-center gap-2 font-semibold tracking-tight">
             <img src="/apple-touch-icon.png" alt="" className="size-8 rounded-sm" />
@@ -23,7 +24,10 @@ export function AppShell() {
               Projects
             </Link>
             <Link to="/people" className="text-muted-foreground hover:text-foreground">
-              People
+              Users
+            </Link>
+            <Link to="/faq" className="text-muted-foreground hover:text-foreground">
+              FAQ
             </Link>
             <button
               type="button"
@@ -47,17 +51,7 @@ export function AppShell() {
               {dark ? "Dark" : "Light"}
             </button>
             {!ready ? null : user ? (
-              <>
-                <Link
-                  to={`/users/${user.id}`}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  {user.displayName || user.email}
-                </Link>
-                <Button variant="outline" size="sm" onClick={() => void logout()}>
-                  Log out
-                </Button>
-              </>
+              <AccountMenu />
             ) : (
               <Button asChild size="sm">
                 <Link to="/login">Log in</Link>

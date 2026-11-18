@@ -23,6 +23,8 @@ import { ImportsRepo } from "./services/ImportsRepo.js"
 import { LeaseSweeperLive } from "./services/LeaseSweeper.js"
 import { Mailer } from "./services/Mailer.js"
 import { MatchdClient } from "./services/MatchdClient.js"
+import { MatchdPool } from "./services/MatchdPool.js"
+import { MatchdScalerLive } from "./services/MatchdScaler.js"
 import { IntegrationWorkerLive } from "./services/IntegrationWorker.js"
 import { IntegrationsRepo } from "./services/IntegrationsRepo.js"
 import { MatchWorkerLive } from "./services/MatchWorker.js"
@@ -89,7 +91,7 @@ const DataLive = Layer.mergeAll(
   ),
   BlobsLive,
   AuthRepo.layer.pipe(Layer.provide(Mailer.console)),
-  MatchdClient.layer
+  Layer.provideMerge(MatchdClient.layer, MatchdPool.layer)
 ).pipe(Layer.provide(SqlLive))
 
 const ApiHandlers = Layer.mergeAll(
@@ -109,7 +111,8 @@ const ApiHandlers = Layer.mergeAll(
 const WorkersLive = Layer.mergeAll(
   MatchWorkerLive,
   IntegrationWorkerLive,
-  LeaseSweeperLive
+  LeaseSweeperLive,
+  MatchdScalerLive
 ).pipe(
   Layer.provide(DataLive),
   Layer.provide(SqlLive)

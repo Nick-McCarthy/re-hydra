@@ -1,0 +1,13 @@
+# PlayStation 2 matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.ps2.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-ps2
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.ps2
+    environment:
+      MATCHD_PS2_GCC: ps2-gcc
+      MATCHD_PS2_GXX: ps2-g++
+      MATCHD_PS2_NM: mips64el-linux-gnuabi64-nm
+      MATCHD_PS2_OBJDUMP: mips64el-linux-gnuabi64-objdump

@@ -42,7 +42,7 @@ export function PeoplePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">People</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Search by display name. Reputation is surviving matches minus type-proposal regressions.
         </p>
@@ -51,7 +51,7 @@ export function PeoplePage() {
         value={q}
         onChange={(event) => setQ(event.target.value)}
         placeholder="Display name"
-        aria-label="Search people"
+        aria-label="Search users"
       />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {hits === null && q.trim().length > 0 ? (

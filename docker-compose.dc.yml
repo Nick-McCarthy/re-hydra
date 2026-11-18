@@ -1,0 +1,13 @@
+# Dreamcast matchd image. The default compose file stays on host gcc.
+#   docker compose -f docker-compose.yml -f docker-compose.dc.yml up -d --build matchd
+services:
+  matchd:
+    image: re-hydra-matchd-dc
+    build:
+      context: ./apps/matchd
+      dockerfile: Dockerfile.dc
+    environment:
+      MATCHD_DC_GCC: dc-gcc
+      MATCHD_DC_GXX: dc-g++
+      MATCHD_DC_NM: sh4-linux-gnu-nm
+      MATCHD_DC_OBJDUMP: dc-objdump

@@ -1,0 +1,38 @@
+# ps4-clang target. Clang emits FreeBSD x86-64 ELF, the public ABI closest to Orbis.
+# The Orbis SDK Clang is a different compiler. This image also keeps host gcc.
+FROM node:22-bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    gcc g++ binutils ca-certificates bubblewrap \
+    clang llvm \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY tsconfig.json ./
+COPY src ./src
+COPY drivers/ps4-clang /usr/local/bin/ps4-clang
+RUN sed -i 's/\r$//' /usr/local/bin/ps4-clang && chmod +x /usr/local/bin/ps4-clang
+
+ENV MATCHD_PORT=3001
+ENV MATCHD_GCC=gcc
+ENV MATCHD_GXX=g++
+ENV MATCHD_LD=ld
+ENV MATCHD_NM=nm
+ENV MATCHD_OBJDUMP=objdump
+ENV MATCHD_CLANG=ps4-clang
+ENV MATCHD_CLANG_BIN=/usr/bin/clang
+ENV MATCHD_LLVM_NM=llvm-nm
+ENV MATCHD_LLVM_OBJDUMP=llvm-objdump
+ENV MATCHD_TIMEOUT_MS=30000
+ENV MATCHD_SANDBOX=bwrap
+ENV MATCHD_TOKEN=dev-matchd-token
+
+EXPOSE 3001
+CMD ["npx", "tsx", "src/main.ts"]

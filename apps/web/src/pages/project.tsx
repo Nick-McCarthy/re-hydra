@@ -18,6 +18,7 @@ import {
   type SourceLanguage
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { explainExport, importFailureMessage } from "@/lib/import-errors"
 import { useMembership } from "@/lib/membership"
 
 const stateVariant: Record<
@@ -33,6 +34,20 @@ const stateVariant: Record<
 }
 
 const fuseable = new Set<ChunkState>(["open", "stale", "matched"])
+
+function canCheckout(
+  chunk: ChunkSummary,
+  maxConcurrentLeases: number,
+  userId: string | undefined
+): boolean {
+  return (
+    chunk.state === "open" ||
+    chunk.state === "stale" ||
+    (chunk.state === "leased" &&
+      chunk.leaseCount < maxConcurrentLeases &&
+      chunk.leaseUserId !== userId)
+  )
+}
 
 function IntegrationRun({
   projectSlug,
@@ -97,7 +112,7 @@ function IntegrationRun({
 
 export function ProjectPage() {
   const { projectSlug = "" } = useParams()
-  const { session } = useAuth()
+  const { session, user } = useAuth()
   const { canMaintain, ready: roleReady } = useMembership(projectSlug)
   const navigate = useNavigate()
   const [project, setProject] = React.useState<ProjectSummary | null>(null)
@@ -116,6 +131,11 @@ export function ProjectPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
+  const [importBusy, setImportBusy] = React.useState(false)
+  const [importNote, setImportNote] = React.useState<string | null>(null)
+  const [importError, setImportError] = React.useState<string | null>(null)
+  const [importOver, setImportOver] = React.useState(false)
+  const importInput = React.useRef<HTMLInputElement>(null)
 
   const reload = React.useCallback(async () => {
     const [p, c, env, activity, links] = await Promise.all([
@@ -166,6 +186,37 @@ export function ProjectPage() {
       cancelled = true
     }
   }, [projectSlug])
+
+  async function importFile(file: File) {
+    if (!session) return
+    setImportBusy(true)
+    setImportError(null)
+    setImportNote(`Reading ${file.name}…`)
+    try {
+      const jsonText = await file.text()
+      const problem = explainExport(jsonText)
+      if (problem) {
+        setImportNote(null)
+        setImportError(problem)
+        return
+      }
+      setImportNote(`Importing ${file.name}…`)
+      const result = await api.importExport(projectSlug, jsonText, session.token)
+      setImportNote(
+        `Imported ${result.functionsCreated} new ${result.functionsCreated === 1 ? "chunk" : "chunks"}` +
+          (result.functionsUpdated > 0 ? ` and updated ${result.functionsUpdated}.` : ".")
+      )
+      await reload()
+    } catch (err) {
+      setImportNote(null)
+      setImportError(
+        err instanceof ApiError ? importFailureMessage(err) : "Could not read that file."
+      )
+    } finally {
+      setImportBusy(false)
+      if (importInput.current) importInput.current.value = ""
+    }
+  }
 
   const integrationActive = integrations.some(
     (row) => row.status === "queued" || row.status === "running"
@@ -368,6 +419,56 @@ export function ProjectPage() {
         </div>
       </div>
 
+      {roleReady && canMaintain ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Import Ghidra export</CardTitle>
+            <CardDescription>
+              Drop the JSON from ExportReHydra. Each function becomes a chunk on this board.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <input
+              ref={importInput}
+              type="file"
+              accept=".json,application/json"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) void importFile(file)
+              }}
+            />
+            <button
+              type="button"
+              disabled={importBusy}
+              onClick={() => importInput.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setImportOver(true)
+              }}
+              onDragLeave={() => setImportOver(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setImportOver(false)
+                const file = e.dataTransfer.files[0]
+                if (file) void importFile(file)
+              }}
+              className={`flex min-h-28 w-full items-center justify-center rounded-md border border-dashed px-4 py-6 text-sm text-muted-foreground ${
+                importOver ? "border-primary bg-primary/5" : "border-input bg-muted/30"
+              }`}
+            >
+              {importBusy ? "Importing…" : "Drop the JSON here, or click to choose it."}
+            </button>
+            {importNote ? <p className="text-sm">{importNote}</p> : null}
+            {importError ? (
+              <p className="whitespace-pre-line text-sm text-destructive" role="alert">
+                {importError}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         {states.map((s) => (
           <button
@@ -554,7 +655,7 @@ export function ProjectPage() {
         <CardHeader>
           <CardTitle>Chunks</CardTitle>
           <CardDescription>
-            {visible.length} shown · click a name to open checkout / submit
+            {visible.length} shown · check out an open chunk, or open its name to review it
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0">
@@ -566,6 +667,7 @@ export function ProjectPage() {
                 <th className="px-4 py-2 font-medium">Address</th>
                 <th className="px-4 py-2 font-medium">Size</th>
                 <th className="px-4 py-2 font-medium">State</th>
+                <th className="px-4 py-2 text-right font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -573,6 +675,7 @@ export function ProjectPage() {
                 const canSelect =
                   fuseable.has(chunk.state) &&
                   (selectedBinary === undefined || chunk.binaryId === selectedBinary)
+                const checkout = canCheckout(chunk, project.maxConcurrentLeases, user?.id)
                 return (
                 <tr key={chunk.id} className="border-b last:border-0 hover:bg-muted/30">
                   {canMaintain ? (
@@ -607,12 +710,19 @@ export function ProjectPage() {
                       </span>
                     ) : null}
                   </td>
+                  <td className="px-4 py-2 text-right">
+                    <Button size="sm" variant={checkout ? "default" : "outline"} asChild>
+                      <Link to={`/projects/${project.slug}/chunks/${chunk.id}`}>
+                        {checkout ? "Check out" : "Open"}
+                      </Link>
+                    </Button>
+                  </td>
                 </tr>
                 )
               })}
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={canMaintain ? 5 : 4} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={canMaintain ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
                     No chunks in this filter.
                   </td>
                 </tr>

@@ -4,8 +4,10 @@ import * as path from "node:path"
 import { Config, Effect } from "effect"
 import type { LinkJobRequest } from "./domain/Job.js"
 import { linkerEmulation, runProcess, truncate, type RunResult } from "./proc.js"
+import { maxFunctionSourceBytes, maxHeadersBytes } from "./sandbox.js"
 import { resolveEntrySymbol, safeSymbol } from "./symbols.js"
-import { resolveToolchain, sameCompiler } from "./toolchain.js"
+import { sameCompiler } from "./toolchain.js"
+import { resolveGccToolchain } from "./toolchains/gcc.js"
 
 export type LinkUnitOutcome = {
   readonly symbol: string
@@ -135,7 +137,7 @@ export const runLinkJob = Effect.fn("runLinkJob")(function*(job: LinkJobRequest)
     )
   }
 
-  const resolved = yield* resolveToolchain(compiler, language, flags, process.cwd(), timeoutMs)
+  const resolved = yield* resolveGccToolchain(compiler, language, flags, process.cwd(), timeoutMs)
   if (!resolved.ok) {
     return unavailable(resolved.reason, "sha256:v2:unavailable")
   }
@@ -146,6 +148,15 @@ export const runLinkJob = Effect.fn("runLinkJob")(function*(job: LinkJobRequest)
     )
   }
   const toolchainDigest = resolved.digest
+
+  if (Buffer.byteLength(job.headers, "utf8") > maxHeadersBytes) {
+    return unavailable(`headers exceed ${maxHeadersBytes} bytes`, toolchainDigest)
+  }
+  for (const unit of job.units) {
+    if (Buffer.byteLength(unit.source, "utf8") > maxFunctionSourceBytes) {
+      return unavailable(`${unit.symbol} exceeds ${maxFunctionSourceBytes} bytes`, toolchainDigest)
+    }
+  }
 
   const work = yield* Effect.tryPromise({
     try: () => mkdtemp(path.join(tmpdir(), "rehydra-link-")),

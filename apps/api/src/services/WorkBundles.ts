@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Option } from "effect"
 import { Conflict, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
+import { agentInstructions } from "../domain/agentInstructions.js"
 import type { LeaseWithBundle, Neighbor, WorkBundle } from "../domain/Bundle.js"
 import type { ChunkSummary } from "../domain/Chunk.js"
 import type { Toolchain } from "../domain/Project.js"
@@ -181,7 +182,12 @@ export class WorkBundles extends Context.Service<
             disassembly: utf8(disassembly),
             types,
             neighbors,
-            ...(bestAttemptSource !== undefined ? { bestAttemptSource } : {})
+            ...(bestAttemptSource !== undefined ? { bestAttemptSource } : {}),
+            agentInstructions: agentInstructions({
+              name: row.name,
+              language,
+              hasAttempt: bestAttemptSource !== undefined
+            })
           } satisfies WorkBundle
         }
       )

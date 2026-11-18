@@ -59,6 +59,15 @@ export const UserSearchHit = Schema.Struct({
 
 export type UserSearchHit = typeof UserSearchHit.Type
 
+export const FollowedProject = Schema.Struct({
+  slug: Schema.String,
+  name: Schema.String,
+  description: Schema.String,
+  language: Schema.String
+}).annotate({ identifier: "FollowedProject" })
+
+export type FollowedProject = typeof FollowedProject.Type
+
 const CompilerFlag = Schema.String.check(Schema.isMinLength(2))
   .check(Schema.isMaxLength(64))
   .check(Schema.isPattern(/^-[0-9A-Za-z_.=+,:@/-]+$/))
