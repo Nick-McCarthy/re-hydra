@@ -8,11 +8,12 @@ Status: in progress. Written 2026-11-22 against `main` at `cd2a88feb` with uncom
 | --- | --- | --- |
 | Phase 1 — Purpose | Done 2026-11-22 | [audit/phase-1-2.md](audit/phase-1-2.md) |
 | Phase 2 — Architecture | Done 2026-11-22 | [audit/phase-1-2.md](audit/phase-1-2.md) |
-| Fixes A-001 to A-006 | Done 2026-11-22, not committed | [audit-changelog.md](audit-changelog.md) |
+| Fixes A-001 to A-006 | Done 2026-11-22, merged to `main` locally (`c065901a7`) | [audit-changelog.md](audit-changelog.md) |
+| Security fixes A-019, A-020, A-021, A-025 | Done 2026-11-23, not committed (branch `audit/security-matchd-token`) | [audit-changelog.md](audit-changelog.md) |
 | Phase 3 — Schema | Next | — |
 | Phases 4–8 | Not started | — |
 
-Findings: [audit-findings.md](audit-findings.md). 26 logged, 6 fixed (A-001 to A-006), 20 open. The highest open ones are A-011 (no member management), A-013 (owner-supplied compiler flags), A-019 and A-020 (matchd token), and A-024 (recheck matches made under the old masks).
+Findings: [audit-findings.md](audit-findings.md). 26 logged, 10 fixed (A-001 to A-006, A-019 to A-021, A-025), 16 open. The highest open ones are A-011 (no member management), A-013 (owner-supplied compiler flags), and A-024 (recheck matches made under the old masks).
 
 Invariant status after the fixes:
 
@@ -227,7 +228,7 @@ Phases 3 and 4 can run in parallel after phase 2. Fix Critical and High findings
 
 ## Early signals
 
-Found while writing this plan. A-019 to A-021 in the findings log track the matchd token items. None are fixed yet.
+Found while writing this plan. The three matchd token items are fixed (A-019 to A-021). The rest are open.
 
 - matchd bearer compared with `!==` (`apps/matchd/src/http/MatchdAuth.ts`). Phase 4.
 - `MATCHD_TOKEN` silently defaults to `dev-matchd-token` in API, scaler, and matchd. Phase 4, 7.

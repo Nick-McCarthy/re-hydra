@@ -17,7 +17,7 @@ npm run matchd
 
 - Health: http://localhost:3001/v1/health
 - Docs: http://localhost:3001/docs
-- Auth: `Authorization: Bearer <MATCHD_TOKEN>` (default `dev-matchd-token`)
+- Auth: `Authorization: Bearer <MATCHD_TOKEN>`. `MATCHD_TOKEN` is required and has no default. The images do not set it. Local compose and `.env.example` use `dev-matchd-token`, which logs a warning at startup. For host `npm run matchd`, copy `apps/matchd/.env.example` to `apps/matchd/.env`
 
 ## Job
 

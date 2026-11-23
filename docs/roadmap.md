@@ -106,7 +106,7 @@ Around the process:
 
 - A private us-east-1 bucket, empty, with public access blocked and server-side encryption on. The local bucket stays on this machine.
 - Postgres in us-east-1, migrations applied, seed left unrun. The dev user and `rehydra-dev` password stay local.
-- The API and matchd in that same region. `BLOB_STORE=s3`, region `us-east-1`, and an access key that can only put and get objects in that bucket. `MATCHD_TOKEN` has to be a real secret. The code defaults it to `dev-matchd-token`.
+- The API and matchd in that same region. `BLOB_STORE=s3`, region `us-east-1`, and an access key that can only put and get objects in that bucket. `MATCHD_TOKEN` has to be a real secret, set on both the API and every matchd process. Neither starts without it, and the images no longer carry a default. `dev-matchd-token` still starts but logs a warning.
 - HTTPS on the public API URL. The web app talks to `/v1` on the same origin.
 
 `blob_objects` can remain for that first deploy. With `BLOB_STORE=s3` the API does not write it. Drop the table after one checkout and one match have both read from the bucket.

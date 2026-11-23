@@ -34,7 +34,6 @@ ENV MATCHD_PS2_NM=mips64el-linux-gnuabi64-nm
 ENV MATCHD_PS2_OBJDUMP=mips64el-linux-gnuabi64-objdump
 ENV MATCHD_TIMEOUT_MS=30000
 ENV MATCHD_SANDBOX=bwrap
-ENV MATCHD_TOKEN=dev-matchd-token
 
 EXPOSE 3001
 CMD ["npx", "tsx", "src/main.ts"]

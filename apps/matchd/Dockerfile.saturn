@@ -35,7 +35,6 @@ ENV MATCHD_SATURN_NM=sh-elf-nm
 ENV MATCHD_SATURN_OBJDUMP=saturn-objdump
 ENV MATCHD_TIMEOUT_MS=30000
 ENV MATCHD_SANDBOX=bwrap
-ENV MATCHD_TOKEN=dev-matchd-token
 
 EXPOSE 3001
 CMD ["npx", "tsx", "src/main.ts"]

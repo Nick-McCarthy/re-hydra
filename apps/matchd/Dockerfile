@@ -21,7 +21,6 @@ ENV MATCHD_NM=nm
 ENV MATCHD_OBJDUMP=objdump
 ENV MATCHD_TIMEOUT_MS=30000
 ENV MATCHD_SANDBOX=bwrap
-ENV MATCHD_TOKEN=dev-matchd-token
 
 EXPOSE 3001
 CMD ["npx", "tsx", "src/main.ts"]

@@ -1,5 +1,6 @@
-import { Config, Effect, Layer, Redacted } from "effect"
+import { Effect, Layer, Redacted } from "effect"
 import { HttpApiError, HttpApiMiddleware, HttpApiSecurity } from "effect/http-api"
+import { loadMatchdToken, tokensEqual } from "../matchdToken.js"
 
 export class MatchdAuth extends HttpApiMiddleware.Service<
   MatchdAuth,
@@ -18,14 +19,11 @@ export class MatchdAuth extends HttpApiMiddleware.Service<
 export const MatchdAuthLive = Layer.effect(
   MatchdAuth,
   Effect.gen(function*() {
-    const token = yield* Config.String("MATCHD_TOKEN").pipe(
-      Config.withDefault("dev-matchd-token")
-    )
-    const expected = Redacted.make(token)
+    const expected = yield* loadMatchdToken
 
     return MatchdAuth.of({
       bearer: Effect.fn("MatchdAuth.bearer")(function*(httpEffect, { credential }) {
-        if (Redacted.value(credential) !== Redacted.value(expected)) {
+        if (!tokensEqual(Redacted.value(credential), Redacted.value(expected))) {
           return yield* new HttpApiError.Unauthorized()
         }
         return yield* httpEffect

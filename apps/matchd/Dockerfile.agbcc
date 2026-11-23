@@ -44,7 +44,6 @@ ENV MATCHD_ARM_OBJDUMP=arm-none-eabi-objdump
 ENV MATCHD_AGBCC_INCLUDE=/opt/tools/agbcc/include
 ENV MATCHD_TIMEOUT_MS=30000
 ENV MATCHD_SANDBOX=bwrap
-ENV MATCHD_TOKEN=dev-matchd-token
 
 EXPOSE 3001
 CMD ["npx", "tsx", "src/main.ts"]

@@ -30,7 +30,6 @@ ENV MATCHD_MIPSEL_NM=mipsel-linux-gnu-nm
 ENV MATCHD_MIPSEL_OBJDUMP=mipsel-linux-gnu-objdump
 ENV MATCHD_TIMEOUT_MS=30000
 ENV MATCHD_SANDBOX=bwrap
-ENV MATCHD_TOKEN=dev-matchd-token
 
 EXPOSE 3001
 CMD ["npx", "tsx", "src/main.ts"]

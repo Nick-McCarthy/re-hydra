@@ -2,6 +2,57 @@
 
 Changes made because of the audit. Newest first. Finding ids refer to [audit-findings.md](audit-findings.md). The plan is [audit-plan.md](audit-plan.md).
 
+## 2026-11-23 — matchd token and port fixes (A-019, A-020, A-021, A-025)
+
+Branch `audit/security-matchd-token`, off `main` at `c065901a7`. Not committed yet.
+
+### A-019 — constant-time token check
+
+`apps/matchd/src/matchdToken.ts`, `apps/matchd/src/http/MatchdAuth.ts`
+
+- matchd compares the bearer with `timingSafeEqual` on SHA-256 digests of both values. Before, it used `!==`. Hashing first keeps the lengths equal and hides the token's length.
+
+### A-020 — no default token
+
+`apps/api/src/services/matchdToken.ts`, `apps/matchd/src/matchdToken.ts`, `MatchdClient.ts`, `MatchdScaler.ts`, `MatchdAuth.ts`, all 18 `apps/matchd/Dockerfile*`
+
+- `MATCHD_TOKEN` has no default in the API, the scaler, or matchd. A missing value stops startup with a ConfigError. An empty value stops it too.
+- The well-known `dev-matchd-token` still works so local compose keeps running, but it logs a warning on every start.
+- Found during the fix: every matchd Dockerfile set `ENV MATCHD_TOKEN=dev-matchd-token`, so any container started without the variable was open to the public default. Those lines are removed. Compose sets the token for every service, and the scaler passes it to the copies it starts.
+- **Local setup change:** host `npm run matchd` now needs `apps/matchd/.env` (copy `.env.example`). Before, it fell back to the default.
+
+### A-021 — token off the command line
+
+`apps/api/src/services/MatchdScaler.ts`
+
+- The scaler runs `docker run -e MATCHD_TOKEN` with no value and puts the value in the docker CLI's environment. Docker copies it from there, so the host process list no longer shows the secret. `docker inspect` on the container still shows it, as with any env var. A Docker secret would hide that too.
+
+### A-025 — services published on localhost only
+
+`docker-yml/docker-compose.yml`, `docker-yml/docker-compose.matchd-pool.yml`
+
+- matchd (3001), every pool process (3010–3026), Postgres (5432), and the blob store (9000) now publish on `127.0.0.1` only. Before, they were on every interface, and Postgres and the blob store use well-known dev passwords. The per-console overlays inherit the base `matchd` service's port.
+
+### Docs
+
+- `apps/matchd/README.md`, `docs/roadmap.md` (first deployment), and both `.env.example` files say the token is required.
+
+### Verification
+
+- `npm run typecheck`: clean. Only warnings that were already there.
+- `npm run matchd:test`: 94 pass, including the new `src/matchdToken.test.ts` (missing, blank, real, and dev tokens; equal and unequal compares).
+- `npm test -w @re-hydra/api`: 10 pass.
+- Live checks:
+  - The API and matchd both exit with `ConfigError ... MATCHD_TOKEN` when it is unset.
+  - matchd started with the dev token logs the warning. A request with the right token gets past auth (400 for an empty body), and a wrong or missing token gets 401.
+  - `docker run -e MATCHD_TOKEN` with the value only in the CLI's environment delivers it inside a local matchd image.
+- Not run: a full scale-out by the scaler.
+
+### To apply locally
+
+- Running containers keep their old port bindings until recreated: `docker compose up -d`. The Postgres data is in its volume.
+- Images built before this change still carry the baked token until rebuilt (`--build`). They are also needed for the A-006 mask fix (A-024).
+
 ## 2026-11-22 — Fixes for A-001 to A-006
 
 Base: `main` at `cd2a88feb`. Nothing is committed yet.

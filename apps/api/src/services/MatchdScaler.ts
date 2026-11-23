@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process"
-import { Config, Effect, Layer, Result } from "effect"
+import { Config, Effect, Layer, Redacted, Result } from "effect"
 import { SqlClient } from "effect/sql"
 import { MatchdPool } from "./MatchdPool.js"
+import { loadMatchdToken } from "./matchdToken.js"
 import {
   decideScale,
   defaultScaleMax,
@@ -18,14 +19,26 @@ type WaitRow = {
   readonly claimed: number
 }
 
-const docker = (args: ReadonlyArray<string>): Effect.Effect<string, Error> =>
+/**
+ * `env` is added to the docker CLI's own environment. `docker run -e NAME`
+ * with no value copies NAME from there, so a secret never appears in the
+ * command line that the host process list shows (audit A-021).
+ */
+const docker = (
+  args: ReadonlyArray<string>,
+  env?: Readonly<Record<string, string>>
+): Effect.Effect<string, Error> =>
   Effect.tryPromise({
     try: () =>
       new Promise<string>((resolve, reject) => {
         execFile(
           "docker",
           [...args],
-          { timeout: 30_000, windowsHide: true },
+          {
+            timeout: 30_000,
+            windowsHide: true,
+            ...(env === undefined ? {} : { env: { ...process.env, ...env } })
+          },
           (err, stdout, stderr) => {
             if (err) reject(new Error((stderr || err.message).trim()))
             else resolve(stdout)
@@ -39,7 +52,7 @@ const startReplica = (
   image: string,
   localImage: string,
   index: number,
-  token: string
+  token: Redacted.Redacted<string>
 ): Effect.Effect<{ readonly url: string; readonly container: string }, Error> =>
   Effect.gen(function*() {
     const container = scaleContainerName(localImage, index)
@@ -55,9 +68,9 @@ const startReplica = (
       "-p",
       "127.0.0.1::3001",
       "-e",
-      `MATCHD_TOKEN=${token}`,
+      "MATCHD_TOKEN",
       localImage
-    ]).pipe(Effect.result)
+    ], { MATCHD_TOKEN: Redacted.value(token) }).pipe(Effect.result)
     if (Result.isFailure(started)) return yield* Effect.fail(started.failure)
     const published = yield* docker(["port", container, "3001/tcp"]).pipe(Effect.result)
     const port = Result.isSuccess(published) ? parseDockerPort(published.success) : undefined
@@ -86,9 +99,7 @@ export const MatchdScalerLive = Layer.effectDiscard(Effect.gen(function*() {
     8,
     Math.max(1, yield* Config.Int("MATCHD_SCALE_MAX").pipe(Config.withDefault(defaultScaleMax)))
   )
-  const token = yield* Config.String("MATCHD_TOKEN").pipe(
-    Config.withDefault("dev-matchd-token")
-  )
+  const token = yield* loadMatchdToken
   const sql = yield* SqlClient.SqlClient
   const pool = yield* MatchdPool
   const idleSince = new Map<string, number>()

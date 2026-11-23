@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: rehydra
       POSTGRES_DB: rehydra
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - rehydra_pg:/var/lib/postgresql/data
     healthcheck:
@@ -28,13 +28,13 @@ services:
       MATCHD_OBJDUMP: objdump
       MATCHD_TIMEOUT_MS: "30000"
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
 
   blobs:
     image: adobe/s3mock:latest
     mem_limit: 1280m
     ports:
-      - "9000:9090"
+      - "127.0.0.1:9000:9090"
     environment:
       COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: rehydra
       COM_ADOBE_TESTING_S3MOCK_STORE_REGION: us-east-1

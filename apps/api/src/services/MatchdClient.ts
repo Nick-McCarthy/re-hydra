@@ -1,6 +1,7 @@
-import { Config, Context, Effect, flow, Layer, Redacted, Schema } from "effect"
+import { Context, Effect, flow, Layer, Redacted, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http"
 import { MatchdPool } from "./MatchdPool.js"
+import { loadMatchdToken } from "./matchdToken.js"
 
 const SourceLanguage = Schema.Literals(["c", "cpp"])
 
@@ -95,10 +96,7 @@ export class MatchdClient extends Context.Service<
     MatchdClient,
     Effect.gen(function*() {
       const pool = yield* MatchdPool
-      const tokenPlain = yield* Config.String("MATCHD_TOKEN").pipe(
-        Config.withDefault("dev-matchd-token")
-      )
-      const token = Redacted.make(tokenPlain)
+      const token = yield* loadMatchdToken
       const http = yield* HttpClient.HttpClient
 
       const client = http.pipe(
