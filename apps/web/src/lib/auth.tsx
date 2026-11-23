@@ -54,7 +54,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [setSession])
 
   React.useEffect(() => {
-    void refresh()
+    const started = performance.now()
+    console.log("[auth] refresh")
+    void refresh().then(() => {
+      console.log(`[auth] ready ${Math.round(performance.now() - started)}ms`)
+    })
   }, [refresh])
 
   const value = React.useMemo<AuthState>(

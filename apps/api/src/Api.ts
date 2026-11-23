@@ -18,10 +18,19 @@ import {
   SubmitPayload
 } from "./domain/Attempt.js"
 import {
-  ConsumeMagicLinkPayload,
-  MagicLinkRequested,
-  RequestMagicLinkPayload,
+  AccessTokenCreated,
+  AccessTokenSummary,
+  AccountRejected,
+  ChangePasswordPayload,
+  CreateAccessTokenPayload,
+  EmailTaken,
+  InvalidCredentials,
+  PasswordRejected,
   SessionCreated,
+  SessionResponse,
+  SignInPayload,
+  SignUpPayload,
+  TokenRejected,
   UserProfile
 } from "./domain/Auth.js"
 import {
@@ -29,6 +38,8 @@ import {
   WorkBundle
 } from "./domain/Bundle.js"
 import {
+  CheckoutLimited,
+  ChunkState,
   ChunkSummary,
   LeaseResponse,
   SetChunkLanguage
@@ -90,17 +101,25 @@ export const HealthGroup = HttpApiGroup.make("health").add(
 
 export const AuthGroup = HttpApiGroup.make("auth")
   .add(
-    HttpApiEndpoint.post("requestMagicLink", "/auth/magic-link", {
-      payload: RequestMagicLinkPayload,
-      success: MagicLinkRequested
+    HttpApiEndpoint.post("signUp", "/auth/sign-up", {
+      payload: SignUpPayload,
+      success: SessionCreated,
+      error: [EmailTaken, AccountRejected]
     })
   )
   .add(
-    HttpApiEndpoint.post("consumeMagicLink", "/auth/magic-link/consume", {
-      payload: ConsumeMagicLinkPayload,
+    HttpApiEndpoint.post("signIn", "/auth/sign-in", {
+      payload: SignInPayload,
       success: SessionCreated,
-      error: [Unauthorized]
+      error: [InvalidCredentials]
     })
+  )
+  .add(
+    HttpApiEndpoint.post("changePassword", "/auth/password", {
+      payload: ChangePasswordPayload,
+      success: SessionResponse,
+      error: [Unauthorized, PasswordRejected]
+    }).middleware(Authorization)
   )
   .add(
     HttpApiEndpoint.get("me", "/auth/me", {
@@ -112,6 +131,26 @@ export const AuthGroup = HttpApiGroup.make("auth")
     HttpApiEndpoint.post("logout", "/auth/logout", {
       success: HttpApiSchema.NoContent,
       error: [Unauthorized]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("createToken", "/auth/tokens", {
+      payload: CreateAccessTokenPayload,
+      success: AccessTokenCreated,
+      error: [Unauthorized, TokenRejected]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("listTokens", "/auth/tokens", {
+      success: Schema.Array(AccessTokenSummary),
+      error: [Unauthorized]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.delete("revokeToken", "/auth/tokens/:tokenId", {
+      params: { tokenId: Uuid },
+      success: HttpApiSchema.NoContent,
+      error: [Unauthorized, NotFound]
     }).middleware(Authorization)
   )
 
@@ -266,6 +305,19 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
   .add(
     HttpApiEndpoint.get("list", "/projects/:projectSlug/chunks", {
       params: { projectSlug: ProjectSlug },
+      query: {
+        state: Schema.optional(ChunkState),
+        q: Schema.optional(Schema.String),
+        limit: Schema.optional(
+          Schema.NumberFromString.check(Schema.isInt())
+            .check(Schema.isGreaterThanOrEqualTo(1))
+            .check(Schema.isLessThanOrEqualTo(500))
+        ),
+        offset: Schema.optional(
+          Schema.NumberFromString.check(Schema.isInt())
+            .check(Schema.isGreaterThanOrEqualTo(0))
+        )
+      },
       success: Schema.Array(ChunkSummary),
       error: [NotFound]
     })
@@ -297,7 +349,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
         chunkId: Uuid
       },
       success: LeaseCreatedWithBundle,
-      error: [Unauthorized, NotFound, Conflict]
+      error: [Unauthorized, NotFound, Conflict, CheckoutLimited]
     }).middleware(Authorization)
   )
   .add(

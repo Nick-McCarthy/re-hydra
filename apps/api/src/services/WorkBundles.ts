@@ -1,9 +1,9 @@
 import { Context, Effect, Layer, Option } from "effect"
 import { Conflict, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
-import { agentInstructions } from "../domain/agentInstructions.js"
+import { agentInstructions, integrationNoteFile } from "../domain/agentInstructions.js"
 import type { LeaseWithBundle, Neighbor, WorkBundle } from "../domain/Bundle.js"
-import type { ChunkSummary } from "../domain/Chunk.js"
+import { CheckoutLimited, type ChunkSummary } from "../domain/Chunk.js"
 import type { Toolchain } from "../domain/Project.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Blobs } from "./Blobs.js"
@@ -51,7 +51,7 @@ export class WorkBundles extends Context.Service<
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<LeaseWithBundle, NotFound | Conflict>
+    ) => Effect.Effect<LeaseWithBundle, NotFound | Conflict | CheckoutLimited>
   }
 >()("rehydra/services/WorkBundles") {
   static readonly layer = Layer.effect(
@@ -162,6 +162,33 @@ export class WorkBundles extends Context.Service<
             }
           }
 
+          const noteRows = yield* sql<{ readonly detail: string }>`
+            SELECT iu.detail
+            FROM chunks c
+            INNER JOIN matches m ON m.chunk_id = c.id
+            INNER JOIN integration_units iu ON iu.chunk_id = c.id
+            INNER JOIN integrations i ON i.id = iu.integration_id
+            WHERE c.id = ${row.id}
+              AND c.state = 'stale'
+              AND c.current_match_id IS NULL
+              AND iu.passed = false
+              AND m.invalidated_reason = 'integration build'
+              AND m.invalidated_at IS NOT NULL
+              AND m.invalidated_at = (
+                SELECT MAX(m2.invalidated_at)
+                FROM matches m2
+                WHERE m2.chunk_id = c.id
+                  AND m2.invalidated_at IS NOT NULL
+              )
+            ORDER BY i.created_at DESC, i.id DESC
+            LIMIT 1
+          `.pipe(Effect.orDie)
+          const integrationDetail = noteRows[0]?.detail
+          const integrationNote =
+            integrationDetail !== undefined && integrationDetail.trim().length > 0
+              ? integrationNoteFile(integrationDetail)
+              : undefined
+
           const language = row.language_override ?? row.language
 
           return {
@@ -183,10 +210,12 @@ export class WorkBundles extends Context.Service<
             types,
             neighbors,
             ...(bestAttemptSource !== undefined ? { bestAttemptSource } : {}),
+            ...(integrationNote !== undefined ? { integrationNote } : {}),
             agentInstructions: agentInstructions({
               name: row.name,
               language,
-              hasAttempt: bestAttemptSource !== undefined
+              hasAttempt: bestAttemptSource !== undefined,
+              hasIntegrationNote: integrationNote !== undefined
             })
           } satisfies WorkBundle
         }

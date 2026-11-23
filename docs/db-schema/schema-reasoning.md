@@ -78,7 +78,7 @@ Results commit only if the chunk is still `validating` for that attempt. The sch
 
 ## Auth tables stay minimal
 
-Magic links are hashed tokens with expiry and a consume timestamp. The raw token never hits the database. Sessions are the same pattern for API bearers. No OAuth provider tables until a second login method exists. Email is `citext` so directory identity is case-insensitive without application filters.
+Passwords are stored as scrypt strings on `users.password_hash`. The raw password never hits the database. Sessions are hashed bearer tokens with expiry and a revoke timestamp. Profile tokens for the CLI live in `access_tokens`, hashed the same way, and stay valid across a password change until revoked. Email is `citext` so directory identity is case-insensitive without application filters.
 
 ## Membership encodes the three roles from the product plan
 

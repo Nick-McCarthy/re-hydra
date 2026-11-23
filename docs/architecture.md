@@ -6,7 +6,7 @@ Local commands and Effect style live in [AGENTS.md](../AGENTS.md). What is built
 
 ## What runs today
 
-One site. One Postgres writer. The API and the web run on the host. matchd runs in Docker. Blob bytes live in `blob_objects`. Users talk only to the API. The API is the only caller of matchd.
+One site. One Postgres writer. The API and the web run on the host. matchd and the blob bucket run in Docker. Users talk only to the API. The API is the only caller of matchd.
 
 ```mermaid
 flowchart LR
@@ -23,7 +23,7 @@ flowchart LR
 | API | Effect HTTP API. Leases, attempts, proposals, the match worker, the link worker, the lease sweeper |
 | Postgres | The only writer. Job rows stay here |
 | matchd | One warm process per compiler image, plus extra copies when that image's interactive queue waits |
-| Blobs | Content hashes in `blobs`. Bytes in `blob_objects` until object storage exists |
+| Blobs | Content hashes in `blobs`. Bytes in the object bucket. `blob_objects` remains the postgres fallback |
 
 `projects.home_region` is filled in. Every project is homed on this one writer.
 
@@ -75,7 +75,7 @@ The live lock is columns on `chunks`. Checkout is one conditional update: the ro
 
 The lease length defaults to 24 hours. Heartbeats extend it from the database clock, capped by `max_hold_hours` (48) measured from `hold_started_at`. One sweeper expires leases. Client clocks do not.
 
-`max_concurrent_leases` defaults to 1. Values 2–8 allow extra holders in `chunk_leases`. One submission is `validating` at a time.
+`max_concurrent_leases` defaults to 1. Values 2–8 allow extra holders in `chunk_leases`. One submission is `validating` at a time. `max_held_chunks` defaults to 8 and caps how many chunks one person may hold on that project.
 
 Submitting the same bytes again under the same lease returns the existing attempt.
 
@@ -89,7 +89,7 @@ An unresolved type moves the open and stale chunks that use it to `blocked`. Cle
 
 The owner uploads JSON from their own Ghidra script. Chunk identity is the binary hash, the address range, and the hash of the raw bytes. Re-importing the same function refreshes pseudocode and does not open a second claim on bytes that are already leased or matched.
 
-A checkout returns original bytes, disassembly, pseudocode, the pinned headers, callee signatures, the recipe, the best previous attempt when one exists, and `instructions.agent` for the contributor's agent. The pseudocode is a hint. Compiling it as-is will not reproduce the original bytes.
+A checkout returns original bytes, disassembly, pseudocode, the pinned headers, callee signatures, the recipe, the best previous attempt when one exists, and `instructions.agent` for the contributor's agent. When that attempt matched alone and the link then disagreed, the checkout also includes `integration.txt` with the byte comparison. The pseudocode is a hint. Compiling it as-is will not reproduce the original bytes.
 
 ## matchd layout
 
@@ -113,7 +113,7 @@ Postgres is the schema in [db-schema/schema.md](db-schema/schema.md). Accounts, 
 
 `jobs.sources` stores path and content hash, not file text. The worker loads bytes from blobs.
 
-Object storage, read replicas, and a compiler registry addressed by digest are the multi-site plan below. Local development uses `blob_objects` and the image tags in this repo.
+Object storage, read replicas, and a compiler registry addressed by digest are the multi-site plan below. Local development uses the S3 bucket in `docker-yml/` (`BLOB_STORE=s3`, signing region us-east-1) and the image tags in this repo. A worker still receives the file bytes inside the job.
 
 ## Later: more than one site
 

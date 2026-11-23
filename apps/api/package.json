@@ -14,7 +14,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test src/services/matchdRoutes.test.ts src/services/matchdScale.test.ts",
     "migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
-    "seed": "tsx --env-file-if-exists=.env src/db/seed.ts"
+    "seed": "tsx --env-file-if-exists=.env src/db/seed.ts",
+    "blobs:copy": "tsx --env-file-if-exists=.env src/db/copyBlobs.ts"
   },
   "dependencies": {
     "@effect/platform-node": "^4.1.1",

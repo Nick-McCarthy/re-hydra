@@ -6,7 +6,7 @@ Milestones 1–4 are done. Compiler images through Genesis are registered. Match
 
 | Milestone | State |
 | --- | --- |
-| 1 — claim, translate, prove | Done. Magic-link auth, public projects, Ghidra import, exclusive lease, directory, web checkout and submit, CLI, one matchd image, stored proof |
+| 1 — claim, translate, prove | Done. Password sign-up and sign-in, public projects, Ghidra import, exclusive lease, directory, web checkout and submit, CLI, one matchd image, stored proof |
 | 2 — shared types | Done. Proposals, revalidation, unresolved marks, fuse. A second privileged member accepts when the project has more than one |
 | 3 — directory | Done. Follows, activity, people search, reputation, competing leases (default 1, cap 2–8) |
 | 4 — integration | Done. Link matched functions at their original addresses. A miss reopens that chunk. The owner can pin C or C++. Isolated match stays the checkout success |
@@ -27,7 +27,7 @@ These steps add compile capacity and keep the lease, the digest, and the byte ma
 
 | Step | State |
 | --- | --- |
-| 1. Route by image | Done. `MATCHD_ROUTES` sends a job to the process for `toolchain.image`. `MATCHD_URL` is the fallback. `docker-compose.matchd-pool.yml` publishes one warm process per image |
+| 1. Route by image | Done. `MATCHD_ROUTES` sends a job to the process for `toolchain.image`. `MATCHD_URL` is the fallback. `docker-yml/docker-compose.matchd-pool.yml` publishes one warm process per image |
 | 2. More claimers | Done. `MATCHD_WORKERS` defaults to 4. A claimer waits 2 seconds only when the queue is empty. One worker runs recipe rechecks, and only when no submit is waiting |
 | 3. Sandbox the compile | Done inside the image. No network, read-only toolchain, private temp directory, 30 second cap. A microVM and a 512 MB resident cap are still open |
 | 4. Grow the busy image | Done. `MATCHD_SCALE=docker` starts another local copy when an interactive job has waited 30 seconds, and removes it after the image has been idle. The warm process stays |

@@ -1,5 +1,7 @@
 import * as React from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { AttemptHistoryDialog } from "@/components/attempt-history-dialog"
+import { ChunkWorkDialog } from "@/components/chunk-work-dialog"
 import { ActivityList } from "@/components/activity-list"
 import { FollowButton } from "@/components/follow-button"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +20,7 @@ import {
   type SourceLanguage
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { clearLease, loadLease, saveLease, saveLeaseFromCheckout } from "@/lib/leases"
 import { explainExport, importFailureMessage } from "@/lib/import-errors"
 import { useMembership } from "@/lib/membership"
 
@@ -34,6 +37,30 @@ const stateVariant: Record<
 }
 
 const fuseable = new Set<ChunkState>(["open", "stale", "matched"])
+
+function ChunkQuery({ onChange }: { onChange: (value: string) => void }) {
+  const [query, setQuery] = React.useState("")
+  const skip = React.useRef(true)
+
+  React.useEffect(() => {
+    if (skip.current) {
+      skip.current = false
+      return
+    }
+    const handle = window.setTimeout(() => onChange(query.trim()), 200)
+    return () => window.clearTimeout(handle)
+  }, [query, onChange])
+
+  return (
+    <Input
+      value={query}
+      onChange={(event) => setQuery(event.target.value)}
+      placeholder="Name or address"
+      aria-label="Filter functions by name or address"
+      className="ml-auto w-56"
+    />
+  )
+}
 
 function canCheckout(
   chunk: ChunkSummary,
@@ -110,19 +137,46 @@ function IntegrationRun({
   )
 }
 
+const CHUNK_PAGE_SIZE = 100
+
+function timed<T>(label: string, work: Promise<T>): Promise<T> {
+  const started = performance.now()
+  console.log(`[project] start ${label}`)
+  return work.then(
+    (value) => {
+      const count = Array.isArray(value) ? ` count=${value.length}` : ""
+      console.log(`[project] done ${label} ${Math.round(performance.now() - started)}ms${count}`)
+      return value
+    },
+    (err) => {
+      console.log(`[project] fail ${label} ${Math.round(performance.now() - started)}ms`, err)
+      throw err
+    }
+  )
+}
+
 export function ProjectPage() {
   const { projectSlug = "" } = useParams()
   const { session, user } = useAuth()
   const { canMaintain, ready: roleReady } = useMembership(projectSlug)
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [project, setProject] = React.useState<ProjectSummary | null>(null)
   const [chunks, setChunks] = React.useState<Array<ChunkSummary> | null>(null)
   const [typeRevision, setTypeRevision] = React.useState<number | null>(null)
   const [filter, setFilter] = React.useState<ChunkState | "all">("all")
+  const [chunkQuery, setChunkQuery] = React.useState("")
+  const [page, setPage] = React.useState(0)
+  const applyChunkQuery = React.useCallback((value: string) => {
+    setChunkQuery(value)
+    setPage(0)
+  }, [])
   const [selected, setSelected] = React.useState<Array<string>>([])
   const [fuseName, setFuseName] = React.useState("")
   const [events, setEvents] = React.useState<Array<ProjectEvent>>([])
   const [leaseCap, setLeaseCap] = React.useState("1")
+  const [holdCap, setHoldCap] = React.useState("8")
+  const [checkoutNote, setCheckoutNote] = React.useState<string | null>(null)
   const [integrations, setIntegrations] = React.useState<Array<Integration>>([])
   const [recipeLanguage, setRecipeLanguage] = React.useState<SourceLanguage>("c")
   const [flags, setFlags] = React.useState("-O2")
@@ -138,34 +192,41 @@ export function ProjectPage() {
   const importInput = React.useRef<HTMLInputElement>(null)
 
   const reload = React.useCallback(async () => {
+    const started = performance.now()
+    console.log(`[project] reload ${projectSlug}`)
     const [p, c, env, activity, links] = await Promise.all([
-      api.getProject(projectSlug),
-      api.listChunks(projectSlug),
-      api.typeEnvironment(projectSlug).catch(() => null),
-      api.projectActivity(projectSlug).catch(() => []),
-      api.listIntegrations(projectSlug).catch(() => [])
+      timed("getProject", api.getProject(projectSlug)),
+      timed("listChunks", api.listChunks(projectSlug)),
+      timed("typeEnvironment", api.typeEnvironment(projectSlug).catch(() => null)),
+      timed("activity", api.projectActivity(projectSlug).catch(() => [])),
+      timed("integrations", api.listIntegrations(projectSlug).catch(() => []))
     ])
+    console.log(`[project] reload fetched ${Math.round(performance.now() - started)}ms`)
     setProject(p)
     setChunks(c)
     setTypeRevision(env?.revision ?? null)
     setEvents(activity)
     setIntegrations(links)
     setLeaseCap(String(p.maxConcurrentLeases))
+    setHoldCap(String(p.maxHeldChunks))
     setRecipeLanguage(p.language === "cpp" ? "cpp" : "c")
     setFlags(p.toolchain.flags.join(" "))
   }, [projectSlug])
 
   React.useEffect(() => {
     let cancelled = false
+    const started = performance.now()
+    console.log(`[project] first load ${projectSlug}`)
     void (async () => {
       try {
         const [p, c, env, activity, links] = await Promise.all([
-          api.getProject(projectSlug),
-          api.listChunks(projectSlug),
-          api.typeEnvironment(projectSlug).catch(() => null),
-          api.projectActivity(projectSlug).catch(() => []),
-          api.listIntegrations(projectSlug).catch(() => [])
+          timed("getProject", api.getProject(projectSlug)),
+          timed("listChunks", api.listChunks(projectSlug)),
+          timed("typeEnvironment", api.typeEnvironment(projectSlug).catch(() => null)),
+          timed("activity", api.projectActivity(projectSlug).catch(() => [])),
+          timed("integrations", api.listIntegrations(projectSlug).catch(() => []))
         ])
+        console.log(`[project] first load fetched ${Math.round(performance.now() - started)}ms`)
         if (!cancelled) {
           setProject(p)
           setChunks(c)
@@ -173,10 +234,15 @@ export function ProjectPage() {
           setEvents(activity)
           setIntegrations(links)
           setLeaseCap(String(p.maxConcurrentLeases))
+          setHoldCap(String(p.maxHeldChunks))
           setRecipeLanguage(p.language === "cpp" ? "cpp" : "c")
           setFlags(p.toolchain.flags.join(" "))
+          console.log(
+            `[project] state set ${Math.round(performance.now() - started)}ms chunks=${c.length} events=${activity.length}`
+          )
         }
       } catch (err) {
+        console.log(`[project] first load failed ${Math.round(performance.now() - started)}ms`, err)
         if (!cancelled) {
           setError(err instanceof ApiError ? err.message : "Failed to load project")
         }
@@ -186,6 +252,21 @@ export function ProjectPage() {
       cancelled = true
     }
   }, [projectSlug])
+
+  React.useEffect(() => {
+    if (!project || !chunks) {
+      console.log("[project] still showing Loading project…")
+      return
+    }
+    const started = performance.now()
+    console.log(
+      `[project] commit chunks=${chunks.length} events=${events.length}; table page size ${CHUNK_PAGE_SIZE}`
+    )
+    const frame = window.requestAnimationFrame(() => {
+      console.log(`[project] frame ${Math.round(performance.now() - started)}ms after commit`)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [project, chunks, events.length])
 
   async function importFile(file: File) {
     if (!session) return
@@ -230,6 +311,38 @@ export function ProjectPage() {
     return () => window.clearInterval(timer)
   }, [integrationActive, reload])
 
+  React.useEffect(() => {
+    if (!session || !chunks) return
+    const token = session.token
+    const held = chunks
+    let cancelled = false
+    async function beat() {
+      for (const chunk of held) {
+        const lease = loadLease(projectSlug, chunk.id)
+        if (!lease || cancelled) continue
+        try {
+          const res = await api.heartbeat(projectSlug, chunk.id, lease.leaseToken, token)
+          if (cancelled) return
+          saveLease({
+            ...lease,
+            leaseToken: res.leaseToken,
+            leaseExpiresAt: res.leaseExpiresAt,
+            holdStartedAt: res.holdStartedAt
+          })
+        } catch {
+          if (!cancelled) clearLease(projectSlug, chunk.id)
+        }
+      }
+    }
+    const timer = window.setInterval(() => {
+      void beat()
+    }, 5 * 60 * 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [session, chunks, projectSlug])
+
   if (error) {
     return <p className="text-sm text-destructive">{error}</p>
   }
@@ -238,17 +351,55 @@ export function ProjectPage() {
     return <p className="text-sm text-muted-foreground">Loading project…</p>
   }
 
-  const selectedBinary = chunks.find((c) => selected.includes(c.id))?.binaryId
-  const visible = filter === "all" ? chunks : chunks.filter((c) => c.state === filter)
+  const needle = chunkQuery.toLowerCase()
+  const queried =
+    needle.length === 0
+      ? chunks
+      : chunks.filter(
+          (chunk) =>
+            chunk.name.toLowerCase().includes(needle) ||
+            chunk.address.toLowerCase().includes(needle)
+        )
+  const visible = filter === "all" ? queried : queried.filter((c) => c.state === filter)
+  const pageCount = Math.max(1, Math.ceil(visible.length / CHUNK_PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageStart = currentPage * CHUNK_PAGE_SIZE
+  const pageRows = visible.slice(pageStart, pageStart + CHUNK_PAGE_SIZE)
+  const workId = searchParams.get("work")
+  const attemptsId = searchParams.get("attempts")
+  const leaseSlots = project.maxConcurrentLeases
+  const checkoutCount = chunks.filter(
+    (chunk) => selected.includes(chunk.id) && canCheckout(chunk, leaseSlots, user?.id)
+  ).length
+  const heldIds = new Set(
+    chunks
+      .filter((chunk) => {
+        if (user && chunk.leaseUserId === user.id) return true
+        return (
+          (chunk.state === "leased" || chunk.state === "validating") &&
+          loadLease(projectSlug, chunk.id) !== null
+        )
+      })
+      .map((chunk) => chunk.id)
+  )
+
+  function selectable(chunk: ChunkSummary): boolean {
+    if (canCheckout(chunk, leaseSlots, user?.id)) return true
+    return canMaintain && fuseable.has(chunk.state)
+  }
 
   function toggle(chunk: ChunkSummary) {
-    if (!fuseable.has(chunk.state)) return
-    if (selectedBinary && chunk.binaryId !== selectedBinary && !selected.includes(chunk.id)) {
-      return
-    }
+    if (!selectable(chunk) && !selected.includes(chunk.id)) return
     setSelected((prev) =>
       prev.includes(chunk.id) ? prev.filter((id) => id !== chunk.id) : [...prev, chunk.id]
     )
+  }
+
+  function setQuery(key: "work" | "attempts", value: string | null) {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    setSearchParams(next, { replace: true })
   }
 
   async function saveLeaseCap() {
@@ -271,6 +422,7 @@ export function ProjectPage() {
       )
       setProject(updated)
       setLeaseCap(String(updated.maxConcurrentLeases))
+      setHoldCap(String(updated.maxHeldChunks))
       setEvents(await api.projectActivity(projectSlug))
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Could not save settings")
@@ -279,9 +431,101 @@ export function ProjectPage() {
     }
   }
 
-  async function fuse() {
+  async function saveHoldCap() {
     if (!session) {
       navigate("/login")
+      return
+    }
+    const next = Number(holdCap)
+    if (!Number.isInteger(next) || next < 1 || next > 32) {
+      setActionError("Chunks one person may hold must be a whole number from 1 to 32")
+      return
+    }
+    setBusy(true)
+    setActionError(null)
+    try {
+      const updated = await api.updateSettings(projectSlug, { maxHeldChunks: next }, session.token)
+      setProject(updated)
+      setHoldCap(String(updated.maxHeldChunks))
+      setEvents(await api.projectActivity(projectSlug))
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not save settings")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function checkoutSelected() {
+    if (!session || !project || !chunks) {
+      navigate("/login")
+      return
+    }
+    const targets = chunks.filter(
+      (chunk) => selected.includes(chunk.id) && canCheckout(chunk, project.maxConcurrentLeases, user?.id)
+    )
+    if (targets.length === 0) return
+    setBusy(true)
+    setCheckoutNote(null)
+    setActionError(null)
+    const checkedOut: Array<string> = []
+    const checkedIds: Array<string> = []
+    const taken: Array<string> = []
+    const limited: Array<string> = []
+    let room = Math.max(0, project.maxHeldChunks - heldIds.size)
+    try {
+      for (const chunk of targets) {
+        if (room <= 0) {
+          limited.push(chunk.name)
+          continue
+        }
+        try {
+          const res = await api.checkout(projectSlug, chunk.id, session.token)
+          saveLeaseFromCheckout(projectSlug, res)
+          checkedOut.push(chunk.name)
+          checkedIds.push(chunk.id)
+          room -= 1
+        } catch (err) {
+          const limitedHit = err instanceof ApiError && err.message.includes("already hold")
+          if (limitedHit) {
+            limited.push(chunk.name)
+            room = 0
+            continue
+          }
+          taken.push(chunk.name)
+        }
+      }
+      const parts: Array<string> = []
+      if (checkedOut.length > 0) {
+        parts.push(`Checked out ${checkedOut.join(", ")}.`)
+      }
+      if (taken.length > 0) {
+        parts.push(`${taken.join(", ")} ${taken.length === 1 ? "was" : "were"} already checked out, so ${taken.length === 1 ? "it was" : "they were"} left.`)
+      }
+      if (limited.length > 0) {
+        const cap = project.maxHeldChunks
+        parts.push(
+          `${limited.join(", ")} would pass the limit of ${cap} ${cap === 1 ? "chunk" : "chunks"} one person may hold.`
+        )
+      }
+      if (parts.length === 0) {
+        parts.push("Nothing was checked out.")
+      }
+      setCheckoutNote(parts.join(" "))
+      setSelected((prev) => prev.filter((id) => !checkedIds.includes(id)))
+      await reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function fuse() {
+    if (!session || !chunks) {
+      navigate("/login")
+      return
+    }
+    const chosen = chunks.filter((chunk) => selected.includes(chunk.id))
+    if (new Set(chosen.map((chunk) => chunk.binaryId)).size > 1) {
+      setActionError("Fuse chunks from one binary.")
       return
     }
     setBusy(true)
@@ -411,6 +655,7 @@ export function ProjectPage() {
           <span>· lease {project.leaseHours}h</span>
           <span>· max hold {project.maxHoldHours}h</span>
           <span>· {project.maxConcurrentLeases} competing {project.maxConcurrentLeases === 1 ? "lease" : "leases"}</span>
+          <span>· hold {project.maxHeldChunks}</span>
           <span>· {project.followerCount} followers</span>
           {typeRevision !== null ? <span>· type rev {typeRevision}</span> : null}
           <Button asChild variant="outline" size="sm">
@@ -469,12 +714,15 @@ export function ProjectPage() {
         </Card>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {states.map((s) => (
           <button
             key={s}
             type="button"
-            onClick={() => setFilter(s)}
+            onClick={() => {
+              setFilter(s)
+              setPage(0)
+            }}
             className={`rounded-md border px-2.5 py-1 text-xs ${
               filter === s
                 ? "border-primary bg-primary text-primary-foreground"
@@ -485,6 +733,7 @@ export function ProjectPage() {
             {s !== "all" ? ` (${project.stats[s]})` : ` (${project.stats.total})`}
           </button>
         ))}
+        <ChunkQuery onChange={applyChunkQuery} />
       </div>
 
       {roleReady && canMaintain ? (
@@ -492,8 +741,9 @@ export function ProjectPage() {
           <CardHeader>
             <CardTitle>Competing leases</CardTitle>
             <CardDescription>
-              Default is one exclusive lease. Raise this when the project wants several people
-              working the same chunk at once. A match still takes the chunk.
+              Default is one exclusive lease. Raise competing leases when several people
+              should work the same chunk. Chunks one person may hold is how many functions
+              they can check out at once. A match still takes the chunk.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-end gap-3">
@@ -508,6 +758,19 @@ export function ProjectPage() {
               />
             </div>
             <Button onClick={() => void saveLeaseCap()} disabled={busy}>
+              Save
+            </Button>
+            <div className="space-y-2">
+              <Label htmlFor="holdCap">Chunks one person may hold</Label>
+              <Input
+                id="holdCap"
+                value={holdCap}
+                onChange={(e) => setHoldCap(e.target.value)}
+                inputMode="numeric"
+                className="w-24"
+              />
+            </div>
+            <Button onClick={() => void saveHoldCap()} disabled={busy}>
               Save
             </Button>
             {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
@@ -655,14 +918,46 @@ export function ProjectPage() {
         <CardHeader>
           <CardTitle>Chunks</CardTitle>
           <CardDescription>
-            {visible.length} shown · check out an open chunk, or open its name to review it
+            {visible.length} shown · you hold {heldIds.size} of {project.maxHeldChunks}
           </CardDescription>
         </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
+        <CardContent className="space-y-3 p-0">
+          <div className="flex flex-wrap items-center gap-3 px-4 pt-4">
+            <Button onClick={() => void checkoutSelected()} disabled={busy || checkoutCount === 0}>
+              {session ? `Check out ${checkoutCount}` : "Log in to check out"}
+            </Button>
+            {checkoutNote ? <p className="text-sm text-muted-foreground">{checkoutNote}</p> : null}
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {visible.length === 0
+                  ? "0 functions"
+                  : `${pageStart + 1}–${pageStart + pageRows.length} of ${visible.length}`}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={currentPage === 0}
+                onClick={() => setPage(currentPage - 1)}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={currentPage >= pageCount - 1}
+                onClick={() => setPage(currentPage + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
               <tr>
-                {canMaintain ? <th className="w-10 px-4 py-2 font-medium" /> : null}
+                <th className="w-10 px-4 py-2 font-medium">Select</th>
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Address</th>
                 <th className="px-4 py-2 font-medium">Size</th>
@@ -671,36 +966,26 @@ export function ProjectPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((chunk) => {
-                const canSelect =
-                  fuseable.has(chunk.state) &&
-                  (selectedBinary === undefined || chunk.binaryId === selectedBinary)
-                const checkout = canCheckout(chunk, project.maxConcurrentLeases, user?.id)
+              {pageRows.map((chunk) => {
                 return (
                 <tr key={chunk.id} className="border-b last:border-0 hover:bg-muted/30">
-                  {canMaintain ? (
-                    <td className="px-4 py-2">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${chunk.name}`}
-                        checked={selected.includes(chunk.id)}
-                        disabled={!canSelect && !selected.includes(chunk.id)}
-                        onChange={() => toggle(chunk)}
-                      />
-                    </td>
-                  ) : null}
                   <td className="px-4 py-2">
-                    <Link
-                      to={`/projects/${project.slug}/chunks/${chunk.id}`}
-                      className="font-medium underline-offset-2 hover:underline"
-                    >
-                      {chunk.name}
-                    </Link>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${chunk.name}`}
+                      checked={selected.includes(chunk.id)}
+                      disabled={!selectable(chunk) && !selected.includes(chunk.id)}
+                      onChange={() => toggle(chunk)}
+                    />
                   </td>
+                  <td className="px-4 py-2 font-medium">{chunk.name}</td>
                   <td className="px-4 py-2 font-mono text-xs">{chunk.address}</td>
                   <td className="px-4 py-2 font-mono text-xs">{chunk.size}</td>
                   <td className="px-4 py-2">
                     <Badge variant={stateVariant[chunk.state]}>{chunk.state}</Badge>
+                    {heldIds.has(chunk.id) ? (
+                      <span className="ml-2 text-xs text-muted-foreground">yours</span>
+                    ) : null}
                     {chunk.state === "stale" ? (
                       <span className="ml-2 text-xs text-muted-foreground">last match invalidated</span>
                     ) : null}
@@ -711,26 +996,52 @@ export function ProjectPage() {
                     ) : null}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <Button size="sm" variant={checkout ? "default" : "outline"} asChild>
-                      <Link to={`/projects/${project.slug}/chunks/${chunk.id}`}>
-                        {checkout ? "Check out" : "Open"}
-                      </Link>
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant={canCheckout(chunk, leaseSlots, user?.id) ? "default" : "outline"}
+                        onClick={() => setQuery("work", chunk.id)}
+                      >
+                        Work
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setQuery("attempts", chunk.id)}>
+                        Attempts
+                      </Button>
+                    </div>
                   </td>
                 </tr>
                 )
               })}
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={canMaintain ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     No chunks in this filter.
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
+          </div>
         </CardContent>
       </Card>
+
+      <ChunkWorkDialog
+        open={workId !== null && chunks.some((chunk) => chunk.id === workId)}
+        projectSlug={project.slug}
+        chunkId={workId ?? ""}
+        canMaintain={canMaintain}
+        onClose={() => setQuery("work", null)}
+        onChanged={() => {
+          void reload()
+        }}
+      />
+      <AttemptHistoryDialog
+        open={attemptsId !== null && chunks.some((chunk) => chunk.id === attemptsId)}
+        projectSlug={project.slug}
+        chunkId={attemptsId ?? ""}
+        chunkName={chunks.find((chunk) => chunk.id === attemptsId)?.name ?? "Function"}
+        onClose={() => setQuery("attempts", null)}
+      />
 
       <Card>
         <CardHeader>

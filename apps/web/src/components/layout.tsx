@@ -53,9 +53,14 @@ export function AppShell() {
             {!ready ? null : user ? (
               <AccountMenu />
             ) : (
-              <Button asChild size="sm">
-                <Link to="/login">Log in</Link>
-              </Button>
+              <>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/signup">Sign up</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link to="/login">Log in</Link>
+                </Button>
+              </>
             )}
           </nav>
         </div>

@@ -10,7 +10,8 @@ import { Effect, Option, Schema } from "effect"
 
 export const CliConfig = Schema.Struct({
   baseUrl: Schema.String,
-  token: Schema.optionalKey(Schema.String)
+  token: Schema.optionalKey(Schema.String),
+  kind: Schema.optionalKey(Schema.Literals(["session", "token"]))
 })
 
 export type CliConfig = typeof CliConfig.Type
@@ -65,7 +66,7 @@ export const requireToken: Effect.Effect<CliConfig, Error> = Effect.gen(function
   if (config.token === undefined || config.token.length === 0) {
     return yield* Effect.fail(
       new Error(
-        "Not logged in. Run: hydra login <email>   (or hydra login --token <session>)"
+        "Not logged in. Run: hydra login"
       )
     )
   }

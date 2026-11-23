@@ -21,6 +21,7 @@ type ProjectRow = {
   readonly lease_hours: number
   readonly max_hold_hours: number
   readonly max_concurrent_leases: number
+  readonly max_held_chunks: number
   readonly follower_count: number
   readonly last_activity_at: Date | string
   readonly created_at: Date | string
@@ -44,6 +45,7 @@ const toSummary = (row: ProjectRow): ProjectSummary => ({
   leaseHours: row.lease_hours,
   maxHoldHours: row.max_hold_hours,
   maxConcurrentLeases: row.max_concurrent_leases,
+  maxHeldChunks: row.max_held_chunks,
   followerCount: row.follower_count,
   lastActivityAt: row.last_activity_at instanceof Date
     ? row.last_activity_at.toISOString()
@@ -113,6 +115,7 @@ export class ProjectsRepo extends Context.Service<
             p.lease_hours,
             p.max_hold_hours,
             p.max_concurrent_leases,
+            p.max_held_chunks,
             p.created_at,
             COALESCE(
               (SELECT MAX(e.created_at) FROM project_events e WHERE e.project_id = p.id),
@@ -162,6 +165,7 @@ export class ProjectsRepo extends Context.Service<
             p.lease_hours,
             p.max_hold_hours,
             p.max_concurrent_leases,
+            p.max_held_chunks,
             p.created_at,
             COALESCE(
               (SELECT MAX(e.created_at) FROM project_events e WHERE e.project_id = p.id),
@@ -278,6 +282,7 @@ export class ProjectsRepo extends Context.Service<
       ) {
         if (
           payload.maxConcurrentLeases === undefined &&
+          payload.maxHeldChunks === undefined &&
           payload.language === undefined &&
           payload.flags === undefined
         ) {
@@ -290,8 +295,9 @@ export class ProjectsRepo extends Context.Service<
           readonly language: string
           readonly toolchain: ProjectSummary["toolchain"]
           readonly max_concurrent_leases: number
+          readonly max_held_chunks: number
         }>`
-          SELECT p.id, pm.role, p.language, p.toolchain, p.max_concurrent_leases
+          SELECT p.id, pm.role, p.language, p.toolchain, p.max_concurrent_leases, p.max_held_chunks
           FROM projects p
           LEFT JOIN project_members pm
             ON pm.project_id = p.id AND pm.user_id = ${userId}
@@ -309,6 +315,7 @@ export class ProjectsRepo extends Context.Service<
         }
 
         const nextLeases = payload.maxConcurrentLeases ?? row.max_concurrent_leases
+        const nextHeld = payload.maxHeldChunks ?? row.max_held_chunks
         let language = payload.language ?? row.language
         let toolchain = {
           ...row.toolchain,
@@ -335,6 +342,9 @@ export class ProjectsRepo extends Context.Service<
         if (payload.maxConcurrentLeases !== undefined) {
           notes.push(`competing leases ${nextLeases}`)
         }
+        if (payload.maxHeldChunks !== undefined) {
+          notes.push(`chunks one person may hold ${nextHeld}`)
+        }
         if (languageChanged) notes.push(`language ${language}`)
         if (flagsChanged) notes.push(`flags ${toolchain.flags.join(" ")}`)
         const recipeChanged = languageChanged || flagsChanged
@@ -345,6 +355,7 @@ export class ProjectsRepo extends Context.Service<
             UPDATE projects
             SET
               max_concurrent_leases = ${nextLeases},
+              max_held_chunks = ${nextHeld},
               language = ${language},
               toolchain = ${pg.json(toolchain)},
               updated_at = now()

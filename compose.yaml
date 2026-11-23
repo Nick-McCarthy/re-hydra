@@ -1,0 +1,5 @@
+# Postgres and the default matchd. Compiler overlays are in docker-yml/.
+# `project_directory` keeps build paths and the Compose project on the repo root.
+include:
+  - path: docker-yml/docker-compose.yml
+    project_directory: .

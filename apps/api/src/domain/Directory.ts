@@ -76,6 +76,9 @@ export const UpdateProjectSettings = Schema.Struct({
   maxConcurrentLeases: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).check(Schema.isLessThanOrEqualTo(8))
   ),
+  maxHeldChunks: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).check(Schema.isLessThanOrEqualTo(32))
+  ),
   language: Schema.optionalKey(SourceLanguage),
   flags: Schema.optionalKey(
     Schema.Array(CompilerFlag).check(Schema.isMinLength(1)).check(Schema.isMaxLength(16))

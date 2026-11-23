@@ -11,6 +11,9 @@ import migration005 from "./migrations/005_milestone3_directory.js"
 import migration006 from "./migrations/006_milestone4_integration.js"
 import migration007 from "./migrations/007_stale_pool.js"
 import migration008 from "./migrations/008_proposal_accept.js"
+import migration009 from "./migrations/009_max_held_chunks.js"
+import migration010 from "./migrations/010_passwords.js"
+import migration011 from "./migrations/011_access_tokens.js"
 
 const program = PgMigrator.run({
   loader: Migrator.fromRecord({
@@ -21,7 +24,10 @@ const program = PgMigrator.run({
     "005_milestone3_directory": migration005,
     "006_milestone4_integration": migration006,
     "007_stale_pool": migration007,
-    "008_proposal_accept": migration008
+    "008_proposal_accept": migration008,
+    "009_max_held_chunks": migration009,
+    "010_passwords": migration010,
+    "011_access_tokens": migration011
   })
 }).pipe(
   Effect.tap((applied) =>

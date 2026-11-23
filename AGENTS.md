@@ -55,7 +55,7 @@ git subtree pull --prefix=repos/effect https://github.com/Effect-TS/effect.git m
 - `apps/matchd` — compile + normalized compare (service-token only)
 - `apps/web` — Vite React client (login, profiles, project board, checkout/submit, attempts, auto-heartbeat)
 - `docs/` — roadmap, architecture, schema
-- `docker-compose.yml` — local Postgres + matchd
+- `compose.yaml` — local Postgres + matchd. The Compose files live in `docker-yml/`
 
 ## Local commands
 

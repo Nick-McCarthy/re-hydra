@@ -1,5 +1,5 @@
 # Nintendo DS matchd image. The default compose file stays on host gcc.
-#   docker compose -f docker-compose.yml -f docker-compose.ds.yml up -d --build matchd
+#   docker compose -f compose.yaml -f docker-yml/docker-compose.ds.yml up -d --build matchd
 services:
   matchd:
     image: re-hydra-matchd-ds

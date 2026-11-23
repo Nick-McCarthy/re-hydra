@@ -10,6 +10,20 @@ export type Session = {
   user: UserProfile
 }
 
+export type AccessTokenSummary = {
+  id: string
+  label: string
+  createdAt: string
+  lastUsedAt: string | null
+}
+
+export type AccessTokenCreated = {
+  id: string
+  label: string
+  token: string
+  createdAt: string
+}
+
 export type Toolchain = {
   compiler: string
   version: string
@@ -66,6 +80,7 @@ export type ProjectSummary = {
   leaseHours: number
   maxHoldHours: number
   maxConcurrentLeases: number
+  maxHeldChunks: number
   followerCount: number
   lastActivityAt: string
   stats: ProjectStats
@@ -127,6 +142,7 @@ export type WorkBundle = {
   types: string
   neighbors: Array<Neighbor>
   bestAttemptSource?: string
+  integrationNote?: string
   agentInstructions: string
 }
 
@@ -320,14 +336,14 @@ function messageFromBody(body: unknown): string | undefined {
   return undefined
 }
 
-async function parseBody(res: Response): Promise<unknown> {
-  if (res.status === 204) return undefined
+async function parseBody(res: Response): Promise<{ value: unknown; chars: number }> {
+  if (res.status === 204) return { value: undefined, chars: 0 }
   const text = await res.text()
-  if (!text) return undefined
+  if (!text) return { value: undefined, chars: 0 }
   try {
-    return JSON.parse(text) as unknown
+    return { value: JSON.parse(text) as unknown, chars: text.length }
   } catch {
-    return text
+    return { value: text, chars: text.length }
   }
 }
 
@@ -344,27 +360,42 @@ async function request<T>(
     headers.set("authorization", `Bearer ${token}`)
   }
 
+  const method = init.method ?? "GET"
+  const started = performance.now()
+  console.log(`[api] -> ${method} ${path}`)
   const res = await fetch(`/v1${path}`, { ...init, headers })
-  const body = await parseBody(res)
+  const fetched = performance.now()
+  const parsed = await parseBody(res)
+  const done = performance.now()
+  console.log(
+    `[api] <- ${res.status} ${method} ${path} fetch=${Math.round(fetched - started)}ms body=${Math.round(done - fetched)}ms chars=${parsed.chars}`
+  )
   if (!res.ok) {
-    throw new ApiError(res.status, body, messageFromBody(body))
+    throw new ApiError(res.status, parsed.value, messageFromBody(parsed.value))
   }
-  return body as T
+  return parsed.value as T
 }
 
 export const api = {
-  requestMagicLink(email: string, displayName?: string) {
-    return request<{ ok: true; devToken?: string }>("/auth/magic-link", {
+  signUp(email: string, displayName: string, password: string) {
+    return request<Session>("/auth/sign-up", {
       method: "POST",
-      body: JSON.stringify({ email, ...(displayName ? { displayName } : {}) })
+      body: JSON.stringify({ email, displayName, password })
     })
   },
 
-  consumeMagicLink(token: string) {
-    return request<Session>("/auth/magic-link/consume", {
+  signIn(email: string, password: string) {
+    return request<Session>("/auth/sign-in", {
       method: "POST",
-      body: JSON.stringify({ token })
+      body: JSON.stringify({ email, password })
     })
+  },
+
+  changePassword(token: string, currentPassword: string, newPassword: string) {
+    return request<Session>("/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword })
+    }, token)
   },
 
   me(token: string) {
@@ -373,6 +404,26 @@ export const api = {
 
   logout(token: string) {
     return request<void>("/auth/logout", { method: "POST" }, token)
+  },
+
+  listTokens(token: string) {
+    return request<Array<AccessTokenSummary>>("/auth/tokens", {}, token)
+  },
+
+  createToken(token: string, label: string) {
+    return request<AccessTokenCreated>(
+      "/auth/tokens",
+      { method: "POST", body: JSON.stringify({ label }) },
+      token
+    )
+  },
+
+  revokeToken(token: string, tokenId: string) {
+    return request<void>(
+      `/auth/tokens/${encodeURIComponent(tokenId)}`,
+      { method: "DELETE" },
+      token
+    )
   },
 
   createProject(
@@ -480,6 +531,7 @@ export const api = {
     slug: string,
     body: {
       maxConcurrentLeases?: number
+      maxHeldChunks?: number
       language?: SourceLanguage
       flags?: Array<string>
     },

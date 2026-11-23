@@ -40,6 +40,7 @@ export const ProjectSummary = Schema.Struct({
   leaseHours: Schema.Int,
   maxHoldHours: Schema.Int,
   maxConcurrentLeases: Schema.Int,
+  maxHeldChunks: Schema.Int,
   followerCount: Schema.Int,
   lastActivityAt: Schema.String,
   stats: ProjectStats,

@@ -27,6 +27,9 @@ export function bundleFiles(bundle: WorkBundle): Array<{ name: string; data: Uin
     { name: "instructions.agent", data: encode(bundle.agentInstructions) },
     { name: "candidate.c", data: encode(candidate) }
   ]
+  if (bundle.integrationNote !== undefined) {
+    files.push({ name: "integration.txt", data: encode(bundle.integrationNote) })
+  }
   if (bundle.bestAttemptSource !== undefined) {
     files.push({ name: "attempt.c", data: encode(bundle.bestAttemptSource) })
   }

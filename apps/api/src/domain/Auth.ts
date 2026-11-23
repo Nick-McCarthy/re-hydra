@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { HttpApiSchema } from "effect/http-api"
+import { HttpApiError, HttpApiSchema } from "effect/http-api"
 import { Uuid } from "./Uuid.js"
 
 export const Email = Schema.String.check(Schema.isMinLength(3))
@@ -7,6 +7,20 @@ export const Email = Schema.String.check(Schema.isMinLength(3))
   .annotate({ identifier: "Email" })
 
 export type Email = typeof Email.Type
+
+const accountEmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+export const AccountEmail = Email.check(Schema.isPattern(accountEmailPattern)).annotate({
+  identifier: "AccountEmail"
+})
+
+export const DisplayName = Schema.String.check(Schema.isMinLength(1))
+  .check(Schema.isMaxLength(80))
+  .annotate({ identifier: "DisplayName" })
+
+export const Password = Schema.String.check(Schema.isMinLength(8))
+  .check(Schema.isMaxLength(128))
+  .annotate({ identifier: "Password" })
 
 export const UserProfile = Schema.Struct({
   id: Uuid,
@@ -16,28 +30,99 @@ export const UserProfile = Schema.Struct({
 
 export type UserProfile = typeof UserProfile.Type
 
-export const RequestMagicLinkPayload = Schema.Struct({
-  email: Email,
-  displayName: Schema.optionalKey(
-    Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(80))
-  )
-}).annotate({ identifier: "RequestMagicLinkPayload" })
+export const SignUpPayload = Schema.Struct({
+  email: AccountEmail,
+  displayName: DisplayName,
+  password: Password
+}).annotate({ identifier: "SignUpPayload" })
 
-export type RequestMagicLinkPayload = typeof RequestMagicLinkPayload.Type
+export type SignUpPayload = typeof SignUpPayload.Type
 
-export const MagicLinkRequested = Schema.Struct({
-  ok: Schema.Literal(true),
-  /** Present only when AUTH_EXPOSE_DEV_TOKEN=true (local console mailer). */
-  devToken: Schema.optionalKey(Schema.String)
-}).pipe(HttpApiSchema.status("Accepted")).annotate({
-  identifier: "MagicLinkRequested"
-})
+export const SignInPayload = Schema.Struct({
+  email: AccountEmail,
+  password: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(128))
+}).annotate({ identifier: "SignInPayload" })
 
-export const ConsumeMagicLinkPayload = Schema.Struct({
-  token: Schema.String.check(Schema.isMinLength(16)).check(Schema.isMaxLength(128))
-}).annotate({ identifier: "ConsumeMagicLinkPayload" })
+export type SignInPayload = typeof SignInPayload.Type
 
-export type ConsumeMagicLinkPayload = typeof ConsumeMagicLinkPayload.Type
+export const ChangePasswordPayload = Schema.Struct({
+  currentPassword: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(128)),
+  newPassword: Password
+}).annotate({ identifier: "ChangePasswordPayload" })
+
+export type ChangePasswordPayload = typeof ChangePasswordPayload.Type
+
+export class AccountRejected extends HttpApiError.Problem<AccountRejected>()(
+  "AccountRejected",
+  {
+    type: "https://re-hydra.dev/problems/account-rejected",
+    status: 400,
+    title: "Account rejected"
+  }
+) {}
+
+export class EmailTaken extends HttpApiError.Problem<EmailTaken>()("EmailTaken", {
+  type: "https://re-hydra.dev/problems/email-taken",
+  status: 409,
+  title: "Email already registered"
+}) {}
+
+export class InvalidCredentials extends HttpApiError.Problem<InvalidCredentials>()(
+  "InvalidCredentials",
+  {
+    type: "https://re-hydra.dev/problems/invalid-credentials",
+    status: 401,
+    title: "Sign-in failed"
+  }
+) {}
+
+export class PasswordRejected extends HttpApiError.Problem<PasswordRejected>()(
+  "PasswordRejected",
+  {
+    type: "https://re-hydra.dev/problems/password-rejected",
+    status: 400,
+    title: "Password rejected"
+  }
+) {}
+
+export class TokenRejected extends HttpApiError.Problem<
+  TokenRejected,
+  { readonly brand: unique symbol }
+>()("TokenRejected", {
+  type: "https://re-hydra.dev/problems/token-rejected",
+  status: 400,
+  title: "Token rejected"
+}) {}
+
+export const AccessTokenLabel = Schema.String.check(Schema.isMinLength(1)).check(
+  Schema.isMaxLength(80)
+)
+
+export const CreateAccessTokenPayload = Schema.Struct({
+  label: AccessTokenLabel
+}).annotate({ identifier: "CreateAccessTokenPayload" })
+
+export type CreateAccessTokenPayload = typeof CreateAccessTokenPayload.Type
+
+export const AccessTokenSummary = Schema.Struct({
+  id: Uuid,
+  label: Schema.String,
+  createdAt: Schema.String,
+  lastUsedAt: Schema.NullOr(Schema.String)
+}).annotate({ identifier: "AccessTokenSummary" })
+
+export type AccessTokenSummary = typeof AccessTokenSummary.Type
+
+export const AccessTokenCreatedBody = Schema.Struct({
+  id: Uuid,
+  label: Schema.String,
+  token: Schema.String,
+  createdAt: Schema.String
+}).annotate({ identifier: "AccessTokenCreatedBody" })
+
+export type AccessTokenCreatedBody = typeof AccessTokenCreatedBody.Type
+
+export const AccessTokenCreated = AccessTokenCreatedBody.pipe(HttpApiSchema.status("Created"))
 
 export const SessionResponse = Schema.Struct({
   token: Schema.String,

@@ -21,7 +21,6 @@ import { ChunksRepo } from "./services/ChunksRepo.js"
 import { FuseRepo } from "./services/FuseRepo.js"
 import { ImportsRepo } from "./services/ImportsRepo.js"
 import { LeaseSweeperLive } from "./services/LeaseSweeper.js"
-import { Mailer } from "./services/Mailer.js"
 import { MatchdClient } from "./services/MatchdClient.js"
 import { MatchdPool } from "./services/MatchdPool.js"
 import { MatchdScalerLive } from "./services/MatchdScaler.js"
@@ -90,7 +89,7 @@ const DataLive = Layer.mergeAll(
     Layer.provide(ActivityLive)
   ),
   BlobsLive,
-  AuthRepo.layer.pipe(Layer.provide(Mailer.console)),
+  AuthRepo.layer,
   Layer.provideMerge(MatchdClient.layer, MatchdPool.layer)
 ).pipe(Layer.provide(SqlLive))
 

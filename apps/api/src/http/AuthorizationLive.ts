@@ -11,11 +11,15 @@ export const AuthorizationLive = Layer.effect(
     return Authorization.of({
       bearer: Effect.fn("Authorization.bearer")(function*(httpEffect, { credential }) {
         const token = Redacted.value(credential)
-        const user = yield* auth.findUserBySessionToken(token)
-        if (Option.isNone(user)) {
+        const sessionUser = yield* auth.findUserBySessionToken(token)
+        if (Option.isSome(sessionUser)) {
+          return yield* Effect.provideService(httpEffect, CurrentUser, sessionUser.value)
+        }
+        const accessUser = yield* auth.findUserByAccessToken(token)
+        if (Option.isNone(accessUser)) {
           return yield* new Unauthorized()
         }
-        return yield* Effect.provideService(httpEffect, CurrentUser, user.value)
+        return yield* Effect.provideService(httpEffect, CurrentUser, accessUser.value)
       })
     })
   })

@@ -2,7 +2,7 @@
 # `matchd` service stays on host gcc at port 3001. This file adds the others
 # on their own host ports so they can stay up at the same time.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.matchd-pool.yml up -d --build matchd-dc
+#   docker compose -f compose.yaml -f docker-yml/docker-compose.matchd-pool.yml up -d --build matchd-dc
 #
 # Point the API at a process with MATCHD_ROUTES (see apps/api/.env.example).
 # The container still listens on 3001. The host port is the first number below.

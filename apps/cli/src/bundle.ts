@@ -19,6 +19,9 @@ export const writeWorkBundle = (
     write("types.h", bundle.types)
     write("neighbors.json", `${JSON.stringify(bundle.neighbors, null, 2)}\n`)
     write("instructions.agent", bundle.agentInstructions)
+    if (bundle.integrationNote !== undefined) {
+      write("integration.txt", bundle.integrationNote)
+    }
     if (bundle.bestAttemptSource !== undefined) {
       write("attempt.c", bundle.bestAttemptSource)
     }

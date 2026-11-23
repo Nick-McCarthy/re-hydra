@@ -167,52 +167,98 @@ const systems: ReadonlyArray<CompatRow> = [
   }
 ]
 
+const sections = [
+  { id: "what", title: "What does this site do?" },
+  { id: "account", title: "How do I sign in?" },
+  { id: "systems", title: "Which systems can a project match?" },
+  { id: "checkout", title: "How do I finish a function?" },
+  { id: "cli", title: "How do I use the hydra tool?" },
+  { id: "publish", title: "How does a project owner publish a program?" },
+  { id: "maintain", title: "What do owners and maintainers do?" }
+] as const
+
 export function FaqPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">FAQ</h1>
         <p className="text-sm text-muted-foreground">
-          What the site is for, which systems can match, how to finish a downloaded chunk,
-          how a project owner publishes a Ghidra analysis, and how owners and maintainers
-          run a project.
+          What the site is for, how to sign in and finish a function, which systems can
+          match, and how owners publish and run a project.
         </p>
       </div>
 
-      <Card>
+      <nav aria-label="On this page" className="rounded-lg border bg-card p-6 shadow-sm">
+        <h2 className="text-sm font-medium text-muted-foreground">On this page</h2>
+        <ol className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+          {sections.map((section, index) => (
+            <li key={section.id}>
+              <a
+                href={`#${section.id}`}
+                className="underline-offset-2 hover:underline"
+              >
+                {index + 1}. {section.title}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </nav>
+
+      <Card id="what" className="scroll-mt-6">
         <CardHeader>
           <CardTitle>What does this site do?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm leading-relaxed">
           <p>
-            re-hydra is a place to reverse engineer a binary one function at a time.
-            Each function is a chunk. One person holds it until it matches or the lease
-            ends, so the same function is not being translated twice.
+            re-hydra takes a program apart one function at a time. Each function is a
+            chunk on a project board. A checkout holds that function so two people are
+            not translating it at once. The hold ends when the function matches, you
+            release it, or the lease runs out.
           </p>
           <p>
-            You translate the chunk on your own machine. That can be a local model, an
-            API account you already pay for, or source you write yourself. You submit
-            the source. The site compiles it with the compiler, version, and flags the
-            project owner pinned, and accepts it only when the compiled function matches
+            You write the source on your own computer. That can be an agent you run, a
+            model account you already pay for, or source you type yourself. You send
+            the source to the site. The site compiles it with the compiler and flags
+            the project owner chose, and accepts it when the compiled function matches
             the original bytes.
           </p>
           <p>
-            The site keeps the claims, the shared types, and the proof. It does not host
-            a model, and it does not store provider API keys.
+            The site keeps the checkouts, the shared types, and the proof. It does not
+            host a model, and it does not store provider API keys.
           </p>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="account" className="scroll-mt-6">
+        <CardHeader>
+          <CardTitle>How do I sign in?</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm leading-relaxed">
+          <p>
+            Create an account with a display name, email, and password, then sign in
+            from the site. The account menu opens your profile and the password page.
+            Changing the password signs out every other browser that was using the
+            account. A token you created for the hydra tool keeps working until you
+            revoke it on your profile.
+          </p>
+          <p>
+            Your profile is public. The token card appears only when you are signed in
+            and looking at your own profile. Name the token, copy the secret once, and
+            revoke it later if you lose the machine.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card id="systems" className="scroll-mt-6">
         <CardHeader>
           <CardTitle>Which systems can a project match?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm leading-relaxed">
           <p>
-            A project can match when its compiler is listed as available. The compiler in
-            that row is a public build the site can run. The retail SDK compiler is a
-            different program, so a ROM built with the SDK will not match this one.
-            Handwritten assembly and coprocessor programs stay as bytes.
+            A project can match when its compiler is listed as available. That row is a
+            public compiler the site runs for you. The retail SDK compiler is a different
+            program, so a program built with the SDK will not match this one. Handwritten
+            assembly and coprocessor programs stay as bytes.
           </p>
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full min-w-[720px] text-left text-sm">
@@ -259,15 +305,22 @@ export function FaqPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="checkout" className="scroll-mt-6">
         <CardHeader>
-          <CardTitle>How do I go from the downloaded zip to a submission?</CardTitle>
+          <CardTitle>How do I finish a function?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm leading-relaxed">
           <p>
-            Download bundle is available after you check out a chunk. The zip is that
-            chunk's work bundle. Leave the chunk page open while you work. It extends
-            the lease about every five minutes.
+            Sign in and open the project. Filter the board by name or address, select
+            the functions, and choose Check out above the table. The board shows how
+            many you already hold out of the project limit. If another person already
+            holds one of the functions you selected, the rest still check out.
+          </p>
+          <p>
+            Work on a row downloads the bundle and is where you submit. Attempts opens
+            the history for that function. While the project page stays open, the site
+            extends every lease you hold about every five minutes. The hydra tool can
+            do the same from the checkout folder.
           </p>
           <ol className="list-decimal space-y-3 pl-5">
             <li>
@@ -303,53 +356,118 @@ export function FaqPage() {
                 </li>
                 <li>
                   <code className="font-mono whitespace-nowrap">original.bin</code> is
-                  the bytes the server scores against.
+                  the bytes the site compares.
                 </li>
                 <li>
                   <code className="font-mono whitespace-nowrap">attempt.c</code> appears
                   only when someone already submitted a best try.
                 </li>
+                <li>
+                  <code className="font-mono whitespace-nowrap">integration.txt</code>{" "}
+                  appears when that try matched alone and then failed the link. It
+                  names where the linked bytes disagreed.
+                </li>
               </ul>
             </li>
             <li>
-              Unzip the download and point your agent at{" "}
+              Point your agent at{" "}
               <code className="font-mono whitespace-nowrap">instructions.agent</code>.
               That file names the function and the other files in the folder.
             </li>
             <li>
               Put that function in{" "}
               <code className="font-mono whitespace-nowrap">candidate.c</code>. The
-              function name has to match the chunk. The server compiles this file with
+              function name has to match the chunk. The site compiles this file with
               the recipe in{" "}
               <code className="font-mono whitespace-nowrap">chunk.json</code> and
               includes <code className="font-mono whitespace-nowrap">types.h</code>{" "}
               itself.
             </li>
             <li>
-              On the chunk page, paste{" "}
+              Open Work for that function and paste{" "}
               <code className="font-mono whitespace-nowrap">candidate.c</code> into
-              Submit translation and submit. The zip does not carry the lease, so the
-              open checkout is what allows the submit.
+              Submit translation. The zip does not carry the lease. The open checkout
+              is what allows the submit. With hydra, run submit from the checkout
+              folder instead of pasting.
             </li>
             <li>
-              A perfect match frees the chunk. A miss keeps the lease and shows the
-              compiler output or an instruction diff. Change{" "}
+              A match frees the chunk. A miss keeps the lease and shows the compiler
+              output or an instruction diff. Change{" "}
               <code className="font-mono whitespace-nowrap">candidate.c</code> and
-              submit again.
+              submit again. If the function later fails when it is linked with the
+              others, the next checkout includes{" "}
+              <code className="font-mono whitespace-nowrap">integration.txt</code> and
+              the Work dialog has a Link failure tab.
             </li>
           </ol>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="cli" className="scroll-mt-6">
         <CardHeader>
-          <CardTitle>How does a project owner set up a project?</CardTitle>
+          <CardTitle>How do I use the hydra tool?</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm leading-relaxed">
+          <p>
+            hydra is a program on your computer that does the same checkout and submit
+            as the website. On your own profile, create a token and copy the secret
+            once. Then save it with{" "}
+            <code className="font-mono whitespace-nowrap">hydra login --token</code>.
+            Email and password also sign the tool in, and that login is a browser-style
+            session. Logging out of a session signs it out. Logging out of a token only
+            forgets the copy on that machine.
+          </p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>
+              <code className="font-mono whitespace-nowrap">hydra list</code> prints one
+              page of functions. Filter with{" "}
+              <code className="font-mono whitespace-nowrap">--state</code> and{" "}
+              <code className="font-mono whitespace-nowrap">--query</code>.
+            </li>
+            <li>
+              <code className="font-mono whitespace-nowrap">hydra checkout</code> writes
+              the same files as the zip, plus{" "}
+              <code className="font-mono whitespace-nowrap">.lease.json</code>.
+            </li>
+            <li>
+              <code className="font-mono whitespace-nowrap">hydra submit</code> sends{" "}
+              <code className="font-mono whitespace-nowrap">candidate.c</code> and waits
+              for the result.
+            </li>
+            <li>
+              <code className="font-mono whitespace-nowrap">hydra watch</code> sits in
+              the checkout folder and extends the lease until you stop it. The first
+              beat is immediate, then every five minutes.
+            </li>
+            <li>
+              <code className="font-mono whitespace-nowrap">hydra attempts</code> prints
+              the history. Inside a checkout it already knows the function.
+            </li>
+            <li>
+              <code className="font-mono whitespace-nowrap">hydra release</code> gives
+              the function back.
+            </li>
+          </ul>
+          <p>
+            Point the tool at this site with{" "}
+            <code className="font-mono whitespace-nowrap">--url</code> when it is not
+            already aimed here.{" "}
+            <code className="font-mono whitespace-nowrap">--json</code> prints the
+            response instead of a sentence.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card id="publish" className="scroll-mt-6">
+        <CardHeader>
+          <CardTitle>How does a project owner publish a program?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm leading-relaxed">
           <p>
             Start here when Ghidra has finished analyzing the program. These steps
             publish that program as a board other signed-in people can check out.
-            The compiler in the systems table is the one the site will run.
+            Choosing a system stores the public compiler from the table. You do not
+            install that compiler yourself.
           </p>
           <ol className="list-decimal space-y-3 pl-5">
             <li>
@@ -379,8 +497,8 @@ export function FaqPage() {
               script when you want a smaller first import.
             </li>
             <li>
-              Sign in, then open New project from the Projects page. The slug becomes the board
-              address, as in <code className="font-mono">/projects/my-game</code>.
+              Sign in, then open New project from the Projects page. The slug is the
+              board address, as in <code className="font-mono">/projects/my-game</code>.
               Choose the system, C or C++, and the flags.{" "}
               <code className="font-mono">-O2</code> is the usual start. The form stores
               the compiler and image from the table below. A C++ project uses the same
@@ -423,13 +541,14 @@ export function FaqPage() {
             <li>
               On the new board, drop the JSON onto Import Ghidra export, or click the
               box and choose the file. Each imported function becomes an open chunk.
-              Anyone who is signed in can check one out and submit a translation.
+              Anyone who is signed in can check one out, up to the number of chunks one
+              person may hold.
             </li>
           </ol>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="maintain" className="scroll-mt-6">
         <CardHeader>
           <CardTitle>What do owners and maintainers do?</CardTitle>
         </CardHeader>
@@ -437,8 +556,8 @@ export function FaqPage() {
           <p>
             Owners and maintainers set the rules of a project and repair it when a
             chunk or a type is stuck. Contributors check out chunks and can propose new
-            headers. The extra controls show up on the project, the chunk, and the
-            Types page when you have the role.
+            headers. The extra controls show on the project board, in the Work dialog,
+            and on the Types page when you have the role.
           </p>
           <ol className="list-decimal space-y-3 pl-5">
             <li>
@@ -447,27 +566,34 @@ export function FaqPage() {
               and reopens the ones that miss.
             </li>
             <li>
-              Open a chunk that was written in the other language and set Language
-              override. The rest of the project keeps the recipe.
+              Open Work on a function written in the other language and set Language
+              override. The rest of the project keeps the recipe. Saving a real change
+              rechecks a matched function, and a miss reopens it.
             </li>
             <li>
-              Leave Max concurrent leases at 1 so one person holds a chunk. Raise it
-              when several people should work the same chunk at once. A match still
-              takes the chunk.
+              Leave Max concurrent leases at 1 so one person holds a function. Raise it
+              when several people should work the same function at once. A match still
+              takes the function.
             </li>
             <li>
-              Open a leased chunk and choose Clear lease when the holder is gone and
-              the chunk should return to the pool. Wait if the chunk is validating.
+              Chunks one person may hold is how many functions one account can check
+              out at once. The default is 8, and the range is 1 to 32. The board shows
+              each person how many they hold of that limit.
             </li>
             <li>
-              Fuse chunks that cannot be proved alone, such as one source function
-              split across ranges. Select two or more open, stale, or matched chunks
+              Open a leased function and choose Clear lease when the holder is gone and
+              the function should return to the pool. Wait if the function is
+              validating.
+            </li>
+            <li>
+              Fuse functions that cannot be proved alone, such as one source function
+              split across ranges. Select two or more open, stale, or matched functions
               from the same binary. They become one lease. A matched member loses its
               match.
             </li>
             <li>
               On Types, mark a type unresolved while its layout is still unknown. Open
-              and stale chunks that use it move to blocked. Clear the mark when the
+              and stale functions that use it move to blocked. Clear the mark when the
               layout is settled.
             </li>
             <li>
@@ -477,8 +603,12 @@ export function FaqPage() {
               accepts the finished proposal.
             </li>
             <li>
-              After at least two functions match, start an integration build. It links
-              those functions at their original addresses. A miss reopens that chunk.
+              After at least two functions match, choose Link N matched functions. The
+              site places those functions at their original addresses and compares the
+              linked bytes. A miss reopens that function, and the next checkout includes
+              the disagreement in{" "}
+              <code className="font-mono whitespace-nowrap">integration.txt</code>. If
+              the link fails before that comparison, the matched functions stay matched.
             </li>
           </ol>
         </CardContent>

@@ -8,6 +8,8 @@ import { FollowingProjectsPage } from "@/pages/following-projects"
 import { FollowingUsersPage } from "@/pages/following-users"
 import { HomePage } from "@/pages/home"
 import { LoginPage } from "@/pages/login"
+import { PasswordPage } from "@/pages/password"
+import { SignupPage } from "@/pages/signup"
 import { NewProjectPage } from "@/pages/new-project"
 import { PeoplePage } from "@/pages/people"
 import { ProfilePage } from "@/pages/profile"
@@ -25,6 +27,8 @@ export default function App() {
             <Route element={<AppShell />}>
               <Route index element={<HomePage />} />
               <Route path="login" element={<LoginPage />} />
+              <Route path="signup" element={<SignupPage />} />
+              <Route path="account/password" element={<PasswordPage />} />
               <Route path="faq" element={<FaqPage />} />
               <Route path="people" element={<PeoplePage />} />
               <Route path="following/users" element={<FollowingUsersPage />} />

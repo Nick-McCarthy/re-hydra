@@ -3,9 +3,13 @@ import { PgClient } from "@effect/sql-pg"
 import { createHash, randomBytes, randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { Console, Effect } from "effect"
+import { Console, Effect, Layer } from "effect"
 import { SqlClient } from "effect/sql"
+import { hashPassword } from "../auth/password.js"
+import { Blobs } from "../services/Blobs.js"
 import { SqlLive } from "./SqlLive.js"
+
+const seedPassword = "rehydra-dev"
 
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest()
 const hashToken = (token: string) =>
@@ -20,6 +24,7 @@ const program = Effect.gen(function*() {
   const binaryId = randomUUID()
   const chunkId = randomUUID()
   const typeRevisionId = randomUUID()
+  const passwordHash = yield* hashPassword(seedPassword)
   const sessionToken = randomBytes(32).toString("base64url")
   const sessionHash = hashToken(sessionToken)
   const sessionExpires = new Date(Date.now() + 30 * 24 * 60 * 60_000)
@@ -32,27 +37,18 @@ const program = Effect.gen(function*() {
   const disassembly = Buffer.from("parse_header:\n  ret\n", "utf8")
   const binaryBlob = Buffer.from("fake-binary", "utf8")
 
-  const headersHash = sha256(emptyHeaders)
-  const bytesHash = sha256(fnBytes)
-  const pseudoHash = sha256(pseudocode)
-  const disasmHash = sha256(disassembly)
-  const binaryHash = sha256(binaryBlob)
+  const blobs = yield* Blobs
+  const headersHash = yield* blobs.put(emptyHeaders, "text/x-c")
+  const bytesHash = yield* blobs.put(fnBytes, "application/octet-stream")
+  const pseudoHash = yield* blobs.put(pseudocode, "text/x-c")
+  const disasmHash = yield* blobs.put(disassembly, "text/x-asm")
+  const binaryHash = yield* blobs.put(binaryBlob, "application/octet-stream")
 
   yield* sql.withTransaction(Effect.gen(function*() {
     yield* sql`
-      INSERT INTO blobs (sha256, size_bytes, content_type) VALUES
-        (${headersHash}, ${emptyHeaders.length}, ${"text/x-c"}),
-        (${bytesHash}, ${fnBytes.length}, ${"application/octet-stream"}),
-        (${pseudoHash}, ${pseudocode.length}, ${"text/x-c"}),
-        (${disasmHash}, ${disassembly.length}, ${"text/x-asm"}),
-        (${binaryHash}, ${binaryBlob.length}, ${"application/octet-stream"})
-      ON CONFLICT DO NOTHING
-    `
-
-    yield* sql`
-      INSERT INTO users (id, email, display_name)
-      VALUES (${userId}, ${"dev@re-hydra.local"}, ${"Dev User"})
-      ON CONFLICT (email) DO NOTHING
+      INSERT INTO users (id, email, display_name, password_hash)
+      VALUES (${userId}, ${"dev@re-hydra.local"}, ${"Dev User"}, ${passwordHash})
+      ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
     `
 
     const users = yield* sql<{ readonly id: string }>`
@@ -151,16 +147,6 @@ const program = Effect.gen(function*() {
         total_count = EXCLUDED.total_count,
         updated_at = now()
     `
-
-    yield* sql`
-      INSERT INTO blob_objects (sha256, bytes) VALUES
-        (${headersHash}, ${emptyHeaders}),
-        (${bytesHash}, ${fnBytes}),
-        (${pseudoHash}, ${pseudocode}),
-        (${disasmHash}, ${disassembly}),
-        (${binaryHash}, ${binaryBlob})
-      ON CONFLICT DO NOTHING
-    `
   }))
 
   const chunks = yield* sql<{ readonly id: string }>`
@@ -181,15 +167,16 @@ const program = Effect.gen(function*() {
   }
 
   yield* Console.log("Seed complete.")
-  yield* Console.log(`User:    ${liveUserId}`)
-  yield* Console.log(`Session: Authorization: Bearer ${sessionToken}`)
+  yield* Console.log(`User:     ${liveUserId}`)
+  yield* Console.log(`Sign in:  dev@re-hydra.local / ${seedPassword}`)
+  yield* Console.log(`Session:  Authorization: Bearer ${sessionToken}`)
   yield* Console.log(`Chunk:   ${liveChunkId}`)
   yield* Console.log(`GET      /v1/auth/me`)
   yield* Console.log(`GET      /v1/projects/demo/chunks/${liveChunkId}`)
   yield* Console.log(`POST     /v1/projects/demo/chunks/${liveChunkId}/checkout`)
   yield* Console.log("Sample:  project slug `sample` (gcc -O2 functions, neighbors, Header)")
   yield* Console.log("Link:    project slug `link` (fixed-address leaf/caller, decoy reopens)")
-}).pipe(Effect.provide(SqlLive))
+}).pipe(Effect.provide(Blobs.layer.pipe(Layer.provideMerge(SqlLive))))
 
 type SampleFunction = {
   readonly name: string
@@ -291,32 +278,23 @@ const seedExportProject = (
       }
     })
 
+    const store = yield* Blobs
+    const stored: Array<{ readonly bytes: Uint8Array; readonly type: string }> = [
+      { bytes: headers, type: "text/x-c" },
+      { bytes: binary, type: "application/octet-stream" }
+    ]
+    for (const row of prepared) {
+      stored.push(
+        { bytes: row.bytes, type: "application/octet-stream" },
+        { bytes: row.pseudocode, type: "text/x-c" },
+        { bytes: row.disassembly, type: "text/x-asm" }
+      )
+    }
+    for (const blob of stored) {
+      yield* store.put(blob.bytes, blob.type)
+    }
+
     yield* sql.withTransaction(Effect.gen(function*() {
-      const blobs: Array<{ hash: Buffer; size: number; type: string; bytes: Buffer }> = [
-        { hash: headersHash, size: headers.length, type: "text/x-c", bytes: headers },
-        { hash: binaryHash, size: binary.length, type: "application/octet-stream", bytes: binary }
-      ]
-      for (const row of prepared) {
-        blobs.push(
-          { hash: row.bytesHash, size: row.bytes.length, type: "application/octet-stream", bytes: row.bytes },
-          { hash: row.pseudoHash, size: row.pseudocode.length, type: "text/x-c", bytes: row.pseudocode },
-          { hash: row.disasmHash, size: row.disassembly.length, type: "text/x-asm", bytes: row.disassembly }
-        )
-      }
-
-      for (const blob of blobs) {
-        yield* sql`
-          INSERT INTO blobs (sha256, size_bytes, content_type)
-          VALUES (${blob.hash}, ${blob.size}, ${blob.type})
-          ON CONFLICT DO NOTHING
-        `
-        yield* sql`
-          INSERT INTO blob_objects (sha256, bytes)
-          VALUES (${blob.hash}, ${blob.bytes})
-          ON CONFLICT DO NOTHING
-        `
-      }
-
       yield* sql`
         INSERT INTO projects (
           id, slug, name, description, home_region, language, toolchain, created_by

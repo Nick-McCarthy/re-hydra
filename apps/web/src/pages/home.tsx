@@ -47,9 +47,14 @@ export function HomePage() {
             <Link to="/projects">Browse projects</Link>
           </Button>
           {!user ? (
-            <Button asChild variant="outline" size="lg">
-              <Link to="/login">Sign in</Link>
-            </Button>
+            <>
+              <Button asChild variant="outline" size="lg">
+                <Link to="/login">Sign in</Link>
+              </Button>
+              <Button asChild variant="outline" size="lg">
+                <Link to="/signup">Sign up</Link>
+              </Button>
+            </>
           ) : null}
         </div>
       </div>

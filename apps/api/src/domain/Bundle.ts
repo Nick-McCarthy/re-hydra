@@ -38,6 +38,8 @@ export const WorkBundle = Schema.Struct({
   neighbors: Schema.Array(Neighbor),
   /** Highest-scoring prior submission source, if any. */
   bestAttemptSource: Schema.optionalKey(Schema.String),
+  /** Contents of integration.txt when the last match failed the link. */
+  integrationNote: Schema.optionalKey(Schema.String),
   /** Contents of instructions.agent. */
   agentInstructions: Schema.String
 }).annotate({ identifier: "WorkBundle" })

@@ -10,7 +10,7 @@ Implementation status: **Milestones 1–4 complete**. See `docs/roadmap.md`.
 - `@effect/platform-node` HTTP server
 - `@effect/sql-pg` + Postgres 16
 - Declarative `HttpApi` (OpenAPI via Scalar at `/docs`)
-- Magic-link auth → bearer sessions
+- Email and password auth → bearer sessions
 - Ghidra export import + work bundles on checkout
 - Match worker claims jobs and calls `matchd` (compile + normalized compare)
 
@@ -29,18 +29,18 @@ npm run api
 - API: http://localhost:3000/v1/health
 - Docs: http://localhost:3000/docs
 
-Seed prints a session bearer token. Magic-link mail goes to the console logger; with `AUTH_EXPOSE_DEV_TOKEN=true` the request response also includes `devToken`.
+Seed prints a session bearer token and sets the local password for `dev@re-hydra.local` to `rehydra-dev`.
 
 ## Auth
 
 ```bash
-curl -s -X POST http://localhost:3000/v1/auth/magic-link \
+curl -s -X POST http://localhost:3000/v1/auth/sign-in \
   -H 'content-type: application/json' \
-  -d '{"email":"dev@re-hydra.local"}'
+  -d '{"email":"dev@re-hydra.local","password":"rehydra-dev"}'
 
-curl -s -X POST http://localhost:3000/v1/auth/magic-link/consume \
+curl -s -X POST http://localhost:3000/v1/auth/sign-up \
   -H 'content-type: application/json' \
-  -d '{"token":"<devToken>"}'
+  -d '{"email":"ada@example.com","displayName":"Ada","password":"a-long-password"}'
 ```
 
 ## Import (owner / maintainer)
@@ -96,10 +96,14 @@ curl -s http://localhost:3000/v1/projects/demo/chunks/<chunkId>/bundle \
 | Method | Path | Auth |
 | --- | --- | --- |
 | GET | `/v1/health` | no |
-| POST | `/v1/auth/magic-link` | no |
-| POST | `/v1/auth/magic-link/consume` | no |
+| POST | `/v1/auth/sign-up` | no |
+| POST | `/v1/auth/sign-in` | no |
+| POST | `/v1/auth/password` | Bearer session |
 | GET | `/v1/auth/me` | Bearer session |
-| POST | `/v1/auth/logout` | Bearer session |
+| POST | `/v1/auth/logout` | Bearer session. A profile token is not revoked. |
+| POST | `/v1/auth/tokens` | Bearer. Body `{ "label" }`. Returns the secret once. |
+| GET | `/v1/auth/tokens` | Bearer. Active tokens, without the secret. |
+| DELETE | `/v1/auth/tokens/:tokenId` | Bearer. Revoke one of your tokens. |
 | GET | `/v1/users?q=` | no (display-name search with reputation) |
 | GET | `/v1/users/:userId` | no (public profile, reputation, matched chunks) |
 | GET | `/v1/users/:userId/follow` | Bearer |
@@ -114,7 +118,7 @@ curl -s http://localhost:3000/v1/projects/demo/chunks/<chunkId>/bundle \
 | GET | `/v1/projects/:slug/follow` | Bearer |
 | POST | `/v1/projects/:slug/follow` | Bearer |
 | DELETE | `/v1/projects/:slug/follow` | Bearer |
-| PATCH | `/v1/projects/:slug/settings` | Bearer (owner/maintainer). `{ maxConcurrentLeases?, language?: "c"\|"cpp", flags? }`. Language or flags recheck current matches |
+| PATCH | `/v1/projects/:slug/settings` | Bearer (owner/maintainer). `{ maxConcurrentLeases?, maxHeldChunks?, language?: "c"\|"cpp", flags? }`. Language or flags recheck current matches |
 | PUT | `/v1/projects/:slug/chunks/:chunkId/language` | Bearer (owner/maintainer). `{ "language": "c"\|"cpp"\|null }` |
 | GET | `/v1/projects/:slug/integrations` | no |
 | GET | `/v1/projects/:slug/integrations/:id` | no |
@@ -131,7 +135,7 @@ curl -s http://localhost:3000/v1/projects/demo/chunks/<chunkId>/bundle \
 | POST | `/v1/projects/:slug/unresolved-types` | Bearer (owner/maintainer) |
 | POST | `/v1/projects/:slug/unresolved-types/:name/clear` | Bearer (owner/maintainer) |
 | POST | `/v1/projects/:slug/fuse` | Bearer (owner/maintainer) |
-| GET | `/v1/projects/:slug/chunks` | no |
+| GET | `/v1/projects/:slug/chunks?state=&q=&limit=&offset=` | no. Omit `limit` to return every chunk. |
 | GET | `/v1/projects/:slug/chunks/:chunkId` | no |
 | GET | `/v1/projects/:slug/chunks/:chunkId/attempts` | no |
 | GET | `/v1/projects/:slug/chunks/:chunkId/bundle` | Bearer (lease holder) |
@@ -143,7 +147,7 @@ curl -s http://localhost:3000/v1/projects/demo/chunks/<chunkId>/bundle \
 
 ## matchd
 
-Submit enqueues a `jobs` row. The API process runs `MATCHD_WORKERS` claimers (4 by default). Each claimer takes one queued job, using `FOR UPDATE SKIP LOCKED`, and POSTs it to the matchd that has that job's compiler image. A claimer waits 2 seconds only when it found nothing to do. Worker 0 runs a recipe recheck only when no submit is queued. `MATCHD_URL` (`http://127.0.0.1:3001` by default) is the process for images that are not listed. `MATCHD_ROUTES` is a comma-separated list of `image=url` pairs for the other images. Several copies of one image are `url|url`, and a job goes to the copy with the fewest compiles in flight. `docker-compose.matchd-pool.yml` publishes the warm processes on their own host ports so they can stay up beside the default matchd. When `MATCHD_SCALE=docker` (the default) and an interactive job for an image has waited 30 seconds, the API starts one more local container of that image, up to `MATCHD_SCALE_MAX` (4). The warm process stays up. A copy is removed after that image has been idle for 60 seconds. The queue stays in Postgres.
+Submit enqueues a `jobs` row. The API process runs `MATCHD_WORKERS` claimers (4 by default). Each claimer takes one queued job, using `FOR UPDATE SKIP LOCKED`, and POSTs it to the matchd that has that job's compiler image. A claimer waits 2 seconds only when it found nothing to do. Worker 0 runs a recipe recheck only when no submit is queued. `MATCHD_URL` (`http://127.0.0.1:3001` by default) is the process for images that are not listed. `MATCHD_ROUTES` is a comma-separated list of `image=url` pairs for the other images. Several copies of one image are `url|url`, and a job goes to the copy with the fewest compiles in flight. `docker-yml/docker-compose.matchd-pool.yml` publishes the warm processes on their own host ports so they can stay up beside the default matchd. When `MATCHD_SCALE=docker` (the default) and an interactive job for an image has waited 30 seconds, the API starts one more local container of that image, up to `MATCHD_SCALE_MAX` (4). The warm process stays up. A copy is removed after that image has been idle for 60 seconds. The queue stays in Postgres.
 
 ```bash
 docker compose up -d matchd

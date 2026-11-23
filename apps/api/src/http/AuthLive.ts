@@ -3,6 +3,7 @@ import { Headers, HttpServerRequest } from "effect/http"
 import { HttpApiBuilder } from "effect/http-api"
 import { Unauthorized } from "effect/http-api/HttpApiError"
 import { Api } from "../Api.js"
+import { TokenRejected } from "../domain/Auth.js"
 import { AuthRepo } from "../services/AuthRepo.js"
 import { CurrentUser } from "./Authorization.js"
 
@@ -21,19 +22,51 @@ const bearerFromRequest = Effect.gen(function*() {
 
 export const AuthLive = HttpApiBuilder.group(Api, "auth", (handlers) =>
   handlers
-    .handle("requestMagicLink", (request) =>
+    .handle("signUp", (request) =>
       Effect.gen(function*() {
         const auth = yield* AuthRepo
-        return yield* auth.requestMagicLink(request.payload)
+        return yield* auth.signUp(request.payload)
       })
     )
-    .handle("consumeMagicLink", (request) =>
+    .handle("signIn", (request) =>
       Effect.gen(function*() {
         const auth = yield* AuthRepo
-        return yield* auth.consumeMagicLink(request.payload)
+        return yield* auth.signIn(request.payload)
+      })
+    )
+    .handle("changePassword", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const auth = yield* AuthRepo
+        return yield* auth.changePassword(user.id, request.payload)
       })
     )
     .handle("me", () => CurrentUser)
+    .handle("createToken", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const auth = yield* AuthRepo
+        const label = request.payload.label.trim()
+        if (label.length === 0) {
+          return yield* new TokenRejected({ detail: "Enter a name for this token." })
+        }
+        return yield* auth.createAccessToken(user.id, label)
+      })
+    )
+    .handle("listTokens", () =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const auth = yield* AuthRepo
+        return yield* auth.listAccessTokens(user.id)
+      })
+    )
+    .handle("revokeToken", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const auth = yield* AuthRepo
+        yield* auth.revokeAccessToken(user.id, request.params.tokenId)
+      })
+    )
     .handle("logout", () =>
       Effect.gen(function*() {
         yield* CurrentUser

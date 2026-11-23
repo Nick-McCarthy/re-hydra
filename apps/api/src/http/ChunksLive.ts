@@ -11,7 +11,7 @@ export const ChunksLive = HttpApiBuilder.group(Api, "chunks", (handlers) =>
     .handle("list", (request) =>
       Effect.gen(function*() {
         const repo = yield* ChunksRepo
-        return yield* repo.listByProjectSlug(request.params.projectSlug)
+        return yield* repo.listByProjectSlug(request.params.projectSlug, request.query)
       })
     )
     .handle("get", (request) =>

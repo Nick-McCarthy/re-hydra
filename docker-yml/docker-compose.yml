@@ -30,5 +30,19 @@ services:
     ports:
       - "3001:3001"
 
+  blobs:
+    image: adobe/s3mock:latest
+    mem_limit: 1280m
+    ports:
+      - "9000:9090"
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: rehydra
+      COM_ADOBE_TESTING_S3MOCK_STORE_REGION: us-east-1
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mockroot
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+    volumes:
+      - rehydra_blobs:/s3mockroot
+
 volumes:
   rehydra_pg:
+  rehydra_blobs:

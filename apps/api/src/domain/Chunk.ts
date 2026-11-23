@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { HttpApiSchema } from "effect/http-api"
+import { HttpApiError, HttpApiSchema } from "effect/http-api"
 import { SourceLanguage } from "./Project.js"
 import { Uuid } from "./Uuid.js"
 
@@ -36,6 +36,13 @@ export const SetChunkLanguage = Schema.Struct({
 }).annotate({ identifier: "SetChunkLanguage" })
 
 export type SetChunkLanguage = typeof SetChunkLanguage.Type
+
+/** The person already holds as many chunks as this project allows. */
+export class CheckoutLimited extends HttpApiError.Problem<CheckoutLimited>()("CheckoutLimited", {
+  type: "https://re-hydra.dev/problems/checkout-limited",
+  status: 409,
+  title: "Checkout limited"
+}) {}
 
 const LeaseBody = Schema.Struct({
   chunk: ChunkSummary,

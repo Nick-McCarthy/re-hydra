@@ -56,6 +56,9 @@ export function AccountMenu() {
           >
             Profile
           </Link>
+          <Link role="menuitem" to="/account/password" className="block px-3 py-2 hover:bg-accent">
+            Password
+          </Link>
           <Link role="menuitem" to="/following/users" className="block px-3 py-2 hover:bg-accent">
             Users you follow
           </Link>

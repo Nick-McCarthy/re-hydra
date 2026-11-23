@@ -1,7 +1,9 @@
 import { Context, Effect, Layer, Schema } from "effect"
 import { Conflict, Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
+import { CheckoutLimited } from "../domain/Chunk.js"
 import type { ChunkSummary, LeaseResponse, SetChunkLanguage } from "../domain/Chunk.js"
+import { likeContains } from "../domain/Directory.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { ProjectAuth } from "./ProjectAuth.js"
@@ -80,7 +82,13 @@ export class ChunksRepo extends Context.Service<
   ChunksRepo,
   {
     readonly listByProjectSlug: (
-      projectSlug: string
+      projectSlug: string,
+      query: {
+        readonly state?: ChunkSummary["state"] | undefined
+        readonly q?: string | undefined
+        readonly limit?: number | undefined
+        readonly offset?: number | undefined
+      }
     ) => Effect.Effect<ReadonlyArray<ChunkSummary>, NotFound>
     readonly getByProjectSlug: (
       projectSlug: string,
@@ -90,7 +98,7 @@ export class ChunksRepo extends Context.Service<
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<LeaseResponse, NotFound | Conflict>
+    ) => Effect.Effect<LeaseResponse, NotFound | Conflict | CheckoutLimited>
     readonly release: (
       projectSlug: string,
       chunkId: Uuid,
@@ -163,7 +171,15 @@ export class ChunksRepo extends Context.Service<
       })
 
       const listByProjectSlug = Effect.fn("ChunksRepo.listByProjectSlug")(
-        function*(projectSlug: string) {
+        function*(
+          projectSlug: string,
+          query: {
+            readonly state?: ChunkSummary["state"] | undefined
+            readonly q?: string | undefined
+            readonly limit?: number | undefined
+            readonly offset?: number | undefined
+          }
+        ) {
           const projects = yield* sql<{ readonly id: string }>`
             SELECT id FROM projects
             WHERE slug = ${projectSlug} AND archived_at IS NULL
@@ -172,6 +188,11 @@ export class ChunksRepo extends Context.Service<
           if (projects[0] === undefined) {
             return yield* new NotFound()
           }
+
+          const state = query.state ?? null
+          const pattern = likeContains(query.q)
+          const limit = query.limit ?? null
+          const offset = query.offset ?? 0
 
           const rows = yield* sql<ChunkRow>`
             SELECT
@@ -201,7 +222,16 @@ export class ChunksRepo extends Context.Service<
             INNER JOIN projects p ON p.id = c.project_id
             WHERE p.slug = ${projectSlug}
               AND c.fuse_parent_id IS NULL
-            ORDER BY c.address
+              AND (${state}::text IS NULL OR c.state::text = ${state})
+              AND (
+                ${pattern}::text IS NULL
+                OR c.name ILIKE ${pattern} ESCAPE '\\'
+                OR c.address::text ILIKE ${pattern} ESCAPE '\\'
+                OR ('0x' || to_hex(c.address)) ILIKE ${pattern} ESCAPE '\\'
+              )
+            ORDER BY c.address, c.id
+            LIMIT ${limit}
+            OFFSET ${offset}
           `.pipe(Effect.orDie)
 
           return rows.map(toSummary)
@@ -228,8 +258,9 @@ export class ChunksRepo extends Context.Service<
             readonly id: string
             readonly lease_hours: number
             readonly max_concurrent_leases: number
+            readonly max_held_chunks: number
           }>`
-            SELECT id, lease_hours, max_concurrent_leases
+            SELECT id, lease_hours, max_concurrent_leases, max_held_chunks
             FROM projects
             WHERE slug = ${projectSlug}
               AND archived_at IS NULL
@@ -239,6 +270,31 @@ export class ChunksRepo extends Context.Service<
           const project = projectRows[0]
           if (project === undefined) {
             return yield* new NotFound()
+          }
+
+          const heldRows = yield* sql<{ readonly held: number }>`
+            SELECT COUNT(*)::int AS held
+            FROM (
+              SELECT c.id
+              FROM chunks c
+              WHERE c.project_id = ${project.id}
+                AND c.lease_user_id = ${userId}
+                AND c.state IN ('leased', 'validating')
+                AND c.fuse_parent_id IS NULL
+              UNION
+              SELECT cl.chunk_id
+              FROM chunk_leases cl
+              INNER JOIN chunks c ON c.id = cl.chunk_id
+              WHERE c.project_id = ${project.id}
+                AND cl.user_id = ${userId}
+                AND cl.released_at IS NULL
+            ) held_chunks
+          `.pipe(Effect.orDie)
+          const held = heldRows[0]?.held ?? 0
+          if (held >= project.max_held_chunks) {
+            return yield* new CheckoutLimited({
+              detail: `You already hold ${held} ${held === 1 ? "chunk" : "chunks"} on this project. The limit is ${project.max_held_chunks}.`
+            })
           }
 
           const claimed = yield* sql<{

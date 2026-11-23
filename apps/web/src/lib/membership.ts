@@ -8,22 +8,32 @@ export function useMembership(projectSlug: string) {
   const [ready, setReady] = React.useState(false)
 
   React.useEffect(() => {
-    if (!authReady) return
+    if (!authReady) {
+      console.log(`[project] membership waiting for auth ${projectSlug}`)
+      return
+    }
     if (!session) {
+      console.log(`[project] membership skipped, signed out ${projectSlug}`)
       setRole(null)
       setReady(true)
       return
     }
     let cancelled = false
     setReady(false)
+    const started = performance.now()
+    console.log(`[project] membership start ${projectSlug}`)
     void api.membership(projectSlug, session.token).then(
       (membership) => {
         if (cancelled) return
+        console.log(
+          `[project] membership ${Math.round(performance.now() - started)}ms role=${membership.role}`
+        )
         setRole(membership.role)
         setReady(true)
       },
-      () => {
+      (err) => {
         if (cancelled) return
+        console.log(`[project] membership failed ${Math.round(performance.now() - started)}ms`, err)
         setRole(null)
         setReady(true)
       }
