@@ -147,7 +147,7 @@ A project whose writer lives in Europe is a further change. The API would send t
 - What happens to member matches if a fused chunk is later split. Split is not implemented.
 - No automated test of the full checkout loop.
 - The object signer still uses path-style URLs. The first-deployment section is the us-east-1 cutover. `blob_objects` stays until a checkout and a match have both read from the bucket.
-- No web UI for Ghidra import. Owners POST the JSON.
+- Ghidra import is a JSON upload on the project page (web) or a POST to the API. The CLI cannot import.
 - The CLI does not follow, search, change the lease cap, pin a language, or start an integration build.
 - Integration compiles each matched function as its own translation unit. It does not search for a layout or a flag set.
 - A profile's follower count refreshes when the page reloads.

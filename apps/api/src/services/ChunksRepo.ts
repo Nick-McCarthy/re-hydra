@@ -220,7 +220,9 @@ export class ChunksRepo extends Context.Service<
               ) AS lease_count
             FROM chunks c
             INNER JOIN projects p ON p.id = c.project_id
-            WHERE p.slug = ${projectSlug}
+            -- Filter by id, not slug, so the planner can use chunks_board_idx.
+            -- By slug it scanned and sorted the whole project (audit phase 3).
+            WHERE c.project_id = ${projects[0].id}
               AND c.fuse_parent_id IS NULL
               AND (${state}::text IS NULL OR c.state::text = ${state})
               AND (
@@ -272,62 +274,155 @@ export class ChunksRepo extends Context.Service<
             return yield* new NotFound()
           }
 
-          const heldRows = yield* sql<{ readonly held: number }>`
-            SELECT COUNT(*)::int AS held
-            FROM (
-              SELECT c.id
-              FROM chunks c
-              WHERE c.project_id = ${project.id}
-                AND c.lease_user_id = ${userId}
-                AND c.state IN ('leased', 'validating')
+          // One transaction per checkout (audit A-008, A-009). The advisory lock
+          // serializes checkouts by one user on one project, so two at once
+          // cannot both pass the max_held_chunks count.
+          const outcome = yield* sql.withTransaction(Effect.gen(function*() {
+            yield* sql`
+              SELECT pg_advisory_xact_lock(hashtext(${`held:${project.id}:${userId}`}))
+            `.pipe(Effect.orDie)
+
+            const heldRows = yield* sql<{ readonly held: number }>`
+              SELECT COUNT(*)::int AS held
+              FROM (
+                SELECT c.id
+                FROM chunks c
+                WHERE c.project_id = ${project.id}
+                  AND c.lease_user_id = ${userId}
+                  AND c.state IN ('leased', 'validating')
+                  AND c.fuse_parent_id IS NULL
+                UNION
+                SELECT cl.chunk_id
+                FROM chunk_leases cl
+                INNER JOIN chunks c ON c.id = cl.chunk_id
+                WHERE c.project_id = ${project.id}
+                  AND cl.user_id = ${userId}
+                  AND cl.released_at IS NULL
+              ) held_chunks
+            `.pipe(Effect.orDie)
+            const held = heldRows[0]?.held ?? 0
+            if (held >= project.max_held_chunks) {
+              return yield* new CheckoutLimited({
+                detail: `You already hold ${held} ${held === 1 ? "chunk" : "chunks"} on this project. The limit is ${project.max_held_chunks}.`
+              })
+            }
+
+            const claimed = yield* sql<{
+              readonly id: string
+              readonly project_id: string
+              readonly name: string
+            }>`
+              UPDATE chunks AS c
+              SET
+                state = 'leased',
+                lease_user_id = ${userId},
+                lease_token = ${leaseToken},
+                lease_expires_at = now() + make_interval(hours => ${project.lease_hours}),
+                hold_started_at = COALESCE(c.hold_started_at, now()),
+                updated_at = now()
+              WHERE c.id = ${chunkId}
+                AND c.project_id = ${project.id}
+                AND c.state IN ('open', 'stale')
+                AND c.lease_user_id IS NULL
                 AND c.fuse_parent_id IS NULL
-              UNION
-              SELECT cl.chunk_id
-              FROM chunk_leases cl
-              INNER JOIN chunks c ON c.id = cl.chunk_id
-              WHERE c.project_id = ${project.id}
-                AND cl.user_id = ${userId}
-                AND cl.released_at IS NULL
-            ) held_chunks
-          `.pipe(Effect.orDie)
-          const held = heldRows[0]?.held ?? 0
-          if (held >= project.max_held_chunks) {
-            return yield* new CheckoutLimited({
-              detail: `You already hold ${held} ${held === 1 ? "chunk" : "chunks"} on this project. The limit is ${project.max_held_chunks}.`
-            })
-          }
+              RETURNING c.id, c.project_id, c.name
+            `.pipe(Effect.orDie)
 
-          const claimed = yield* sql<{
-            readonly id: string
-            readonly project_id: string
-            readonly name: string
-          }>`
-            UPDATE chunks AS c
-            SET
-              state = 'leased',
-              lease_user_id = ${userId},
-              lease_token = ${leaseToken},
-              lease_expires_at = now() + make_interval(hours => ${project.lease_hours}),
-              hold_started_at = COALESCE(c.hold_started_at, now()),
-              updated_at = now()
-            WHERE c.id = ${chunkId}
-              AND c.project_id = ${project.id}
-              AND c.state IN ('open', 'stale')
-              AND c.lease_user_id IS NULL
-              AND c.fuse_parent_id IS NULL
-            RETURNING c.id, c.project_id, c.name
-          `.pipe(Effect.orDie)
+            const primary = claimed[0]
+            if (primary !== undefined) {
+              yield* stats.refresh(primary.project_id)
+              yield* activity.record({
+                projectId: primary.project_id,
+                actorId: userId,
+                kind: "checkout",
+                chunkId: primary.id,
+                summary: `Checked out ${primary.name}`
+              })
+              return { kind: "primary" as const }
+            }
 
-          const primary = claimed[0]
-          if (primary !== undefined) {
-            yield* stats.refresh(primary.project_id)
-            yield* activity.record({
-              projectId: primary.project_id,
-              actorId: userId,
-              kind: "checkout",
-              chunkId: primary.id,
-              summary: `Checked out ${primary.name}`
-            })
+            if (project.max_concurrent_leases > 1) {
+              // Lock the chunk in its own statement first. The insert below is a
+              // new statement, so under READ COMMITTED its count sees every extra
+              // lease committed before this lock was granted (audit A-009).
+              yield* sql`
+                SELECT id FROM chunks
+                WHERE id = ${chunkId} AND project_id = ${project.id}
+                FOR UPDATE
+              `.pipe(Effect.orDie)
+
+              const extra = yield* sql<{
+                readonly chunk_id: string
+                readonly project_id: string
+                readonly name: string
+                readonly lease_token: string
+                readonly lease_expires_at: Date | string
+                readonly hold_started_at: Date | string
+              }>`
+                WITH inserted AS (
+                  INSERT INTO chunk_leases (
+                    chunk_id, user_id, lease_token, lease_expires_at, hold_started_at
+                  )
+                  SELECT
+                    c.id,
+                    ${userId},
+                    ${leaseToken},
+                    now() + make_interval(hours => p.lease_hours),
+                    now()
+                  FROM chunks c
+                  INNER JOIN projects p ON p.id = c.project_id
+                  WHERE c.id = ${chunkId}
+                    AND c.project_id = ${project.id}
+                    AND c.fuse_parent_id IS NULL
+                    AND c.state = 'leased'
+                    AND c.lease_user_id IS NOT NULL
+                    AND c.lease_user_id <> ${userId}
+                    AND p.max_concurrent_leases > 1
+                    AND (
+                      1 + (
+                        SELECT COUNT(*)
+                        FROM chunk_leases cl
+                        WHERE cl.chunk_id = c.id
+                          AND cl.released_at IS NULL
+                      )
+                    ) < p.max_concurrent_leases
+                    AND NOT EXISTS (
+                      SELECT 1 FROM chunk_leases cl
+                      WHERE cl.chunk_id = c.id
+                        AND cl.user_id = ${userId}
+                        AND cl.released_at IS NULL
+                    )
+                  RETURNING
+                    chunk_id, lease_token, lease_expires_at, hold_started_at
+                )
+                SELECT
+                  inserted.chunk_id,
+                  c.project_id,
+                  c.name,
+                  inserted.lease_token,
+                  inserted.lease_expires_at,
+                  inserted.hold_started_at
+                FROM inserted
+                INNER JOIN chunks c ON c.id = inserted.chunk_id
+              `.pipe(Effect.orDie)
+
+              const holder = extra[0]
+              if (holder !== undefined) {
+                yield* activity.record({
+                  projectId: holder.project_id,
+                  actorId: userId,
+                  kind: "checkout",
+                  chunkId: holder.chunk_id,
+                  summary: `Checked out ${holder.name}`
+                })
+                return { kind: "extra" as const, holder }
+              }
+            }
+
+            return { kind: "none" as const }
+          })).pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)))
+
+          if (outcome.kind === "primary") {
             const row = yield* loadChunk(projectSlug, chunkId)
             if (row === undefined) {
               return yield* new Conflict()
@@ -335,88 +430,17 @@ export class ChunksRepo extends Context.Service<
             return yield* requireLeaseFields(row)
           }
 
-          if (project.max_concurrent_leases > 1) {
-            const extra = yield* sql<{
-              readonly chunk_id: string
-              readonly project_id: string
-              readonly name: string
-              readonly lease_token: string
-              readonly lease_expires_at: Date | string
-              readonly hold_started_at: Date | string
-            }>`
-              WITH locked AS (
-                SELECT c.id
-                FROM chunks c
-                WHERE c.id = ${chunkId}
-                  AND c.project_id = ${project.id}
-                  AND c.fuse_parent_id IS NULL
-                FOR UPDATE
-              ),
-              inserted AS (
-                INSERT INTO chunk_leases (
-                  chunk_id, user_id, lease_token, lease_expires_at, hold_started_at
-                )
-                SELECT
-                  c.id,
-                  ${userId},
-                  ${leaseToken},
-                  now() + make_interval(hours => p.lease_hours),
-                  now()
-                FROM locked
-                INNER JOIN chunks c ON c.id = locked.id
-                INNER JOIN projects p ON p.id = c.project_id
-                WHERE c.state = 'leased'
-                  AND c.lease_user_id IS NOT NULL
-                  AND c.lease_user_id <> ${userId}
-                  AND p.max_concurrent_leases > 1
-                  AND (
-                    1 + (
-                      SELECT COUNT(*)
-                      FROM chunk_leases cl
-                      WHERE cl.chunk_id = c.id
-                        AND cl.released_at IS NULL
-                    )
-                  ) < p.max_concurrent_leases
-                  AND NOT EXISTS (
-                    SELECT 1 FROM chunk_leases cl
-                    WHERE cl.chunk_id = c.id
-                      AND cl.user_id = ${userId}
-                      AND cl.released_at IS NULL
-                  )
-                RETURNING
-                  chunk_id, lease_token, lease_expires_at, hold_started_at
-              )
-              SELECT
-                inserted.chunk_id,
-                c.project_id,
-                c.name,
-                inserted.lease_token,
-                inserted.lease_expires_at,
-                inserted.hold_started_at
-              FROM inserted
-              INNER JOIN chunks c ON c.id = inserted.chunk_id
-            `.pipe(Effect.orDie)
-
-            const holder = extra[0]
-            if (holder !== undefined) {
-              yield* activity.record({
-                projectId: holder.project_id,
-                actorId: userId,
-                kind: "checkout",
-                chunkId: holder.chunk_id,
-                summary: `Checked out ${holder.name}`
-              })
-              const row = yield* loadChunk(projectSlug, chunkId)
-              if (row === undefined) {
-                return yield* new Conflict()
-              }
-              return {
-                chunk: toSummary(row),
-                leaseToken: holder.lease_token,
-                leaseExpiresAt: toIso(holder.lease_expires_at),
-                holdStartedAt: toIso(holder.hold_started_at)
-              } satisfies LeaseResponse
+          if (outcome.kind === "extra") {
+            const row = yield* loadChunk(projectSlug, chunkId)
+            if (row === undefined) {
+              return yield* new Conflict()
             }
+            return {
+              chunk: toSummary(row),
+              leaseToken: outcome.holder.lease_token,
+              leaseExpiresAt: toIso(outcome.holder.lease_expires_at),
+              holdStartedAt: toIso(outcome.holder.hold_started_at)
+            } satisfies LeaseResponse
           }
 
           return yield* notFoundOrConflict(sql, projectSlug, chunkId)

@@ -11,19 +11,20 @@ Status: in progress. Written 2026-11-22 against `main` at `cd2a88feb` with uncom
 | Fixes A-001 to A-006 | Done 2026-11-22, merged to `main` locally (`c065901a7`) | [audit-changelog.md](audit-changelog.md) |
 | Security fixes A-019, A-020, A-021, A-025 | Done 2026-11-23, merged to `main` locally (`e5aa1b7ed`) | [audit-changelog.md](audit-changelog.md) |
 | Housekeeping: merge, rebuild 17 matchd images, recreate containers | Done 2026-11-23. Found A-027 | [audit-changelog.md](audit-changelog.md) |
-| A-027 sandbox seccomp profile | Done 2026-11-23, not committed (branch `audit/matchd-seccomp`) | [audit-changelog.md](audit-changelog.md), [../docker-yml/matchd-seccomp.md](../docker-yml/matchd-seccomp.md) |
-| Phase 3 — Schema | Next | — |
-| Phases 4–8 | Not started | — |
+| A-027 sandbox seccomp profile | Done 2026-11-23, merged to `main` locally (`f5418cf9b`) | [audit-changelog.md](audit-changelog.md), [../docker-yml/matchd-seccomp.md](../docker-yml/matchd-seccomp.md) |
+| Phase 3 — Schema | Done 2026-11-23, not committed (branch `audit/phase-3-schema`) | [audit/phase-3.md](audit/phase-3.md) |
+| Phase 4 — Security (rest) | Next | — |
+| Phases 5–8 | Not started | — |
 
-Findings: [audit-findings.md](audit-findings.md). 27 logged, 11 fixed (A-001 to A-006, A-019 to A-021, A-025, A-027), 16 open. The highest open ones are A-011 (no member management), A-013 (owner-supplied compiler flags), and A-024 (recheck matches made under the old masks).
+Findings: [audit-findings.md](audit-findings.md). 31 logged, 20 fixed, 1 closed as not applicable (A-024), 10 open. The highest open ones are A-011 (no member management) and A-013 (owner-supplied compiler flags).
 
 Invariant status after the fixes:
 
 | Invariant | Before | Now |
 | --- | --- | --- |
-| I3 one submission `validating` per chunk | Not enforced | Enforced in code (submit takes a row lock and requires `leased`). No database constraint yet (phase 3) |
+| I3 one submission `validating` per chunk | Not enforced | Enforced in code and in the database (`jobs_one_active_interactive`, migration 012) |
 | I4 result commits only for the live attempt | Partly | Enforced. The lock and lease-token check come before the match insert |
-| I8 a retried claim applies once | No | Enforced for interactive and type-recheck jobs (`finishJob`). Not yet for recipe rechecks (A-022) |
+| I8 a retried claim applies once | No | Enforced for interactive, type-recheck, and recipe-recheck jobs |
 | I11 a held chunk can always be returned | No for `validating` | Yes: on job failure, plus a sweeper backstop |
 | I12 a proposal always finishes | No | Yes. Failed rechecks count as done (A-026 tracks showing them separately) |
 
@@ -84,6 +85,8 @@ Question: does the design keep the promise under concurrency, failure, and growt
 Deliverable: invariant list, trust-boundary diagram, chunk state diagram, and design findings.
 
 ## Phase 3 — Data and schema
+
+All data in the current databases is test data, and production starts empty. So migrations here need to apply cleanly to an empty database, but they don't need repair steps for existing rows. A conflicting dev database can be reset.
 
 Question: does Postgres enforce the invariants, or only the application?
 

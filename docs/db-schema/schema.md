@@ -776,6 +776,48 @@ CREATE INDEX recipe_jobs_claim_idx
   WHERE state = 'queued';
 ```
 
+### `blob_objects` (Postgres blob fallback)
+
+Bytes for `BLOB_STORE=postgres`. With `BLOB_STORE=s3` the API does not write it. The roadmap drops it after one checkout and one match have both read from the bucket.
+
+```sql
+CREATE TABLE blob_objects (
+  sha256 bytea PRIMARY KEY REFERENCES blobs (sha256) ON DELETE CASCADE,
+  bytes  bytea NOT NULL
+);
+```
+
+## Audit phase 3 — migration 012
+
+Indexes only. The first one enforces one unfinished interactive job per chunk. The rest came from query plans measured on a 100,000-chunk project (see [../audit/phase-3.md](../audit/phase-3.md)).
+
+```sql
+CREATE UNIQUE INDEX jobs_one_active_interactive
+  ON jobs (chunk_id)
+  WHERE kind = 'interactive' AND state IN ('queued', 'claimed');
+
+CREATE INDEX jobs_chunk_id_idx ON jobs (chunk_id);
+CREATE INDEX jobs_attempt_id_idx ON jobs (attempt_id);
+CREATE INDEX chunks_updated_at_idx ON chunks (updated_at);
+
+-- Board page, ordered by address. The query filters by project_id, not slug.
+CREATE INDEX chunks_board_idx
+  ON chunks (project_id, address, id)
+  WHERE fuse_parent_id IS NULL;
+
+-- project_chunk_stats recount, index-only.
+CREATE INDEX chunks_project_state_live_idx
+  ON chunks (project_id, state)
+  WHERE fuse_parent_id IS NULL;
+
+-- Sweeper backstop for validating chunks with no job in flight.
+CREATE INDEX chunks_validating_idx
+  ON chunks (updated_at)
+  WHERE state = 'validating';
+
+CREATE INDEX matches_chunk_id_idx ON matches (chunk_id);
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.
@@ -798,12 +840,17 @@ CREATE INDEX recipe_jobs_claim_idx
 5. Attempt idempotency on `(chunk_id, lease_token, source_sha256)`.
 6. Lease columns match `chunk_state` (CHECK constraint).
 7. Interactive jobs reference an attempt; revalidation jobs reference a proposal.
+8. At most one unfinished (`queued` or `claimed`) interactive job per chunk (migration `012`).
 
 ## Invariants enforced in the application (same transaction as the write)
 
 1. Checkout conditional update returns exactly one row or conflict.
 2. Heartbeat cannot extend past `hold_started_at + max_hold_hours`.
 3. Submit to `validating` only with a matching lease token.
-4. Match commit only if chunk is still `validating` for that attempt.
+4. Match commit only if chunk is still `validating` for that attempt's lease token, checked under the chunk row lock before the match row is written. A job's result applies once: only the run that moves the job out of `claimed` writes anything.
+4a. Submit runs in one transaction under the chunk row lock and only from `leased`.
+4b. Checkout runs in one transaction. A per-user, per-project advisory lock guards `max_held_chunks`, and the extra-lease path locks the chunk before counting `chunk_leases` against `max_concurrent_leases`.
+4c. A recipe recheck changes only the match for the attempt it was queued for.
 5. Members with `fuse_parent_id` set are never leased.
 6. Setting an unresolved type moves affected open/stale chunks to `blocked`; clearing moves them back to `open` or `stale` as appropriate.
+7. `project_chunk_stats` is recounted after each state change. Concurrent recounts can leave it briefly stale, so the lease sweeper recounts every project with chunk changes in the last two minutes. The counts converge within 30 seconds.

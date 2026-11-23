@@ -153,6 +153,20 @@ export const LeaseSweeperLive = Layer.effectDiscard(Effect.gen(function*() {
       yield* Effect.logWarning(`returned ${chunk.name} (${chunk.id}) from validating with no job in flight`)
     }
 
+    // Audit A-016. Two concurrent refreshes can commit in either order, so the
+    // last write may hold stale counts. Recount every project whose chunks
+    // changed in the last two minutes. Board counts converge within one tick
+    // (30 seconds) of the last change. Locking the stats row instead would
+    // deadlock with transactions that refresh and then lock another chunk.
+    const recent = yield* sql<{ readonly project_id: string }>`
+      SELECT DISTINCT project_id
+      FROM chunks
+      WHERE updated_at > now() - interval '2 minutes'
+    `
+    for (const row of recent) {
+      touched.add(row.project_id)
+    }
+
     for (const projectId of touched) {
       yield* stats.refresh(projectId)
     }

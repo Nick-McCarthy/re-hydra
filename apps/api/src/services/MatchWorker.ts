@@ -156,125 +156,150 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
     const recipe = claimed[0]
     if (recipe === undefined) return false
 
+    // Only a run that still holds the claim writes a result (audit A-022).
     const fail = (error: string) =>
       sql`
         UPDATE recipe_jobs
         SET state = 'failed', finished_at = now(), result = ${pg.json({ error })}
         WHERE id = ${recipe.id}
+          AND state = 'claimed'
       `
 
-    const attempts = yield* sql<{
-      readonly source_sha256: Uint8Array
-    }>`
-      SELECT source_sha256 FROM attempts WHERE id = ${recipe.attempt_id} LIMIT 1
-    `
-    const sourceSha = attempts[0]?.source_sha256
-    if (sourceSha === undefined) {
-      yield* fail("source missing")
-      return true
-    }
-    const sourceOpt = yield* blobs.get(sourceSha)
-    const originalOpt = yield* blobs.get(recipe.original_sha256)
-    if (Option.isNone(sourceOpt) || Option.isNone(originalOpt)) {
-      yield* fail("source missing")
-      return true
-    }
-
-    const headerRows = yield* sql<{ readonly headers_sha256: Uint8Array | null }>`
-      SELECT tr.headers_sha256
-      FROM chunks c
-      LEFT JOIN type_revisions tr ON tr.id = c.type_revision_id
-      WHERE c.id = ${recipe.chunk_id}
-      LIMIT 1
-    `
-    let typesText = "/* empty */\n"
-    const headersSha = headerRows[0]?.headers_sha256
-    if (headersSha != null) {
-      const headersOpt = yield* blobs.get(headersSha)
-      if (Option.isSome(headersOpt)) {
-        typesText = Buffer.from(headersOpt.value).toString("utf8")
+    // An error after the claim ends this recheck instead of leaving it
+    // `claimed` to fail again every 2 minutes (audit A-022).
+    return yield* Effect.gen(function*() {
+      const attempts = yield* sql<{
+        readonly source_sha256: Uint8Array
+      }>`
+        SELECT source_sha256 FROM attempts WHERE id = ${recipe.attempt_id} LIMIT 1
+      `
+      const sourceSha = attempts[0]?.source_sha256
+      if (sourceSha === undefined) {
+        yield* fail("source missing")
+        return true
       }
-    }
+      const sourceOpt = yield* blobs.get(sourceSha)
+      const originalOpt = yield* blobs.get(recipe.original_sha256)
+      if (Option.isNone(sourceOpt) || Option.isNone(originalOpt)) {
+        yield* fail("source missing")
+        return true
+      }
 
-    const archRows = yield* loadArch(recipe.chunk_id)
-    const language = recipe.language === "cpp" ? "cpp" : "c"
-    const pinRows = yield* sql<{ readonly toolchain_digest: string }>`
-      SELECT m.toolchain_digest
-      FROM chunks c
-      INNER JOIN matches m ON m.id = c.current_match_id
-      WHERE c.id = ${recipe.chunk_id}
-      LIMIT 1
-    `
-    const expectedDigest = pinRows[0]?.toolchain_digest
-    const matchResult = yield* matchd.runJob({
-      jobId: recipe.id,
-      arch: archRows[0]?.arch ?? "x86_64",
-      language,
-      toolchain: recipe.toolchain,
-      flags: recipe.toolchain.flags,
-      ...(isPinnedDigest(expectedDigest) ? { expectedToolchainDigest: expectedDigest } : {}),
-      entrySymbol: recipe.entry_symbol,
-      originalBytesBase64: Buffer.from(originalOpt.value).toString("base64"),
-      sources: [
-        { path: language === "cpp" ? "candidate.cpp" : "candidate.c", text: Buffer.from(sourceOpt.value).toString("utf8") },
-        { path: "types.h", text: typesText }
-      ]
-    }).pipe(
-      Effect.catch((err) =>
-        Effect.succeed({
-          jobId: recipe.id,
-          matched: false,
-          score: 0,
-          originalInsns: 0,
-          equalInsns: 0,
-          compilerOk: false,
-          diagnostics: `matchd error: ${String(err)}`,
-          toolchainDigest: "unavailable",
-          canonicalSha256: "0".repeat(64)
-        })
+      const headerRows = yield* sql<{ readonly headers_sha256: Uint8Array | null }>`
+        SELECT tr.headers_sha256
+        FROM chunks c
+        LEFT JOIN type_revisions tr ON tr.id = c.type_revision_id
+        WHERE c.id = ${recipe.chunk_id}
+        LIMIT 1
+      `
+      let typesText = "/* empty */\n"
+      const headersSha = headerRows[0]?.headers_sha256
+      if (headersSha != null) {
+        const headersOpt = yield* blobs.get(headersSha)
+        if (Option.isSome(headersOpt)) {
+          typesText = Buffer.from(headersOpt.value).toString("utf8")
+        }
+      }
+
+      const archRows = yield* loadArch(recipe.chunk_id)
+      const language = recipe.language === "cpp" ? "cpp" : "c"
+      const pinRows = yield* sql<{ readonly toolchain_digest: string }>`
+        SELECT m.toolchain_digest
+        FROM chunks c
+        INNER JOIN matches m ON m.id = c.current_match_id
+        WHERE c.id = ${recipe.chunk_id}
+        LIMIT 1
+      `
+      const expectedDigest = pinRows[0]?.toolchain_digest
+      const matchResult = yield* matchd.runJob({
+        jobId: recipe.id,
+        arch: archRows[0]?.arch ?? "x86_64",
+        language,
+        toolchain: recipe.toolchain,
+        flags: recipe.toolchain.flags,
+        ...(isPinnedDigest(expectedDigest) ? { expectedToolchainDigest: expectedDigest } : {}),
+        entrySymbol: recipe.entry_symbol,
+        originalBytesBase64: Buffer.from(originalOpt.value).toString("base64"),
+        sources: [
+          { path: language === "cpp" ? "candidate.cpp" : "candidate.c", text: Buffer.from(sourceOpt.value).toString("utf8") },
+          { path: "types.h", text: typesText }
+        ]
+      }).pipe(
+        Effect.catch((err) =>
+          Effect.succeed({
+            jobId: recipe.id,
+            matched: false,
+            score: 0,
+            originalInsns: 0,
+            equalInsns: 0,
+            compilerOk: false,
+            diagnostics: `matchd error: ${String(err)}`,
+            toolchainDigest: "unavailable",
+            canonicalSha256: "0".repeat(64)
+          })
+        )
       )
-    )
 
-    if (!matchResult.compilerOk) {
-      yield* fail(matchResult.diagnostics)
-      return true
-    }
+      if (!matchResult.compilerOk) {
+        yield* fail(matchResult.diagnostics)
+        return true
+      }
 
-    if (matchResult.matched) {
-      yield* sql`
-        UPDATE matches
-        SET toolchain_digest = ${matchResult.toolchainDigest}, language = ${language}
-        WHERE chunk_id = ${recipe.chunk_id}
-          AND invalidated_at IS NULL
-          AND id = (
-            SELECT current_match_id FROM chunks
-            WHERE id = ${recipe.chunk_id} AND state = 'matched'
-          )
-      `
-    } else {
-      yield* sql`
-        UPDATE matches
-        SET
-          invalidated_at = now(),
-          invalidated_reason = ${"compiler recipe changed"}
-        WHERE chunk_id = ${recipe.chunk_id}
-          AND invalidated_at IS NULL
-      `
-      const stale = yield* sql<{ readonly id: string }>`
-        UPDATE chunks
-        SET
-          state = 'stale',
-          current_match_id = NULL,
-          lease_user_id = NULL,
-          lease_token = NULL,
-          lease_expires_at = NULL,
-          hold_started_at = NULL,
-          updated_at = now()
-        WHERE id = ${recipe.chunk_id}
-          AND state = 'matched'
-        RETURNING id
-      `
-      if (stale[0] !== undefined) {
+      // One transaction, applied once, and only to the match this recheck was
+      // queued for (audit A-022). If the chunk was matched again by a newer
+      // attempt since, this result leaves that match alone.
+      yield* sql.withTransaction(Effect.gen(function*() {
+        const finished = yield* sql<{ readonly id: string }>`
+          UPDATE recipe_jobs
+          SET state = 'succeeded', finished_at = now(), result = ${pg.json(matchResult)}
+          WHERE id = ${recipe.id}
+            AND state = 'claimed'
+          RETURNING id
+        `
+        if (finished[0] === undefined) return
+
+        const current = yield* sql<{ readonly match_id: string }>`
+          SELECT m.id AS match_id
+          FROM chunks c
+          INNER JOIN matches m ON m.id = c.current_match_id
+          WHERE c.id = ${recipe.chunk_id}
+            AND c.state = 'matched'
+            AND m.attempt_id = ${recipe.attempt_id}
+            AND m.invalidated_at IS NULL
+          FOR UPDATE OF c
+        `
+        const matchId = current[0]?.match_id
+        if (matchId === undefined) return
+
+        if (matchResult.matched) {
+          yield* sql`
+            UPDATE matches
+            SET toolchain_digest = ${matchResult.toolchainDigest}, language = ${language}
+            WHERE id = ${matchId}
+          `
+          return
+        }
+
+        yield* sql`
+          UPDATE matches
+          SET
+            invalidated_at = now(),
+            invalidated_reason = ${"compiler recipe changed"}
+          WHERE id = ${matchId}
+        `
+        yield* sql`
+          UPDATE chunks
+          SET
+            state = 'stale',
+            current_match_id = NULL,
+            lease_user_id = NULL,
+            lease_token = NULL,
+            lease_expires_at = NULL,
+            hold_started_at = NULL,
+            updated_at = now()
+          WHERE id = ${recipe.chunk_id}
+            AND state = 'matched'
+        `
         yield* stats.refresh(recipe.project_id)
         yield* activity.record({
           projectId: recipe.project_id,
@@ -282,15 +307,18 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
           chunkId: recipe.chunk_id,
           summary: `${recipe.entry_symbol} went stale after the compiler recipe changed`
         })
-      }
-    }
-
-    yield* sql`
-      UPDATE recipe_jobs
-      SET state = 'succeeded', finished_at = now(), result = ${pg.json(matchResult)}
-      WHERE id = ${recipe.id}
-    `
-    return true
+      }))
+      return true
+    }).pipe(
+      Effect.catchCauseIf(
+        (cause) => !Cause.hasInterrupts(cause),
+        (cause) =>
+          Effect.logWarning(`recipe recheck ${recipe.id} failed`, cause).pipe(
+            Effect.andThen(fail(`internal error: ${Cause.pretty(cause).slice(0, 2000)}`)),
+            Effect.as(true)
+          )
+      )
+    )
   })
 
   /**
@@ -656,15 +684,27 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
           summary: `Matched ${job.entry_symbol}`
         })
       } else {
+        // A miss hands the lease back with a fresh lease_hours window, never
+        // past max_hold_hours and never shorter than before (audit A-023).
+        // Otherwise a long queue wait could leave the holder minutes from expiry.
         yield* sql`
-          UPDATE chunks
+          UPDATE chunks AS c
           SET
             state = 'leased',
             best_attempt_id = ${attempt.id},
+            lease_expires_at = GREATEST(
+              c.lease_expires_at,
+              LEAST(
+                now() + make_interval(hours => p.lease_hours),
+                c.hold_started_at + make_interval(hours => p.max_hold_hours)
+              )
+            ),
             updated_at = now()
-          WHERE id = ${job.chunk_id}
-            AND state = 'validating'
-            AND lease_token = ${attempt.lease_token}
+          FROM projects p
+          WHERE c.id = ${job.chunk_id}
+            AND c.project_id = p.id
+            AND c.state = 'validating'
+            AND c.lease_token = ${attempt.lease_token}
         `
         yield* activity.record({
           projectId: job.project_id,

@@ -2,6 +2,60 @@
 
 Changes made because of the audit. Newest first. Finding ids refer to [audit-findings.md](audit-findings.md). The plan is [audit-plan.md](audit-plan.md).
 
+## 2026-11-23 — Phase 3: schema, races, and query plans
+
+Branch `audit/phase-3-schema`, off `main` at `f5418cf9b`. Not committed yet. Notes: [audit/phase-3.md](audit/phase-3.md).
+
+### Database
+
+- **Migration `012_job_integrity`:**
+  - `jobs_one_active_interactive` (I3, A-029)
+  - `jobs_chunk_id_idx` and `jobs_attempt_id_idx`
+  - `chunks_updated_at_idx`
+  - `chunks_board_idx` and `chunks_project_state_live_idx` (A-030)
+  - `chunks_validating_idx`
+  - `matches_chunk_id_idx`
+
+  Indexes only, so it applies to an empty database without repair steps.
+
+### Code
+
+- `ChunksRepo.listByProjectSlug` filters by `project_id`, so the board uses the new index (A-030).
+- `ChunksRepo.checkout` runs in one transaction:
+  - a per-user, per-project advisory lock guards `max_held_chunks` (A-008);
+  - the extra-lease path locks the chunk before counting (A-009).
+- `LeaseSweeper` recounts board stats for every project with chunk changes in the last two minutes (A-016).
+- `MatchWorker` recipe rechecks (A-022, A-031):
+  - commit in one transaction, applied once;
+  - touch only the match for their own attempt;
+  - end with `failed` on an error instead of looping.
+- `MatchWorker` miss path extends the lease within `max_hold_hours` (A-023).
+
+### Docs
+
+- `schema.md` documents `blob_objects` and migration 012, and updates the invariant lists. The drift check now reports no drift.
+- `schema-reasoning.md` covers migrations 009–012.
+- `roadmap.md` no longer says there is no web import UI. Together these close A-017.
+
+### Verification
+
+- `apps/api/scripts/verify-phase3.mjs`: 8/8.
+- `verify-audit-fixes.mjs`: 14/14.
+- Typecheck is clean, the unit tests pass (API 10, matchd 94), and the API log has no errors or deadlocks.
+- Query plans before and after are in the phase notes.
+- The race fixes were checked on the new code only. A race check can pass on the old code by chance.
+
+### To apply locally
+
+`npm run api:migrate` applies 012 to your dev database.
+
+## 2026-11-23 — Scope note: test data only
+
+All rows in the current databases are test data, and production starts with an empty database. So:
+
+- A-024 (recheck matches made under the old relocation masks) is closed as not applicable. No production match was ever judged under the old masks. The "recheck after deploy" follow-up in the A-006 entry below no longer applies.
+- Phase 3 migrations need to apply cleanly to an empty database, with no repair steps for existing rows.
+
 ## 2026-11-23 — Compile sandbox runs in Docker (A-027)
 
 Branch `audit/matchd-seccomp`, off `main` at `e5aa1b7ed`. Not committed yet.

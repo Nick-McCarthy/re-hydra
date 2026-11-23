@@ -1,6 +1,6 @@
 # Why the schema looks like this
 
-Status: rationale for [schema.md](schema.md), including migrations `001` through `008`. How the system runs: [architecture.md](../architecture.md). What is next: [roadmap.md](../roadmap.md).
+Status: rationale for [schema.md](schema.md), including migrations `001` through `012`. How the system runs: [architecture.md](../architecture.md). What is next: [roadmap.md](../roadmap.md).
 
 ## The lease is a column set, not a child table
 
@@ -104,6 +104,13 @@ A project page needs open / leased / matched counts. Counting `chunks` by state 
 ## How this serves multi-region later
 
 `projects.home_region` is present from day one so stage C does not rewrite the table. Primary keys are UUIDs. Blob references are hashes, so replication is object-store replication, not row shipping of payloads. Job and lease writes stay on the project home writer; the schema does not assume a second writer can update the same `chunks` row. Replica reads of the board may lag; the lease token in the checkout response is still the authority.
+
+## Later migrations
+
+- `009` adds `projects.max_held_chunks` (default 8, cap 32). It limits how many chunks one person can hold on a project at once, so one account cannot sit on the whole board. Checkout enforces it under a per-user, per-project advisory lock, so parallel checkouts cannot both pass the count.
+- `010` replaces magic-link sign-in with scrypt password hashes on `users` and drops `magic_link_tokens`.
+- `011` adds `access_tokens` for the CLI. They are hashed like sessions and survive a password change until revoked.
+- `012` is indexes only. `jobs_one_active_interactive` makes the database refuse a second unfinished interactive job on one chunk, which backs the "one submission validating at a time" rule. The others came from query plans on a 100,000-chunk project: the board page, the stats recount, the sweeper's backstop, and job and match lookups by chunk or attempt.
 
 ## Open schema questions
 

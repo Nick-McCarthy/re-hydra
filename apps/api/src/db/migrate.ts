@@ -14,6 +14,7 @@ import migration008 from "./migrations/008_proposal_accept.js"
 import migration009 from "./migrations/009_max_held_chunks.js"
 import migration010 from "./migrations/010_passwords.js"
 import migration011 from "./migrations/011_access_tokens.js"
+import migration012 from "./migrations/012_job_integrity.js"
 
 const program = PgMigrator.run({
   loader: Migrator.fromRecord({
@@ -27,7 +28,8 @@ const program = PgMigrator.run({
     "008_proposal_accept": migration008,
     "009_max_held_chunks": migration009,
     "010_passwords": migration010,
-    "011_access_tokens": migration011
+    "011_access_tokens": migration011,
+    "012_job_integrity": migration012
   })
 }).pipe(
   Effect.tap((applied) =>
