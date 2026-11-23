@@ -2,6 +2,45 @@
 
 Changes made because of the audit. Newest first. Finding ids refer to [audit-findings.md](audit-findings.md). The plan is [audit-plan.md](audit-plan.md).
 
+## 2026-11-23 — Compile sandbox runs in Docker (A-027)
+
+Branch `audit/matchd-seccomp`, off `main` at `e5aa1b7ed`. Not committed yet.
+
+- **New `docker-yml/matchd-seccomp.json`:** Docker's default seccomp profile (`moby/profiles` tag `seccomp/v0.3.0`, Apache-2.0) plus one rule that allows `clone`, `mount`, `pivot_root`, `umount2`, and `unshare`.
+  - Downloaded with your OK. Upstream sha256 and the reasoning are in `docker-yml/matchd-seccomp.md`.
+  - `docker-yml/make-matchd-seccomp.cjs` regenerates the file from a new upstream copy. It reproduces the committed file byte for byte.
+- **Compose:** the `matchd` service and all 17 pool services run with `security_opt: seccomp=docker-yml/matchd-seccomp.json`. The pool uses the `x-matchd-security` anchor.
+- **Scaler:** copies started by `MATCHD_SCALE=docker` get `--security-opt seccomp=<profile>`. The default path is the repo copy, and `MATCHD_SECCOMP_PROFILE` overrides it. With scaling on, the API refuses to start if the file is missing.
+- **matchd self-test** (`apps/matchd/src/sandboxSelfTest.ts`): with `MATCHD_SANDBOX=bwrap`, matchd starts one empty sandbox before it listens. If that fails, matchd exits with bwrap's error and the fix, instead of serving and failing every compile.
+
+### Verification
+
+- In a container with the profile, the exact `sandboxArgv` flags start bwrap. The sandbox sees no network interfaces.
+- With the profile, outside bwrap, the container still cannot `mount` or `unshare` its own namespaces (the kernel refuses without `CAP_SYS_ADMIN`).
+- All 17 rebuilt images pass the startup self-test with the profile. Without it, the base image exits with code 1 and the self-test message.
+- The compose `matchd` logs `compile sandbox bwrap: self-test passed`.
+- `verify-audit-fixes.mjs` passes 14/14 against the sandboxed matchd, so real compiles and matches work inside bwrap.
+- `npm run typecheck` is clean. `npm run matchd:test` passes 94.
+- Not run: an actual scale-out by the scaler. Its `docker run` flags (port, profile, token from the CLI environment) match what the image loop above used.
+
+### Deploy note
+
+Production matchd hosts must pass the same profile. A host that does not now fails at startup instead of silently.
+
+## 2026-11-23 — Housekeeping after the security fixes
+
+- Fast-forwarded `main` to `e5aa1b7ed`. Not pushed. `main` is 2 commits ahead of `origin/main`.
+- Rebuilt the 17 matchd images that existed locally: `re-hydra-matchd` plus the n64, mwcc, coff, switch, ps1, ps2, psp, ps3, ps4, xbox, wiiu, ds, 3ds, dc, saturn, and genesis images. GBA was never built and was skipped. No image carries `MATCHD_TOKEN` any more.
+- Recreated postgres, blobs, and matchd with `docker compose up -d`. All three publish on `127.0.0.1` only. Data survived in the named volumes: 7 projects, 8,705 chunks, 4 matches, 25,592 blob rows, 17,889 bucket objects.
+- Created `apps/matchd/.env` from the example (gitignored) so host `npm run matchd` starts.
+- Verified that matchd logs the dev-token warning and refuses a wrong token (401).
+
+**New finding A-027 (Critical):** the rebuilt images run compiles under bwrap (`MATCHD_SANDBOX=bwrap`, added in `ae5d7f57c`). Docker's default seccomp profile blocks the user namespace bwrap needs, so every compile fails. The old images predated the sandbox, which is why the end-to-end checks passed yesterday and fail today (11/14: the three checks that need a real match). Tested on this machine:
+- default container: `bwrap: No permissions to create new namespace`
+- `--security-opt seccomp=unconfined`: the sandbox starts
+
+Local matchd cannot compile until this is fixed. Not fixed yet: it needs a decision on the container's security settings.
+
 ## 2026-11-23 — matchd token and port fixes (A-019, A-020, A-021, A-025)
 
 Branch `audit/security-matchd-token`, off `main` at `c065901a7`. Not committed yet.

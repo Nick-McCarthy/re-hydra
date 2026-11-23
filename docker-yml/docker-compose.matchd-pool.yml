@@ -10,6 +10,11 @@
 x-matchd-build: &matchd-build
   context: ./apps/matchd
 
+# Docker's default seccomp profile plus what the bwrap compile sandbox needs.
+# See docker-yml/matchd-seccomp.md.
+x-matchd-security: &matchd-security
+  - seccomp=docker-yml/matchd-seccomp.json
+
 services:
   matchd-gba:
     image: re-hydra-matchd-gba
@@ -17,6 +22,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.agbcc
     ports: ["127.0.0.1:3010:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_AGBCC: agbcc-cc
@@ -33,6 +39,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.n64
     ports: ["127.0.0.1:3011:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_N64_GCC: /opt/n64/bin/mips-linux-gnu-gcc
@@ -45,6 +52,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.mwcc
     ports: ["127.0.0.1:3012:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_MWCC: mwcc-cc
@@ -58,6 +66,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.coff
     ports: ["127.0.0.1:3013:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_CLANG: coff-clang
@@ -71,6 +80,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.switch
     ports: ["127.0.0.1:3014:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_CLANG: switch-clang
@@ -84,6 +94,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.ps1
     ports: ["127.0.0.1:3015:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_PS1_GCC: mipsel-linux-gnu-gcc
@@ -97,6 +108,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.ps2
     ports: ["127.0.0.1:3016:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_PS2_GCC: ps2-gcc
@@ -110,6 +122,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.psp
     ports: ["127.0.0.1:3017:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_PSP_GCC: psp-gcc
@@ -124,6 +137,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.ps3
     ports: ["127.0.0.1:3018:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_PS3_GCC: powerpc64-linux-gnu-gcc
@@ -137,6 +151,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.ps4
     ports: ["127.0.0.1:3019:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_CLANG: ps4-clang
@@ -150,6 +165,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.xbox
     ports: ["127.0.0.1:3020:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_CLANG: xbox-clang
@@ -163,6 +179,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.wiiu
     ports: ["127.0.0.1:3021:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_WIIU_GCC: powerpc-linux-gnu-gcc
@@ -176,6 +193,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.ds
     ports: ["127.0.0.1:3022:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_DS_GCC: arm-none-eabi-gcc
@@ -189,6 +207,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.3ds
     ports: ["127.0.0.1:3023:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_3DS_GCC: 3ds-gcc
@@ -202,6 +221,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.dc
     ports: ["127.0.0.1:3024:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_DC_GCC: dc-gcc
@@ -215,6 +235,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.saturn
     ports: ["127.0.0.1:3025:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_SATURN_GCC: saturn-gcc
@@ -227,6 +248,7 @@ services:
       <<: *matchd-build
       dockerfile: Dockerfile.genesis
     ports: ["127.0.0.1:3026:3001"]
+    security_opt: *matchd-security
     environment:
       MATCHD_TOKEN: dev-matchd-token
       MATCHD_GENESIS_GCC: genesis-gcc

@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process"
+import { existsSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { Config, Effect, Layer, Redacted, Result } from "effect"
 import { SqlClient } from "effect/sql"
 import { MatchdPool } from "./MatchdPool.js"
@@ -52,7 +54,8 @@ const startReplica = (
   image: string,
   localImage: string,
   index: number,
-  token: Redacted.Redacted<string>
+  token: Redacted.Redacted<string>,
+  seccompProfile: string
 ): Effect.Effect<{ readonly url: string; readonly container: string }, Error> =>
   Effect.gen(function*() {
     const container = scaleContainerName(localImage, index)
@@ -67,6 +70,8 @@ const startReplica = (
       `rehydra.toolchain=${image}`,
       "-p",
       "127.0.0.1::3001",
+      "--security-opt",
+      `seccomp=${seccompProfile}`,
       "-e",
       "MATCHD_TOKEN",
       localImage
@@ -100,6 +105,16 @@ export const MatchdScalerLive = Layer.effectDiscard(Effect.gen(function*() {
     Math.max(1, yield* Config.Int("MATCHD_SCALE_MAX").pipe(Config.withDefault(defaultScaleMax)))
   )
   const token = yield* loadMatchdToken
+  // The same profile compose uses, so a scaled copy can start its bwrap
+  // sandbox (audit A-027). MATCHD_SECCOMP_PROFILE overrides the repo copy.
+  const seccompProfile = yield* Config.String("MATCHD_SECCOMP_PROFILE").pipe(
+    Config.withDefault(fileURLToPath(new URL("../../../../docker-yml/matchd-seccomp.json", import.meta.url)))
+  )
+  if (!existsSync(seccompProfile)) {
+    return yield* Effect.fail(
+      new Error(`MATCHD_SCALE=docker needs the matchd seccomp profile. Not found: ${seccompProfile}`)
+    )
+  }
   const sql = yield* SqlClient.SqlClient
   const pool = yield* MatchdPool
   const idleSince = new Map<string, number>()
@@ -238,7 +253,8 @@ export const MatchdScalerLive = Layer.effectDiscard(Effect.gen(function*() {
           image,
           localImage,
           (row?.urls ?? 1) + 1,
-          token
+          token,
+          seccompProfile
         ).pipe(Effect.result)
         if (Result.isFailure(created)) {
           yield* pool.cancelScaleOut(image)

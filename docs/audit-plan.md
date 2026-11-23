@@ -9,11 +9,13 @@ Status: in progress. Written 2026-11-22 against `main` at `cd2a88feb` with uncom
 | Phase 1 — Purpose | Done 2026-11-22 | [audit/phase-1-2.md](audit/phase-1-2.md) |
 | Phase 2 — Architecture | Done 2026-11-22 | [audit/phase-1-2.md](audit/phase-1-2.md) |
 | Fixes A-001 to A-006 | Done 2026-11-22, merged to `main` locally (`c065901a7`) | [audit-changelog.md](audit-changelog.md) |
-| Security fixes A-019, A-020, A-021, A-025 | Done 2026-11-23, not committed (branch `audit/security-matchd-token`) | [audit-changelog.md](audit-changelog.md) |
+| Security fixes A-019, A-020, A-021, A-025 | Done 2026-11-23, merged to `main` locally (`e5aa1b7ed`) | [audit-changelog.md](audit-changelog.md) |
+| Housekeeping: merge, rebuild 17 matchd images, recreate containers | Done 2026-11-23. Found A-027 | [audit-changelog.md](audit-changelog.md) |
+| A-027 sandbox seccomp profile | Done 2026-11-23, not committed (branch `audit/matchd-seccomp`) | [audit-changelog.md](audit-changelog.md), [../docker-yml/matchd-seccomp.md](../docker-yml/matchd-seccomp.md) |
 | Phase 3 — Schema | Next | — |
 | Phases 4–8 | Not started | — |
 
-Findings: [audit-findings.md](audit-findings.md). 26 logged, 10 fixed (A-001 to A-006, A-019 to A-021, A-025), 16 open. The highest open ones are A-011 (no member management), A-013 (owner-supplied compiler flags), and A-024 (recheck matches made under the old masks).
+Findings: [audit-findings.md](audit-findings.md). 27 logged, 11 fixed (A-001 to A-006, A-019 to A-021, A-025, A-027), 16 open. The highest open ones are A-011 (no member management), A-013 (owner-supplied compiler flags), and A-024 (recheck matches made under the old masks).
 
 Invariant status after the fixes:
 

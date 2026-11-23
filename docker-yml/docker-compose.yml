@@ -29,6 +29,11 @@ services:
       MATCHD_TIMEOUT_MS: "30000"
     ports:
       - "127.0.0.1:3001:3001"
+    # The compile sandbox (bwrap) needs unprivileged user namespaces, which
+    # Docker's default seccomp profile blocks. This is that profile plus the
+    # five calls bwrap needs. See docker-yml/matchd-seccomp.md.
+    security_opt:
+      - seccomp=docker-yml/matchd-seccomp.json
 
   blobs:
     image: adobe/s3mock:latest

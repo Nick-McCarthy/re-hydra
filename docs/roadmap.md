@@ -29,7 +29,7 @@ These steps add compile capacity and keep the lease, the digest, and the byte ma
 | --- | --- |
 | 1. Route by image | Done. `MATCHD_ROUTES` sends a job to the process for `toolchain.image`. `MATCHD_URL` is the fallback. `docker-yml/docker-compose.matchd-pool.yml` publishes one warm process per image |
 | 2. More claimers | Done. `MATCHD_WORKERS` defaults to 4. A claimer waits 2 seconds only when the queue is empty. One worker runs recipe rechecks, and only when no submit is waiting |
-| 3. Sandbox the compile | Done inside the image. No network, read-only toolchain, private temp directory, 30 second cap. A microVM and a 512 MB resident cap are still open |
+| 3. Sandbox the compile | Done inside the image. No network, read-only toolchain, private temp directory, 30 second cap. The container must run with `docker-yml/matchd-seccomp.json` (see `docker-yml/matchd-seccomp.md`). matchd checks the sandbox at startup and exits if it cannot start. A microVM and a 512 MB resident cap are still open |
 | 4. Grow the busy image | Done. `MATCHD_SCALE=docker` starts another local copy when an interactive job has waited 30 seconds, and removes it after the image has been idle. The warm process stays |
 | 5. A second site | Next, after the us-east-1 deploy. The second-region section lists the API code, then a replica, a bucket copy, and a matchd pool. The writer stays single. See the later section of [architecture.md](architecture.md) |
 

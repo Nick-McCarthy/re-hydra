@@ -7,6 +7,7 @@ import { Api } from "./Api.js"
 import { HealthLive } from "./http/HealthLive.js"
 import { JobsLive } from "./http/JobsLive.js"
 import { MatchdAuthLive } from "./http/MatchdAuth.js"
+import { SandboxSelfTestLive } from "./sandboxSelfTest.js"
 
 const ApiHandlers = Layer.mergeAll(HealthLive, JobsLive)
 
@@ -16,7 +17,9 @@ const ApiLive = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(HttpApiScalar.layer(Api))
 )
 
+// The sandbox self-test runs before the server listens.
 const HttpLive = HttpRouter.serve(ApiLive).pipe(
+  Layer.provide(SandboxSelfTestLive),
   Layer.provide(
     NodeHttpServer.layerConfig(createServer, {
       port: Config.Port("MATCHD_PORT").pipe(Config.withDefault(3001))
