@@ -4,8 +4,9 @@ import type { RelocField } from "./families/types.js"
 /**
  * Isolated match compares machine code, not objdump mnemonics.
  * Relocation fields from the object file are blanked on both sides so a
- * linked address can match an unlinked one. Opcode bytes stay when the
- * address field does not share their byte.
+ * linked address can match an unlinked one. Only the bits a relocation can
+ * change are blanked. Opcode and register bits stay, even when they share a
+ * byte with the address field.
  * Widths come from the job's CPU family. Callers that omit them use every
  * registered family, which is what the unit tests do.
  */
@@ -35,20 +36,35 @@ export const relocationWidth = (
 
 const fieldSpan = (field: RelocField): number => (typeof field === "number" ? field : field.span)
 
-/** Bytes to blank, relative to the relocation offset. */
-const blankParts = (
-  field: RelocField,
+type BlankByte = { readonly at: number; readonly bits: number }
+
+/** Spread one unit's bit mask over its bytes in memory order. */
+const unitBytes = (
+  at: number,
+  unit: number,
+  fieldBits: number,
   endian: ObjectEndian
-): ReadonlyArray<{ readonly at: number; readonly width: number }> => {
+): Array<BlankByte> => {
+  const out: Array<BlankByte> = []
+  for (let k = 0; k < unit; k++) {
+    const shift = endian === "big" ? (unit - 1 - k) * 8 : k * 8
+    const bits = Math.floor(fieldBits / 2 ** shift) & 0xff
+    if (bits !== 0) out.push({ at: at + k, bits })
+  }
+  return out
+}
+
+/** Bits to blank in each byte, relative to the relocation offset. */
+const blankParts = (field: RelocField, endian: ObjectEndian): ReadonlyArray<BlankByte> => {
   if (typeof field === "number") {
-    return field === 0 ? [] : [{ at: 0, width: field }]
+    return Array.from({ length: field }, (_, at) => ({ at, bits: 0xff }))
   }
-  if (field.immediateBits % 8 !== 0) {
-    return [{ at: 0, width: field.span }]
+  if ("immediateBits" in field) {
+    return unitBytes(0, field.span, 2 ** field.immediateBits - 1, endian)
   }
-  const width = field.immediateBits / 8
-  const at = endian === "big" ? field.span - width : 0
-  return [{ at, width }]
+  return field.fieldBits.flatMap((bits, index) =>
+    unitBytes(index * field.unit, field.unit, bits, endian)
+  )
 }
 
 const escapeRegExp = (value: string): string =>
@@ -244,30 +260,39 @@ const blank = (
   relocations: ReadonlyArray<Relocation>,
   widths: RelocationWidths,
   endian: ObjectEndian
-): { readonly bytes: Uint8Array; readonly masked: ReadonlyArray<boolean> } | { readonly reason: string } => {
+): { readonly bytes: Uint8Array; readonly masked: ReadonlyArray<number> } | { readonly reason: string } => {
   const out = new Uint8Array(bytes)
-  const masked = Array.from({ length: bytes.length }, () => false)
+  const masked = Array.from({ length: bytes.length }, () => 0)
   for (const relocation of relocations) {
     const field = relocationWidth(relocation.type, widths)
     if (field === undefined) {
       return { reason: `unsupported relocation ${relocation.type}` }
     }
     for (const part of blankParts(field, endian)) {
-      if (relocation.offset + part.at < 0 || relocation.offset + part.at + part.width > out.length) {
-        continue
-      }
-      for (let i = 0; i < part.width; i++) {
-        const index = relocation.offset + part.at + i
-        out[index] = 0
-        masked[index] = true
-      }
+      const index = relocation.offset + part.at
+      if (index < 0 || index >= out.length) continue
+      out[index] = (out[index] ?? 0) & ~part.bits & 0xff
+      masked[index] = (masked[index] ?? 0) | part.bits
     }
   }
   return { bytes: out, masked }
 }
 
-const hexLines = (bytes: Uint8Array, masked: ReadonlyArray<boolean>): Array<string> =>
-  [...bytes].map((byte, index) => (masked[index] === true ? "??" : byte.toString(16).padStart(2, "0")))
+/**
+ * A blanked nibble prints as `?`. A nibble with some bits blanked prints the
+ * bits that are left, so `48` under a branch mask still shows the opcode.
+ */
+const hexByte = (byte: number, bits: number): string =>
+  [4, 0]
+    .map((shift) => {
+      const nibbleBits = (bits >> shift) & 0xf
+      if (nibbleBits === 0xf) return "?"
+      return (((byte >> shift) & 0xf) & ~nibbleBits).toString(16)
+    })
+    .join("")
+
+const hexLines = (bytes: Uint8Array, masked: ReadonlyArray<number>): Array<string> =>
+  [...bytes].map((byte, index) => hexByte(byte, masked[index] ?? 0))
 
 /** Blank relocation fields, then compare. Different lengths do not match. */
 export const scoreMaskedBytes = (

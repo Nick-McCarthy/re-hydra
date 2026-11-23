@@ -8,7 +8,7 @@ test("an ARM branch relocation blanks the immediate and leaves the opcode", () =
   assert.equal(widths.R_ARM_CALL, 3)
   assert.equal(widths.R_ARM_JUMP24, 3)
   assert.equal(widths.R_ARM_ABS32, 4)
-  assert.equal(widths.R_ARM_THM_CALL, 4)
+  assert.deepEqual(widths.R_ARM_THM_CALL, { span: 4, unit: 2, fieldBits: [0x07ff, 0x3fff] })
   const linked = Uint8Array.from([0x12, 0x34, 0x56, 0xeb, 0x1e, 0xff, 0x2f, 0xe1])
   const object = Uint8Array.from([0x00, 0x00, 0x00, 0xeb, 0x1e, 0xff, 0x2f, 0xe1])
   const scored = scoreMaskedBytes(
@@ -53,7 +53,7 @@ test("agbcc thumb objdump is read in memory order", () => {
   assert.equal(scored.originalLines[2], "??")
 })
 
-test("a thumb call blanks the whole instruction pair", () => {
+test("a thumb call blanks the immediate bits of both halfwords", () => {
   const linked = Uint8Array.from([0x00, 0xf0, 0x01, 0xf8])
   const object = Uint8Array.from([0xff, 0xf7, 0xfe, 0xff])
   const scored = scoreMaskedBytes(

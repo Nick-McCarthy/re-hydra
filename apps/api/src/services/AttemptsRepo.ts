@@ -123,6 +123,31 @@ export class AttemptsRepo extends Context.Service<
         }))
       })
 
+      const leaseMissing = Effect.fn("AttemptsRepo.leaseMissing")(function*(
+        projectSlug: string,
+        chunkId: Uuid
+      ) {
+        const exists = yield* sql<{ readonly id: string }>`
+          SELECT c.id
+          FROM chunks c
+          INNER JOIN projects p ON p.id = c.project_id
+          WHERE p.slug = ${projectSlug}
+            AND c.id = ${chunkId}
+          LIMIT 1
+        `.pipe(Effect.orDie)
+        if (exists[0] === undefined) {
+          return yield* new NotFound()
+        }
+        return yield* new Conflict()
+      })
+
+      /**
+       * One transaction from the lease check to the job row (audit A-003).
+       * The chunk row is locked first, so a release, clear, sweep, or second
+       * submit waits for this one. A holder may have one submission in flight
+       * (audit A-002). Submitting the same bytes under the same lease returns
+       * the existing attempt.
+       */
       const submit = Effect.fn("AttemptsRepo.submit")(function*(options: {
         readonly projectSlug: string
         readonly chunkId: Uuid
@@ -130,230 +155,259 @@ export class AttemptsRepo extends Context.Service<
         readonly leaseToken: Uuid
         readonly source: string
       }) {
-        const leaseRows = yield* sql<LeaseRow>`
-          SELECT
-            c.id AS chunk_id,
-            c.project_id,
-            c.name,
-            c.bytes_sha256,
-            c.type_revision_id,
-            COALESCE(c.language_override, p.language) AS language,
-            p.toolchain,
-            c.lease_token,
-            c.state
+        // Unlocked pre-check so someone without this lease cannot write blobs.
+        const holders = yield* sql<{ readonly id: string }>`
+          SELECT c.id
           FROM chunks c
           INNER JOIN projects p ON p.id = c.project_id
           WHERE p.slug = ${options.projectSlug}
             AND c.id = ${options.chunkId}
-            AND c.lease_user_id = ${options.userId}
-            AND c.lease_token = ${options.leaseToken}
             AND c.state IN ('leased', 'validating')
+            AND (
+              (c.lease_user_id = ${options.userId} AND c.lease_token = ${options.leaseToken})
+              OR EXISTS (
+                SELECT 1 FROM chunk_leases cl
+                WHERE cl.chunk_id = c.id
+                  AND cl.user_id = ${options.userId}
+                  AND cl.lease_token = ${options.leaseToken}
+                  AND cl.released_at IS NULL
+              )
+            )
           LIMIT 1
         `.pipe(Effect.orDie)
-
-        let lease = leaseRows[0]
-        if (lease === undefined) {
-          const displaced = yield* sql<LeaseRow>`
-            WITH locked AS (
-              SELECT c.id
-              FROM chunks c
-              INNER JOIN projects p ON p.id = c.project_id
-              WHERE p.slug = ${options.projectSlug}
-                AND c.id = ${options.chunkId}
-                AND c.state = 'leased'
-              FOR UPDATE OF c
-            ),
-            side AS (
-              SELECT
-                cl.chunk_id,
-                cl.user_id,
-                cl.lease_token,
-                cl.lease_expires_at,
-                cl.hold_started_at
-              FROM chunk_leases cl
-              INNER JOIN locked ON locked.id = cl.chunk_id
-              WHERE cl.user_id = ${options.userId}
-                AND cl.lease_token = ${options.leaseToken}
-                AND cl.released_at IS NULL
-            ),
-            displaced_primary AS (
-              INSERT INTO chunk_leases (
-                chunk_id, user_id, lease_token, lease_expires_at, hold_started_at
-              )
-              SELECT
-                c.id,
-                c.lease_user_id,
-                c.lease_token,
-                c.lease_expires_at,
-                c.hold_started_at
-              FROM chunks c
-              INNER JOIN side ON side.chunk_id = c.id
-              WHERE c.lease_user_id IS NOT NULL
-                AND c.lease_token IS NOT NULL
-                AND c.lease_expires_at IS NOT NULL
-                AND c.hold_started_at IS NOT NULL
-                AND NOT EXISTS (
-                  SELECT 1 FROM chunk_leases existing
-                  WHERE existing.chunk_id = c.id
-                    AND existing.user_id = c.lease_user_id
-                    AND existing.released_at IS NULL
-                )
-              RETURNING chunk_id
-            ),
-            drop_side AS (
-              UPDATE chunk_leases cl
-              SET released_at = now()
-              FROM side
-              WHERE cl.chunk_id = side.chunk_id
-                AND cl.lease_token = side.lease_token
-                AND cl.released_at IS NULL
-                AND EXISTS (SELECT 1 FROM displaced_primary)
-              RETURNING cl.chunk_id
-            )
-            UPDATE chunks c
-            SET
-              state = 'validating',
-              lease_user_id = side.user_id,
-              lease_token = side.lease_token,
-              lease_expires_at = side.lease_expires_at,
-              hold_started_at = side.hold_started_at,
-              updated_at = now()
-            FROM side, projects p
-            WHERE c.id = side.chunk_id
-              AND c.project_id = p.id
-              AND EXISTS (SELECT 1 FROM drop_side)
-            RETURNING
-              c.id AS chunk_id,
-              c.project_id,
-              c.name,
-              c.bytes_sha256,
-              c.type_revision_id,
-              COALESCE(c.language_override, p.language) AS language,
-              p.toolchain,
-              c.lease_token,
-              c.state
-          `.pipe(Effect.orDie)
-          lease = displaced[0]
+        if (holders[0] === undefined) {
+          return yield* leaseMissing(options.projectSlug, options.chunkId)
         }
-        if (lease === undefined) {
-          const exists = yield* sql<{ readonly id: string }>`
-            SELECT c.id
+
+        // The bucket put is network I/O, so it stays outside the row lock.
+        // Blobs are content-addressed, so an unused one is harmless.
+        const sourceBytes = new TextEncoder().encode(options.source)
+        const sourceSha = yield* blobs.put(sourceBytes, "text/x-c")
+
+        return yield* sql.withTransaction(Effect.gen(function*() {
+          const locked = yield* sql<{
+            readonly id: string
+            readonly state: string
+            readonly lease_user_id: string | null
+            readonly lease_token: string | null
+          }>`
+            SELECT c.id, c.state, c.lease_user_id, c.lease_token
             FROM chunks c
             INNER JOIN projects p ON p.id = c.project_id
             WHERE p.slug = ${options.projectSlug}
               AND c.id = ${options.chunkId}
-            LIMIT 1
+            FOR UPDATE OF c
           `.pipe(Effect.orDie)
-          if (exists[0] === undefined) {
+          const chunk = locked[0]
+          if (chunk === undefined) {
             return yield* new NotFound()
           }
-          return yield* new Conflict()
-        }
 
-        if (lease.type_revision_id === null) {
-          return yield* new Conflict()
-        }
-
-        const sourceBytes = new TextEncoder().encode(options.source)
-        const sourceSha = yield* blobs.put(sourceBytes, "text/x-c")
-
-        const existing = yield* sql<AttemptRow>`
-          SELECT id, chunk_id, lease_token, score, matched, diagnostics, finished_at
-          FROM attempts
-          WHERE chunk_id = ${options.chunkId}
-            AND lease_token = ${options.leaseToken}
-            AND source_sha256 = ${sourceSha}
-          LIMIT 1
-        `.pipe(Effect.orDie)
-
-        const prior = existing[0]
-        if (prior !== undefined) {
-          const jobs = yield* sql<{ readonly id: string }>`
-            SELECT id FROM jobs
-            WHERE attempt_id = ${prior.id}
-            ORDER BY created_at DESC
+          const existing = yield* sql<AttemptRow>`
+            SELECT id, chunk_id, lease_token, score, matched, diagnostics, finished_at
+            FROM attempts
+            WHERE chunk_id = ${options.chunkId}
+              AND lease_token = ${options.leaseToken}
+              AND user_id = ${options.userId}
+              AND source_sha256 = ${sourceSha}
             LIMIT 1
           `.pipe(Effect.orDie)
+
+          const prior = existing[0]
+          if (prior !== undefined) {
+            const jobs = yield* sql<{ readonly id: string }>`
+              SELECT id FROM jobs
+              WHERE attempt_id = ${prior.id}
+              ORDER BY created_at DESC
+              LIMIT 1
+            `.pipe(Effect.orDie)
+            return {
+              attemptId: prior.id,
+              chunkId: prior.chunk_id,
+              jobId: jobs[0]?.id ?? prior.id,
+              state: prior.finished_at === null ? ("queued" as const) : ("finished" as const),
+              score: prior.score === null ? null : Number(prior.score),
+              matched: prior.matched,
+              diagnostics: prior.diagnostics,
+              leaseToken: prior.lease_token
+            } satisfies AttemptResult
+          }
+
+          const isPrimary =
+            chunk.lease_user_id === options.userId && chunk.lease_token === options.leaseToken
+          if (chunk.state !== "leased") {
+            // `validating` means a submission is already in flight (A-002).
+            return yield* new Conflict()
+          }
+
+          let lease: LeaseRow | undefined
+          if (isPrimary) {
+            const moved = yield* sql<LeaseRow>`
+              UPDATE chunks c
+              SET state = 'validating', updated_at = now()
+              FROM projects p
+              WHERE c.id = ${options.chunkId}
+                AND c.project_id = p.id
+                AND c.state = 'leased'
+                AND c.lease_user_id = ${options.userId}
+                AND c.lease_token = ${options.leaseToken}
+              RETURNING
+                c.id AS chunk_id,
+                c.project_id,
+                c.name,
+                c.bytes_sha256,
+                c.type_revision_id,
+                COALESCE(c.language_override, p.language) AS language,
+                p.toolchain,
+                c.lease_token,
+                c.state
+            `.pipe(Effect.orDie)
+            lease = moved[0]
+          } else {
+            // An extra holder submits: their token moves onto the chunk and the
+            // previous primary is parked in chunk_leases.
+            const displaced = yield* sql<LeaseRow>`
+              WITH side AS (
+                SELECT
+                  cl.chunk_id,
+                  cl.user_id,
+                  cl.lease_token,
+                  cl.lease_expires_at,
+                  cl.hold_started_at
+                FROM chunk_leases cl
+                WHERE cl.chunk_id = ${options.chunkId}
+                  AND cl.user_id = ${options.userId}
+                  AND cl.lease_token = ${options.leaseToken}
+                  AND cl.released_at IS NULL
+              ),
+              displaced_primary AS (
+                INSERT INTO chunk_leases (
+                  chunk_id, user_id, lease_token, lease_expires_at, hold_started_at
+                )
+                SELECT
+                  c.id,
+                  c.lease_user_id,
+                  c.lease_token,
+                  c.lease_expires_at,
+                  c.hold_started_at
+                FROM chunks c
+                INNER JOIN side ON side.chunk_id = c.id
+                WHERE c.state = 'leased'
+                  AND c.lease_user_id IS NOT NULL
+                  AND c.lease_token IS NOT NULL
+                  AND c.lease_expires_at IS NOT NULL
+                  AND c.hold_started_at IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM chunk_leases existing
+                    WHERE existing.chunk_id = c.id
+                      AND existing.user_id = c.lease_user_id
+                      AND existing.released_at IS NULL
+                  )
+                RETURNING chunk_id
+              ),
+              drop_side AS (
+                UPDATE chunk_leases cl
+                SET released_at = now()
+                FROM side
+                WHERE cl.chunk_id = side.chunk_id
+                  AND cl.lease_token = side.lease_token
+                  AND cl.released_at IS NULL
+                  AND EXISTS (SELECT 1 FROM displaced_primary)
+                RETURNING cl.chunk_id
+              )
+              UPDATE chunks c
+              SET
+                state = 'validating',
+                lease_user_id = side.user_id,
+                lease_token = side.lease_token,
+                lease_expires_at = side.lease_expires_at,
+                hold_started_at = side.hold_started_at,
+                updated_at = now()
+              FROM side, projects p
+              WHERE c.id = side.chunk_id
+                AND c.project_id = p.id
+                AND c.state = 'leased'
+                AND EXISTS (SELECT 1 FROM drop_side)
+              RETURNING
+                c.id AS chunk_id,
+                c.project_id,
+                c.name,
+                c.bytes_sha256,
+                c.type_revision_id,
+                COALESCE(c.language_override, p.language) AS language,
+                p.toolchain,
+                c.lease_token,
+                c.state
+            `.pipe(Effect.orDie)
+            lease = displaced[0]
+          }
+
+          // Any failure from here rolls the move to `validating` back.
+          if (lease === undefined || lease.type_revision_id === null) {
+            return yield* new Conflict()
+          }
+
+          const attemptRows = yield* sql<{ readonly id: string }>`
+            INSERT INTO attempts (
+              chunk_id, user_id, lease_token, source_sha256,
+              type_revision_id, language
+            ) VALUES (
+              ${options.chunkId},
+              ${options.userId},
+              ${options.leaseToken},
+              ${sourceSha},
+              ${lease.type_revision_id},
+              ${lease.language}
+            )
+            RETURNING id
+          `.pipe(Effect.orDie)
+
+          const attemptId = attemptRows[0]?.id
+          if (attemptId === undefined) {
+            return yield* new Conflict()
+          }
+
+          const jobRows = yield* sql<{ readonly id: string }>`
+            INSERT INTO jobs (
+              project_id, chunk_id, attempt_id, kind, state, priority,
+              toolchain, language, entry_symbol, original_sha256, sources
+            ) VALUES (
+              ${lease.project_id},
+              ${options.chunkId},
+              ${attemptId},
+              ${"interactive"},
+              ${"queued"},
+              ${10},
+              ${pg.json(lease.toolchain)},
+              ${lease.language},
+              ${lease.name},
+              ${lease.bytes_sha256},
+              ${pg.json([{
+                path: "candidate.c",
+                sha256: Buffer.from(sourceSha).toString("hex")
+              }])}
+            )
+            RETURNING id
+          `.pipe(Effect.orDie)
+
+          const jobId = jobRows[0]?.id
+          if (jobId === undefined) {
+            return yield* new Conflict()
+          }
+
+          yield* stats.refresh(lease.project_id)
+
           return {
-            attemptId: prior.id,
-            chunkId: prior.chunk_id,
-            jobId: jobs[0]?.id ?? prior.id,
-            state: prior.finished_at === null ? ("queued" as const) : ("finished" as const),
-            score: prior.score === null ? null : Number(prior.score),
-            matched: prior.matched,
-            diagnostics: prior.diagnostics,
-            leaseToken: prior.lease_token
+            attemptId,
+            chunkId: options.chunkId,
+            jobId,
+            state: "queued" as const,
+            score: null,
+            matched: null,
+            diagnostics: null,
+            leaseToken: options.leaseToken
           } satisfies AttemptResult
-        }
-
-        const attemptRows = yield* sql<{ readonly id: string }>`
-          INSERT INTO attempts (
-            chunk_id, user_id, lease_token, source_sha256,
-            type_revision_id, language
-          ) VALUES (
-            ${options.chunkId},
-            ${options.userId},
-            ${options.leaseToken},
-            ${sourceSha},
-            ${lease.type_revision_id},
-            ${lease.language}
-          )
-          RETURNING id
-        `.pipe(Effect.orDie)
-
-        const attemptId = attemptRows[0]?.id
-        if (attemptId === undefined) {
-          return yield* new Conflict()
-        }
-
-        yield* sql`
-          UPDATE chunks
-          SET state = 'validating', updated_at = now()
-          WHERE id = ${options.chunkId}
-            AND lease_token = ${options.leaseToken}
-            AND state IN ('leased', 'validating')
-        `.pipe(Effect.orDie)
-
-        yield* stats.refresh(lease.project_id)
-
-        const jobRows = yield* sql<{ readonly id: string }>`
-          INSERT INTO jobs (
-            project_id, chunk_id, attempt_id, kind, state, priority,
-            toolchain, language, entry_symbol, original_sha256, sources
-          ) VALUES (
-            ${lease.project_id},
-            ${options.chunkId},
-            ${attemptId},
-            ${"interactive"},
-            ${"queued"},
-            ${10},
-            ${pg.json(lease.toolchain)},
-            ${lease.language},
-            ${lease.name},
-            ${lease.bytes_sha256},
-            ${pg.json([{
-              path: "candidate.c",
-              sha256: Buffer.from(sourceSha).toString("hex")
-            }])}
-          )
-          RETURNING id
-        `.pipe(Effect.orDie)
-
-        const jobId = jobRows[0]?.id
-        if (jobId === undefined) {
-          return yield* new Conflict()
-        }
-
-        return {
-          attemptId,
-          chunkId: options.chunkId,
-          jobId,
-          state: "queued" as const,
-          score: null,
-          matched: null,
-          diagnostics: null,
-          leaseToken: options.leaseToken
-        } satisfies AttemptResult
+        })).pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)))
       })
 
       return AttemptsRepo.of({ listByChunk, submit })

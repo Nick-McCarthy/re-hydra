@@ -1,5 +1,5 @@
 import { PgClient } from "@effect/sql-pg"
-import { Config, Effect, Layer, Option } from "effect"
+import { Cause, Config, Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql"
 import { Activity } from "./Activity.js"
 import { Blobs } from "./Blobs.js"
@@ -293,49 +293,99 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
     return true
   })
 
-  const processOnce = (index: number) => Effect.gen(function*() {
-    const claimed = yield* sql<JobRow>`
+  /**
+   * A job's result applies once. Only the run that moves the job from
+   * `claimed` to a finished state writes chunk, attempt, or proposal rows.
+   * A second run of the same job (its claim expired while the first was still
+   * compiling) finds the job finished and changes nothing (audit A-001, I8).
+   */
+  const finishJob = (jobId: string, state: "succeeded" | "failed", result: unknown) =>
+    sql<{ readonly id: string }>`
       UPDATE jobs
+      SET state = ${state}, finished_at = now(), result = ${pg.json(result)}
+      WHERE id = ${jobId}
+        AND state = 'claimed'
+      RETURNING id
+    `.pipe(Effect.orDie, Effect.map((rows) => rows[0] !== undefined))
+
+  /**
+   * Return a `validating` chunk to its holder when its job ends without a
+   * result. Nothing else releases `validating` (audit A-004, I11). The lease
+   * keeps its expiry, or gets a fresh one if none was stored.
+   */
+  const releaseValidating = (chunkId: string, jobId: string, leaseToken: string | null) =>
+    sql<{ readonly id: string }>`
+      UPDATE chunks AS c
       SET
-        state = 'claimed',
-        claimed_by = ${`api-match-${index}`},
-        claim_expires_at = now() + interval '2 minutes'
-      WHERE id = (
-        SELECT id FROM jobs
-        WHERE state = 'queued'
-           OR (state = 'claimed' AND claim_expires_at < now())
-        ORDER BY priority ASC, created_at ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1
-      )
-      RETURNING
-        id,
-        attempt_id,
-        proposal_id,
-        chunk_id,
-        project_id,
-        kind,
-        entry_symbol,
-        language,
-        toolchain,
-        original_sha256
-    `
+        state = 'leased',
+        lease_expires_at = COALESCE(
+          c.lease_expires_at,
+          now() + make_interval(hours => p.lease_hours)
+        ),
+        updated_at = now()
+      FROM projects p
+      WHERE c.id = ${chunkId}
+        AND c.project_id = p.id
+        AND c.state = 'validating'
+        AND (${leaseToken}::uuid IS NULL OR c.lease_token = ${leaseToken}::uuid)
+        AND NOT EXISTS (
+          SELECT 1 FROM jobs j
+          WHERE j.chunk_id = c.id
+            AND j.kind = 'interactive'
+            AND j.state IN ('queued', 'claimed')
+            AND j.id <> ${jobId}
+        )
+      RETURNING c.id
+    `.pipe(Effect.orDie)
 
-    const job = claimed[0]
-    if (job === undefined) {
-      // One worker drains recipe rechecks, and only when no submit is waiting.
-      if (index !== 0) return false
-      return yield* processRecipe
-    }
+  /**
+   * End a job that produced no compile result: inputs missing, or an error
+   * while committing. An interactive job hands the chunk back to its holder
+   * with the reason as diagnostics. A recheck keeps the match and counts as
+   * done, the same as a compiler failure (audit A-005).
+   */
+  const failJob = (job: JobRow, reason: string) =>
+    sql.withTransaction(Effect.gen(function*() {
+      const finished = yield* finishJob(job.id, "failed", { error: reason })
+      if (!finished) return
 
+      if (job.kind === "revalidation") {
+        if (job.proposal_id !== null) {
+          yield* sql`
+            UPDATE type_proposals
+            SET revalidation_done = revalidation_done + 1
+            WHERE id = ${job.proposal_id}
+          `.pipe(Effect.orDie)
+          yield* finalizeProposalIfDone(job.proposal_id)
+        }
+        return
+      }
+
+      let leaseToken: string | null = null
+      if (job.attempt_id !== null) {
+        const attempts = yield* sql<{ readonly lease_token: string }>`
+          UPDATE attempts
+          SET
+            score = 0,
+            matched = false,
+            compiler_ok = false,
+            diagnostics = ${reason},
+            finished_at = now()
+          WHERE id = ${job.attempt_id}
+            AND finished_at IS NULL
+          RETURNING lease_token
+        `.pipe(Effect.orDie)
+        leaseToken = attempts[0]?.lease_token ?? null
+      }
+      const released = yield* releaseValidating(job.chunk_id, job.id, leaseToken)
+      if (released[0] !== undefined) {
+        yield* stats.refresh(job.project_id)
+      }
+    })).pipe(Effect.orDie)
+
+  const runJob = (job: JobRow) => Effect.gen(function*() {
     if (job.attempt_id === null) {
-      yield* sql`
-        UPDATE jobs
-        SET state = 'failed',
-            finished_at = now(),
-            result = ${pg.json({ error: "attempt missing" })}
-        WHERE id = ${job.id}
-      `
+      yield* failJob(job, "attempt missing")
       return true
     }
 
@@ -348,38 +398,20 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
 
     const attempt = attempts[0]
     if (attempt === undefined) {
-      yield* sql`
-        UPDATE jobs
-        SET state = 'failed',
-            finished_at = now(),
-            result = ${pg.json({ error: "attempt missing" })}
-        WHERE id = ${job.id}
-      `
+      yield* failJob(job, "attempt missing")
       return true
     }
 
     const sourceOpt = yield* blobs.get(attempt.source_sha256)
     if (Option.isNone(sourceOpt)) {
-      yield* sql`
-        UPDATE jobs
-        SET state = 'failed',
-            finished_at = now(),
-            result = ${pg.json({ error: "source blob missing" })}
-        WHERE id = ${job.id}
-      `
+      yield* failJob(job, "source blob missing")
       return true
     }
     const sourceText = Buffer.from(sourceOpt.value).toString("utf8")
 
     const originalOpt = yield* blobs.get(job.original_sha256)
     if (Option.isNone(originalOpt)) {
-      yield* sql`
-        UPDATE jobs
-        SET state = 'failed',
-            finished_at = now(),
-            result = ${pg.json({ error: "original bytes missing" })}
-        WHERE id = ${job.id}
-      `
+      yield* failJob(job, "original bytes missing")
       return true
     }
 
@@ -457,190 +489,244 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
       ? canonical
       : Buffer.from(matchResult.canonicalSha256, "utf8")
 
-    yield* sql`
-      INSERT INTO blobs (sha256, size_bytes, content_type)
-      VALUES (
-        ${canonicalBytes},
-        ${canonicalBytes.byteLength},
-        ${"application/octet-stream"}
-      )
-      ON CONFLICT DO NOTHING
-    `
-
     if (job.kind === "revalidation" && job.proposal_id !== null) {
-      if (!matchResult.compilerOk) {
-        yield* sql`
-          UPDATE jobs
-          SET
-            state = 'failed',
-            finished_at = now(),
-            result = ${pg.json(matchResult)}
-          WHERE id = ${job.id}
-        `
-        return true
+      const proposalId = job.proposal_id
+      yield* sql.withTransaction(Effect.gen(function*() {
+        const finished = yield* finishJob(
+          job.id,
+          matchResult.compilerOk ? "succeeded" : "failed",
+          matchResult
+        )
+        if (!finished) return
+
+        if (!matchResult.compilerOk || matchResult.matched) {
+          // A compiler failure keeps the match, so it counts as done (A-005).
+          yield* sql`
+            UPDATE type_proposals
+            SET revalidation_done = revalidation_done + 1
+            WHERE id = ${proposalId}
+          `
+          if (matchResult.matched) {
+            yield* sql`
+              UPDATE matches
+              SET toolchain_digest = ${matchResult.toolchainDigest}
+              WHERE id = (
+                SELECT current_match_id FROM chunks
+                WHERE id = ${job.chunk_id} AND state = 'matched'
+              )
+                AND invalidated_at IS NULL
+            `
+          }
+        } else {
+          yield* sql`
+            UPDATE matches
+            SET
+              invalidated_at = now(),
+              invalidated_reason = ${"type proposal revalidation failed"}
+            WHERE chunk_id = ${job.chunk_id}
+              AND invalidated_at IS NULL
+          `
+          yield* sql`
+            UPDATE chunks
+            SET
+              state = 'stale',
+              current_match_id = NULL,
+              lease_user_id = NULL,
+              lease_token = NULL,
+              lease_expires_at = NULL,
+              hold_started_at = NULL,
+              updated_at = now()
+            WHERE id = ${job.chunk_id}
+              AND state = 'matched'
+          `
+          yield* stats.refresh(job.project_id)
+          const regressions = yield* sql<{ readonly caused_by: string }>`
+            INSERT INTO proposal_regressions (
+              proposal_id, project_id, chunk_id, caused_by
+            )
+            SELECT ${proposalId}, ${job.project_id}, ${job.chunk_id}, created_by
+            FROM type_proposals
+            WHERE id = ${proposalId}
+            ON CONFLICT (proposal_id, chunk_id) DO NOTHING
+            RETURNING caused_by
+          `
+          yield* activity.record({
+            projectId: job.project_id,
+            actorId: regressions[0]?.caused_by ?? null,
+            kind: "became_stale",
+            chunkId: job.chunk_id,
+            subjectId: proposalId,
+            summary: `${job.entry_symbol} went stale during type revalidation`
+          })
+          yield* sql`
+            UPDATE type_proposals
+            SET revalidation_failed = revalidation_failed + 1
+            WHERE id = ${proposalId}
+          `
+        }
+
+        yield* finalizeProposalIfDone(proposalId)
+      }))
+      return true
+    }
+
+    // Interactive path. One transaction, and only for the attempt the chunk is
+    // still validating (audit A-001, I4). The chunk row is locked before the
+    // match row is written, so a stale result cannot leave an orphan match.
+    yield* sql.withTransaction(Effect.gen(function*() {
+      const finished = yield* finishJob(job.id, "succeeded", matchResult)
+      if (!finished) return
+
+      yield* sql`
+        UPDATE attempts
+        SET
+          score = ${matchResult.score},
+          matched = ${matchResult.matched},
+          original_insns = ${matchResult.originalInsns},
+          equal_insns = ${matchResult.equalInsns},
+          compiler_ok = ${matchResult.compilerOk},
+          diagnostics = ${matchResult.diagnostics},
+          toolchain_digest = ${matchResult.toolchainDigest},
+          finished_at = now()
+        WHERE id = ${attempt.id}
+      `
+
+      const current = yield* sql<{ readonly id: string }>`
+        SELECT id
+        FROM chunks
+        WHERE id = ${job.chunk_id}
+          AND state = 'validating'
+          AND lease_token = ${attempt.lease_token}
+        FOR UPDATE
+      `
+      if (current[0] === undefined) {
+        // The lease ended or moved on while this job ran. The attempt keeps
+        // its score, and the chunk is left as it is.
+        return
       }
+
       if (matchResult.matched) {
         yield* sql`
-          UPDATE type_proposals
-          SET revalidation_done = revalidation_done + 1
-          WHERE id = ${job.proposal_id}
-        `
-        yield* sql`
-          UPDATE matches
-          SET toolchain_digest = ${matchResult.toolchainDigest}
-          WHERE id = (
-            SELECT current_match_id FROM chunks
-            WHERE id = ${job.chunk_id} AND state = 'matched'
+          INSERT INTO blobs (sha256, size_bytes, content_type)
+          VALUES (
+            ${canonicalBytes},
+            ${canonicalBytes.byteLength},
+            ${"application/octet-stream"}
           )
-            AND invalidated_at IS NULL
+          ON CONFLICT DO NOTHING
         `
-      } else {
-        yield* sql`
-          UPDATE matches
-          SET
-            invalidated_at = now(),
-            invalidated_reason = ${"type proposal revalidation failed"}
-          WHERE chunk_id = ${job.chunk_id}
-            AND invalidated_at IS NULL
+        const matchRows = yield* sql<{ readonly id: string }>`
+          INSERT INTO matches (
+            chunk_id, attempt_id, user_id, type_revision_id,
+            toolchain_digest, canonical_sha256, language
+          ) VALUES (
+            ${job.chunk_id},
+            ${attempt.id},
+            ${attempt.user_id},
+            ${attempt.type_revision_id},
+            ${matchResult.toolchainDigest},
+            ${canonicalBytes},
+            ${attempt.language}
+          )
+          RETURNING id
         `
+
+        const matchId = matchRows[0]?.id ?? null
+        yield* activity.releaseSideLeases(job.chunk_id)
         yield* sql`
           UPDATE chunks
           SET
-            state = 'stale',
-            current_match_id = NULL,
+            state = 'matched',
+            current_match_id = ${matchId},
+            best_attempt_id = ${attempt.id},
             lease_user_id = NULL,
             lease_token = NULL,
             lease_expires_at = NULL,
             hold_started_at = NULL,
             updated_at = now()
           WHERE id = ${job.chunk_id}
-            AND state = 'matched'
-        `
-        yield* stats.refresh(job.project_id)
-        const regressions = yield* sql<{ readonly caused_by: string }>`
-          INSERT INTO proposal_regressions (
-            proposal_id, project_id, chunk_id, caused_by
-          )
-          SELECT ${job.proposal_id}, ${job.project_id}, ${job.chunk_id}, created_by
-          FROM type_proposals
-          WHERE id = ${job.proposal_id}
-          ON CONFLICT (proposal_id, chunk_id) DO NOTHING
-          RETURNING caused_by
+            AND state = 'validating'
+            AND lease_token = ${attempt.lease_token}
         `
         yield* activity.record({
           projectId: job.project_id,
-          actorId: regressions[0]?.caused_by ?? null,
-          kind: "became_stale",
+          actorId: attempt.user_id,
+          kind: "matched",
           chunkId: job.chunk_id,
-          subjectId: job.proposal_id,
-          summary: `${job.entry_symbol} went stale during type revalidation`
+          summary: `Matched ${job.entry_symbol}`
         })
+      } else {
         yield* sql`
-          UPDATE type_proposals
-          SET revalidation_failed = revalidation_failed + 1
-          WHERE id = ${job.proposal_id}
+          UPDATE chunks
+          SET
+            state = 'leased',
+            best_attempt_id = ${attempt.id},
+            updated_at = now()
+          WHERE id = ${job.chunk_id}
+            AND state = 'validating'
+            AND lease_token = ${attempt.lease_token}
         `
+        yield* activity.record({
+          projectId: job.project_id,
+          actorId: attempt.user_id,
+          kind: "match_missed",
+          chunkId: job.chunk_id,
+          summary: `Missed ${job.entry_symbol}`
+        })
       }
 
-      yield* sql`
-        UPDATE jobs
-        SET
-          state = 'succeeded',
-          finished_at = now(),
-          result = ${pg.json(matchResult)}
-        WHERE id = ${job.id}
-      `
+      yield* stats.refresh(job.project_id)
+    }))
+    return true
+  })
 
-      yield* finalizeProposalIfDone(job.proposal_id)
-      return true
-    }
-
-    // Interactive path
-    yield* sql`
-      UPDATE attempts
-      SET
-        score = ${matchResult.score},
-        matched = ${matchResult.matched},
-        original_insns = ${matchResult.originalInsns},
-        equal_insns = ${matchResult.equalInsns},
-        compiler_ok = ${matchResult.compilerOk},
-        diagnostics = ${matchResult.diagnostics},
-        toolchain_digest = ${matchResult.toolchainDigest},
-        finished_at = now()
-      WHERE id = ${attempt.id}
-    `
-
-    if (matchResult.matched) {
-      const matchRows = yield* sql<{ readonly id: string }>`
-        INSERT INTO matches (
-          chunk_id, attempt_id, user_id, type_revision_id,
-          toolchain_digest, canonical_sha256, language
-        ) VALUES (
-          ${job.chunk_id},
-          ${attempt.id},
-          ${attempt.user_id},
-          ${attempt.type_revision_id},
-          ${matchResult.toolchainDigest},
-          ${canonicalBytes},
-          ${attempt.language}
-        )
-        RETURNING id
-      `
-
-      const matchId = matchRows[0]?.id ?? null
-      yield* activity.releaseSideLeases(job.chunk_id)
-      yield* sql`
-        UPDATE chunks
-        SET
-          state = 'matched',
-          current_match_id = ${matchId},
-          best_attempt_id = ${attempt.id},
-          lease_user_id = NULL,
-          lease_token = NULL,
-          lease_expires_at = NULL,
-          hold_started_at = NULL,
-          updated_at = now()
-        WHERE id = ${job.chunk_id}
-          AND state = 'validating'
-      `
-      yield* activity.record({
-        projectId: job.project_id,
-        actorId: attempt.user_id,
-        kind: "matched",
-        chunkId: job.chunk_id,
-        summary: `Matched ${job.entry_symbol}`
-      })
-    } else {
-      yield* sql`
-        UPDATE chunks
-        SET
-          state = 'leased',
-          best_attempt_id = ${attempt.id},
-          updated_at = now()
-        WHERE id = ${job.chunk_id}
-          AND state = 'validating'
-          AND lease_token = ${attempt.lease_token}
-      `
-      yield* activity.record({
-        projectId: job.project_id,
-        actorId: attempt.user_id,
-        kind: "match_missed",
-        chunkId: job.chunk_id,
-        summary: `Missed ${job.entry_symbol}`
-      })
-    }
-
-    yield* stats.refresh(job.project_id)
-
-    yield* sql`
+  const processOnce = (index: number) => Effect.gen(function*() {
+    const claimed = yield* sql<JobRow>`
       UPDATE jobs
       SET
-        state = 'succeeded',
-        finished_at = now(),
-        result = ${pg.json(matchResult)}
-      WHERE id = ${job.id}
+        state = 'claimed',
+        claimed_by = ${`api-match-${index}`},
+        claim_expires_at = now() + interval '2 minutes'
+      WHERE id = (
+        SELECT id FROM jobs
+        WHERE state = 'queued'
+           OR (state = 'claimed' AND claim_expires_at < now())
+        ORDER BY priority ASC, created_at ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      )
+      RETURNING
+        id,
+        attempt_id,
+        proposal_id,
+        chunk_id,
+        project_id,
+        kind,
+        entry_symbol,
+        language,
+        toolchain,
+        original_sha256
     `
-    return true
+
+    const job = claimed[0]
+    if (job === undefined) {
+      // One worker drains recipe rechecks, and only when no submit is waiting.
+      if (index !== 0) return false
+      return yield* processRecipe
+    }
+
+    // A job that throws is ended, not left `claimed`. Otherwise its claim
+    // expires and the same failure repeats every 2 minutes (audit A-001).
+    return yield* runJob(job).pipe(
+      Effect.catchCauseIf(
+        (cause) => !Cause.hasInterrupts(cause),
+        (cause) =>
+          Effect.logWarning(`match job ${job.id} failed`, cause).pipe(
+            Effect.andThen(failJob(job, `internal error: ${Cause.pretty(cause).slice(0, 2000)}`)),
+            Effect.as(true)
+          )
+      )
+    )
   }).pipe(Effect.orDie)
 
   const configuredWorkers = yield* Config.Int("MATCHD_WORKERS").pipe(

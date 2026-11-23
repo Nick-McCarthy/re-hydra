@@ -8,8 +8,8 @@ import type { CpuFamily } from "./types.js"
  * bytes, so the opcode and the registers stay. On a little-endian PS1, PS2, or PSP
  * object they are the first two.
  *
- * `R_MIPS_26` (j/jal) is 26 bits inside the same word. Two of those bits share
- * the opcode byte, so the whole instruction is blanked.
+ * `R_MIPS_26` (j/jal) is 26 bits inside the same word. Only those bits are
+ * blanked, so `j` and `jal` still differ in the 6 opcode bits.
  */
 export const mipsFamily: CpuFamily = {
   id: "mips",

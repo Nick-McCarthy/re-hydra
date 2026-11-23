@@ -54,7 +54,7 @@ test("a little-endian HI16 blanks the low half of the word", () => {
   assert.deepEqual(scored.originalLines, ["??", "??", "02", "3c"])
 })
 
-test("jal blanks the whole instruction and leaves the delay slot", () => {
+test("jal blanks the 26-bit target and keeps the opcode and the delay slot", () => {
   const dump = `
 00000000 <call1>:
    0:\t0c000000 \tjal\t0
@@ -69,7 +69,7 @@ test("jal blanks the whole instruction and leaves the delay slot", () => {
   assert.equal("reason" in scored, false)
   if ("reason" in scored) return
   assert.equal(scored.matched, true)
-  assert.deepEqual(scored.originalLines, ["??", "??", "??", "??", "00", "00", "00", "00"])
+  assert.deepEqual(scored.originalLines, ["0c", "??", "??", "??", "00", "00", "00", "00"])
 })
 
 const ps1Call = `

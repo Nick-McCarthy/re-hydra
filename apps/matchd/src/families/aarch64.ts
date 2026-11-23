@@ -2,10 +2,10 @@ import type { CpuFamily } from "./types.js"
 
 /**
  * AArch64 ELF relocations. Switch objects are little-endian ELF.
- * `CALL26` and `JUMP26` put a 26-bit target in the instruction, so the
- * opcode shares a byte with the field and the whole instruction is blanked.
+ * `CALL26` and `JUMP26` put a 26-bit target in the instruction. Only those
+ * bits are blanked, so `b` and `bl` still differ in the opcode bits.
  * `ADRP` and the `LO12` loads scatter the address through the instruction,
- * so those are blanked the same way. Absolute and PC-relative data words
+ * so those still blank the whole instruction. Absolute and PC-relative data words
  * are a plain byte width.
  */
 export const aarch64Family: CpuFamily = {

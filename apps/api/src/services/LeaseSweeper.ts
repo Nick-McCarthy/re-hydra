@@ -123,6 +123,36 @@ export const LeaseSweeperLive = Layer.effectDiscard(Effect.gen(function*() {
       }
     }
 
+    // Backstop for audit A-004. A chunk stays `validating` only while an
+    // interactive job for it is queued or claimed. The match worker hands the
+    // chunk back when a job fails. This catches anything that slipped past,
+    // such as a job row removed by hand, after five quiet minutes.
+    const orphaned = yield* sql<{ readonly id: string; readonly project_id: string; readonly name: string }>`
+      UPDATE chunks AS c
+      SET
+        state = 'leased',
+        lease_expires_at = COALESCE(
+          c.lease_expires_at,
+          now() + make_interval(hours => p.lease_hours)
+        ),
+        updated_at = now()
+      FROM projects p
+      WHERE c.project_id = p.id
+        AND c.state = 'validating'
+        AND c.updated_at < now() - interval '5 minutes'
+        AND NOT EXISTS (
+          SELECT 1 FROM jobs j
+          WHERE j.chunk_id = c.id
+            AND j.kind = 'interactive'
+            AND j.state IN ('queued', 'claimed')
+        )
+      RETURNING c.id, c.project_id, c.name
+    `
+    for (const chunk of orphaned) {
+      touched.add(chunk.project_id)
+      yield* Effect.logWarning(`returned ${chunk.name} (${chunk.id}) from validating with no job in flight`)
+    }
+
     for (const projectId of touched) {
       yield* stats.refresh(projectId)
     }

@@ -29,7 +29,7 @@ test("a lis/addi pair keeps the opcodes and blanks the address halves", () => {
   ])
 })
 
-test("a bl blanks the whole instruction and leaves the return", () => {
+test("a bl blanks the LI field and keeps the opcode and LK bit", () => {
   const dump = `
 00000000 <call1>:
    0:\t48000001 \tbl\t0
@@ -44,7 +44,7 @@ test("a bl blanks the whole instruction and leaves the return", () => {
   assert.equal("reason" in scored, false)
   if ("reason" in scored) return
   assert.equal(scored.matched, true)
-  assert.deepEqual(scored.originalLines, ["??", "??", "??", "??", "4e", "80", "00", "20"])
+  assert.deepEqual(scored.originalLines, ["48", "??", "??", "?1", "4e", "80", "00", "20"])
 })
 
 test("a small-data load blanks the instruction that names r13", () => {
@@ -103,7 +103,7 @@ test("Xbox 360 REL24 blanks the branch and REFHI blanks two bytes", () => {
   assert.equal("reason" in branch, false)
   if ("reason" in branch) return
   assert.equal(branch.matched, true)
-  assert.deepEqual(branch.originalLines.slice(0, 4), ["??", "??", "??", "??"])
+  assert.deepEqual(branch.originalLines.slice(0, 4), ["48", "??", "??", "?1"])
   const high = scoreMaskedBytes(
     Uint8Array.from([0x3d, 0x20, 0x80, 0x12]),
     Uint8Array.from([0x3d, 0x20, 0x00, 0x00]),

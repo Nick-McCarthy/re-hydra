@@ -46,7 +46,7 @@ test("an ELFv1 descriptor symbol keeps the text size nm stores as data", () => {
   assert.equal(symbolSize(nm, "load"), 0x1c)
 })
 
-test("a PS3 call follows the dot label and blanks the whole bl", () => {
+test("a PS3 call follows the dot label and blanks the bl target", () => {
   const extracted = extractSymbolMachineCode(dump, "call1", 0x38, undefined, "big")
   assert.equal(extracted.ok, true)
   if (!extracted.ok) return
@@ -61,8 +61,8 @@ test("a PS3 call follows the dot label and blanks the whole bl", () => {
   assert.equal("reason" in scored, false)
   if ("reason" in scored) return
   assert.equal(scored.matched, true)
-  assert.equal(scored.originalLines[12], "??")
-  assert.equal(scored.originalLines[15], "??")
+  assert.equal(scored.originalLines[12], "48")
+  assert.equal(scored.originalLines[15], "?1")
   assert.equal(scored.originalLines[16], "60")
   assert.equal(scored.originalLines[0x2c], "00")
 })

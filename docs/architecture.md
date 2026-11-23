@@ -63,7 +63,8 @@ An isolated compile will not be bit-identical to the slice in the original file.
 
 - Compile the submission with the pinned recipe, as one translation unit.
 - Take the entry symbol's bytes. Padding after the symbol is not part of the function.
-- Blank relocation fields on the candidate and at the same offsets in the original bytes. Leave opcodes alone.
+- Blank relocation fields on the candidate and at the same offsets in the original bytes. Blank only the bits the linker writes. Opcode and register bits must match, even when they share a byte with the field, so `b` does not match `bl`.
+- A match compares the code around each relocation, not where the relocation points. A call to a different function can still match. The integration build is the check for that.
 - The match succeeds when the two masked sequences have the same length and the same bytes. The score is equal bytes divided by original bytes.
 - An unknown relocation fails closed.
 
@@ -118,6 +119,8 @@ Object storage, read replicas, and a compiler registry addressed by digest are t
 ## Later: more than one site
 
 This part is design. It is not deployed. The local scaler is the one-site form of "add compile capacity when interactive wait exceeds 30 seconds." A second site is the next capacity step, and it waits until this site's pool is dull.
+
+The API has one database URL and one bucket. A second site adds a replica client for board and profile reads, a nearest-bucket read with fallback to the home bucket, and a signed work-bundle URL with that same fallback. Checkout, submit, heartbeat, match commit, and expiry stay on the writer. Compile routing is already `MATCHD_URL` and `MATCHD_ROUTES`. The roadmap's second-region section is the cutover list.
 
 Move bytes and compiles toward the contributor. Keep the lease decision on a single writer for that project.
 

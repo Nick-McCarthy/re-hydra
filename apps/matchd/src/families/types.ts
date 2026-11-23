@@ -6,16 +6,28 @@ export type RelocBytes = number
 
 /**
  * The low bits of an instruction word. The relocation offset is the start of
- * the instruction. Endianness decides which bytes those bits occupy.
- * A width that is not a whole number of bytes blanks the whole instruction,
- * because the field shares a byte with the opcode.
+ * the instruction. Endianness decides which bytes those bits occupy. Only
+ * those bits are blanked, so opcode bits that share a byte with the field
+ * still have to match.
  */
 export type RelocImmediate = {
   readonly span: number
   readonly immediateBits: 16 | 24 | 26
 }
 
-export type RelocField = RelocBytes | RelocImmediate
+/**
+ * Bits the linker may rewrite, one mask per instruction unit, written as the
+ * integer objdump prints for that unit. `unit` is 2 for each Thumb halfword
+ * and 4 for a 32-bit instruction word. `span` is `unit * fieldBits.length`.
+ * Every other bit (the opcode and the registers) has to match.
+ */
+export type RelocMask = {
+  readonly span: number
+  readonly unit: 2 | 4
+  readonly fieldBits: ReadonlyArray<number>
+}
+
+export type RelocField = RelocBytes | RelocImmediate | RelocMask
 
 /**
  * A CPU family is shared by every console that emits the same relocation names.

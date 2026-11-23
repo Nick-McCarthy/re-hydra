@@ -23,7 +23,7 @@ const dump = `
       20: c0 03 5f d6  	ret
 `
 
-test("a CALL26 blanks the bl and leaves the surrounding instructions", () => {
+test("a CALL26 blanks the bl target and keeps the opcode bits", () => {
   const extracted = extractSymbolMachineCode(dump, "call1", 24, widths, "little")
   assert.equal(extracted.ok, true)
   if (!extracted.ok) return
@@ -40,7 +40,7 @@ test("a CALL26 blanks the bl and leaves the surrounding instructions", () => {
   assert.equal(scored.originalLines[4], "fd")
   assert.equal(scored.originalLines[7], "91")
   assert.equal(scored.originalLines[8], "??")
-  assert.equal(scored.originalLines[11], "??")
+  assert.equal(scored.originalLines[11], "94")
   assert.equal(scored.originalLines[12], "00")
   assert.equal(scored.originalLines[23], "d6")
 })

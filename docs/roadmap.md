@@ -31,7 +31,7 @@ These steps add compile capacity and keep the lease, the digest, and the byte ma
 | 2. More claimers | Done. `MATCHD_WORKERS` defaults to 4. A claimer waits 2 seconds only when the queue is empty. One worker runs recipe rechecks, and only when no submit is waiting |
 | 3. Sandbox the compile | Done inside the image. No network, read-only toolchain, private temp directory, 30 second cap. A microVM and a 512 MB resident cap are still open |
 | 4. Grow the busy image | Done. `MATCHD_SCALE=docker` starts another local copy when an interactive job has waited 30 seconds, and removes it after the image has been idle. The warm process stays |
-| 5. A second site | Next. Read replicas, object storage, and a matchd pool in another region. The writer stays single. See the later section of [architecture.md](architecture.md) |
+| 5. A second site | Next, after the us-east-1 deploy. The second-region section lists the API code, then a replica, a bucket copy, and a matchd pool. The writer stays single. See the later section of [architecture.md](architecture.md) |
 
 ## Compilers
 
@@ -47,8 +47,8 @@ One relocation table covers the family. Each console still has its own compiler 
 
 | Console | CPU | Compiler | Notes |
 | --- | --- | --- | --- |
-| Nintendo 64 | R4300i, big-endian | GNU GCC 2.8.1, `ghcr.io/re-hydra/n64-gcc:2.8.1`, `Dockerfile.n64` | `R_MIPS_*` widths are in `families/mips.ts`. `HI16` and `LO16` blank the immediate. `R_MIPS_26` blanks the whole `j`/`jal`. IDO and GCC 2.7.2 are still separate images |
-| PlayStation | R3000, little-endian | Debian `mipsel-linux-gnu-gcc`, `ghcr.io/re-hydra/ps1-gcc:mipsel`, `Dockerfile.ps1` | PSY-Q `ccpsx` is a different binary. A little-endian `HI16` blanks the low half of the word. `R_MIPS_26` blanks the whole `jal` and leaves the delay slot |
+| Nintendo 64 | R4300i, big-endian | GNU GCC 2.8.1, `ghcr.io/re-hydra/n64-gcc:2.8.1`, `Dockerfile.n64` | `R_MIPS_*` widths are in `families/mips.ts`. `HI16` and `LO16` blank the immediate. `R_MIPS_26` blanks the 26-bit target, so `j` and `jal` still differ. IDO and GCC 2.7.2 are still separate images |
+| PlayStation | R3000, little-endian | Debian `mipsel-linux-gnu-gcc`, `ghcr.io/re-hydra/ps1-gcc:mipsel`, `Dockerfile.ps1` | PSY-Q `ccpsx` is a different binary. A little-endian `HI16` blanks the low half of the word. `R_MIPS_26` blanks the `jal` target, keeps its opcode, and leaves the delay slot |
 | PlayStation 2 | Emotion Engine, little-endian | Debian `mips64el-linux-gnuabi64-gcc` with `-march=r5900 -msingle-float`, `ghcr.io/re-hydra/ps2-gcc:mips64el`, `Dockerfile.ps2` | Sony `ee-gcc` is a different binary. Objects are ELF64. `R_MIPS_26` keeps the paired `R_MIPS_NONE` records. VU microcode stays out |
 | PSP | Allegrex, little-endian | pspdev GCC 15.2.0, `ghcr.io/re-hydra/psp-gcc:allegrex`, `Dockerfile.psp` | The Sony SN Systems compiler is a different binary. `psp-objdump` decodes Allegrex. This compiler does not add paired `R_MIPS_NONE` records. `R_MIPS_GPREL16` blanks a `gp` load |
 
@@ -58,9 +58,9 @@ CodeWarrior and GCC do not emit the same bytes.
 
 | Console | CPU | Compiler | Notes |
 | --- | --- | --- | --- |
-| GameCube and Wii | Gekko / Broadway, big-endian | Open `mwcc`, `ghcr.io/re-hydra/mwcc:gc`, `Dockerfile.mwcc` | The Metrowerks SDK is a different binary. `R_PPC_*` widths are in `families/ppc.ts`. `ADDR16_HA` / `ADDR16_LO` blank the immediate. `REL24` and `EMB_SDA21` blank the whole instruction |
-| Wii U | Espresso, big-endian | Debian `powerpc-linux-gnu-gcc`, `ghcr.io/re-hydra/wiiu-gcc:powerpc`, `Dockerfile.wiiu` | The Cafe SDK compiler is a different binary. `REL24` blanks the whole `bl` |
-| PlayStation 3 | Cell PPE, big-endian | Debian `powerpc64-linux-gnu-gcc`, `ghcr.io/re-hydra/ps3-gcc:powerpc64`, `Dockerfile.ps3` | SNC is a different binary. The function symbol is in `.opd` and `nm` prints it as `D`. `ps3-objdump` passes `-z`. `R_PPC64_REL24` blanks the whole `bl`. SPU code stays out |
+| GameCube and Wii | Gekko / Broadway, big-endian | Open `mwcc`, `ghcr.io/re-hydra/mwcc:gc`, `Dockerfile.mwcc` | The Metrowerks SDK is a different binary. `R_PPC_*` widths are in `families/ppc.ts`. `ADDR16_HA` / `ADDR16_LO` blank the immediate. `REL24` blanks the LI field and keeps the opcode and LK bit. `EMB_SDA21` blanks `rA` and the offset and keeps the opcode and `rD` |
+| Wii U | Espresso, big-endian | Debian `powerpc-linux-gnu-gcc`, `ghcr.io/re-hydra/wiiu-gcc:powerpc`, `Dockerfile.wiiu` | The Cafe SDK compiler is a different binary. `REL24` blanks the `bl` target and keeps the opcode and LK bit |
+| PlayStation 3 | Cell PPE, big-endian | Debian `powerpc64-linux-gnu-gcc`, `ghcr.io/re-hydra/ps3-gcc:powerpc64`, `Dockerfile.ps3` | SNC is a different binary. The function symbol is in `.opd` and `nm` prints it as `D`. `ps3-objdump` passes `-z`. `R_PPC64_REL24` blanks the `bl` target and keeps the opcode and LK bit. SPU code stays out |
 | Xbox 360 | Xenon, big-endian | Not registered | `IMAGE_REL_PPC_*` widths and the COFF reader are in place. Debian Clang cannot write PowerPC COFF. libxenon emits ELF. OpenXeChain has no released compiler to pin |
 
 ### ARM and AArch64
@@ -69,10 +69,10 @@ Thumb and ARM are different instruction streams. The chunk's flags name which on
 
 | Console | CPU | Compiler | Notes |
 | --- | --- | --- | --- |
-| Game Boy Advance | ARM7TDMI | `agbcc`, `ghcr.io/re-hydra/agbcc:gba`, `Dockerfile.agbcc` | `R_ARM_*` widths are in `families/arm.ts`. ARM branches keep the opcode byte. Thumb `BL` blanks the whole pair. `armcc` is a different image |
+| Game Boy Advance | ARM7TDMI | `agbcc`, `ghcr.io/re-hydra/agbcc:gba`, `Dockerfile.agbcc` | `R_ARM_*` widths are in `families/arm.ts`. ARM branches keep the opcode byte. Thumb `BL` blanks the immediate bits of both halfwords and the BL/BLX bit. `armcc` is a different image |
 | Nintendo DS | ARM9 and ARM7 | Debian `arm-none-eabi-gcc`, `ghcr.io/re-hydra/ds-gcc:arm`, `Dockerfile.ds` | ARM9 is `-march=armv5te`. ARM7 is `-march=armv4t -mthumb`. `mwccarm` and `armcc` are different binaries |
 | Nintendo 3DS | ARM11 | Debian `arm-none-eabi-gcc` with `-march=armv6k -mtune=mpcore`, `ghcr.io/re-hydra/3ds-gcc:arm`, `Dockerfile.3ds` | ARM Compiler 5 is a different binary. Hard float is `-mfpu=vfp -mfloat-abi=hard` |
-| Switch | AArch64, little-endian | Debian Clang `--target=aarch64-none-elf`, `ghcr.io/re-hydra/clang:switch`, `Dockerfile.switch` | The Nintendo SDK Clang is a different binary. `R_AARCH64_CALL26` blanks the whole `bl` |
+| Switch | AArch64, little-endian | Debian Clang `--target=aarch64-none-elf`, `ghcr.io/re-hydra/clang:switch`, `Dockerfile.switch` | The Nintendo SDK Clang is a different binary. `R_AARCH64_CALL26` blanks the `bl` target and keeps the opcode bits |
 
 ### x86
 
@@ -96,15 +96,57 @@ Host `gcc` does not reproduce these bytes. A native Windows C or C++ program use
 
 NES, Game Boy, Game Boy Color, and Super Nintendo games are almost all assembly. `cc65` and GBDK produce different bytes. Cover one of these after a specific game is known to have been built with a specific installable C compiler.
 
+## First deployment
+
+One region, us-east-1, one writer. A second region waits until this site's pool is dull.
+
+The signer builds `endpoint/bucket/key`. A bucket created on AWS rejects that path style. It has to call `https://<bucket>.s3.us-east-1.amazonaws.com/<hash>`, with the host header set to that same name. The content hash, the `blobs` catalog, and the compile job that already carries the bytes stay as they are.
+
+Around the process:
+
+- A private us-east-1 bucket, empty, with public access blocked and server-side encryption on. The local bucket stays on this machine.
+- Postgres in us-east-1, migrations applied, seed left unrun. The dev user and `rehydra-dev` password stay local.
+- The API and matchd in that same region. `BLOB_STORE=s3`, region `us-east-1`, and an access key that can only put and get objects in that bucket. `MATCHD_TOKEN` has to be a real secret. The code defaults it to `dev-matchd-token`.
+- HTTPS on the public API URL. The web app talks to `/v1` on the same origin.
+
+`blob_objects` can remain for that first deploy. With `BLOB_STORE=s3` the API does not write it. Drop the table after one checkout and one match have both read from the bucket.
+
+The local copy (`npm run api:blobs`) fills this machine only. Production starts empty.
+
+A microVM sandbox, the 512 MB compile cap, Xbox 360, PlayStation 5, fuse-split, and another region wait. A public site also needs the written policy for copyrighted software and malware.
+
+## Second region
+
+This waits until the us-east-1 pool is dull. The writer stays in us-east-1. How the sites fit is the later section of [architecture.md](architecture.md).
+
+These destinations are already settings:
+
+- `MATCHD_URL` and `MATCHD_ROUTES` can send a compile to a matchd process in another region. The job already carries the source and the original bytes, so that worker does not read the bucket.
+- `BLOB_S3_ENDPOINT`, `BLOB_S3_BUCKET`, and `BLOB_S3_REGION` name one bucket.
+- `DATABASE_URL` names one database.
+- `projects.home_region` is stored and shown. Nothing routes a request by it.
+
+`MATCHD_SCALE=docker` starts another container on the local Docker daemon. That copy is the busy-image step. A site in another region is a matchd process running there.
+
+Code before a second site behaves as designed:
+
+- Two database clients. Checkout, submit, heartbeat, match commit, and expiry use the us-east-1 writer. Board and profile reads can use the replica in the API's region. The checkout response the client shows is the writer's response.
+- Blob reads try the bucket in the API's region, then the us-east-1 bucket when the object is not there yet. Puts stay on the us-east-1 bucket.
+- A signed download URL for a work bundle, with that same fallback. Today the API loads the bytes through the single endpoint and sends them on.
+
+After that code, the new region is a Postgres replica, a replicated bucket, a matchd pool with the same image digests, and an API pointed at those three.
+
+A project whose writer lives in Europe is a further change. The API would send that project's writes to its own writer, and only one writer may grant a lease for a chunk.
+
 ## Still open
 
-- A second site, after this site's pool is dull. The writer stays single.
+- A second site, after this site's pool is dull. The writer stays single. The second-region section lists the code and the settings.
 - A microVM sandbox, and a 512 MB resident cap per compile. The image sandbox is the boundary that runs today.
 - Xbox 360 and PlayStation 5, until a public compiler emits the retail object format.
 - Retail SDK compilers. They stay unregistered.
 - What happens to member matches if a fused chunk is later split. Split is not implemented.
 - No automated test of the full checkout loop.
-- Blob bytes are local `blob_objects`, not object storage.
+- The object signer still uses path-style URLs. The first-deployment section is the us-east-1 cutover. `blob_objects` stays until a checkout and a match have both read from the bucket.
 - No web UI for Ghidra import. Owners POST the JSON.
 - The CLI does not follow, search, change the lease cap, pin a language, or start an integration build.
 - Integration compiles each matched function as its own translation unit. It does not search for a layout or a flag set.
