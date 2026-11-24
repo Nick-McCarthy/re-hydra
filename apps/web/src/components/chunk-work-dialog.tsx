@@ -133,6 +133,30 @@ export function ChunkWorkDialog({
     }
   }
 
+  async function toggleInlineAsm(allow: boolean) {
+    if (!session) {
+      navigate("/login")
+      return
+    }
+    if (!allow && chunk?.matchUsesInlineAsm) {
+      const ok = window.confirm(
+        "The current match uses inline assembly. Turning this off invalidates that match and returns the function to the pool as stale."
+      )
+      if (!ok) return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const updated = await api.setChunkInlineAsm(projectSlug, chunkId, allow, session.token)
+      setChunk(updated)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not change the inline assembly setting")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function release() {
     if (!session || !lease) return
     setBusy(true)
@@ -310,6 +334,18 @@ export function ChunkWorkDialog({
               <Button type="button" variant="outline" onClick={() => void saveLanguage()} disabled={busy}>
                 Save language
               </Button>
+              <label
+                className="flex items-center gap-2 text-sm"
+                title="Off by default. Inline assembly can copy the original bytes without translating them, so only allow it for code that really was assembly. Matches that use it are marked."
+              >
+                <input
+                  type="checkbox"
+                  checked={chunk?.allowInlineAsm ?? false}
+                  disabled={busy || chunk === null}
+                  onChange={(event) => void toggleInlineAsm(event.target.checked)}
+                />
+                Allow inline assembly
+              </label>
             </>
           ) : null}
           {canMaintain && chunk?.state === "leased" ? (

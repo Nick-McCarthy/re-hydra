@@ -27,6 +27,7 @@ export class UsersRepo extends Context.Service<
             readonly display_name: string
             readonly created_at: Date | string
             readonly surviving: number
+            readonly assembly: number
             readonly regressions: number
             readonly follower_count: number
             readonly following_count: number
@@ -35,13 +36,23 @@ export class UsersRepo extends Context.Service<
               u.id,
               u.display_name,
               u.created_at,
+              -- Audit A-041: assembly matches do not count toward reputation.
               (
                 SELECT COUNT(*)::int
                 FROM matches m
                 INNER JOIN chunks c ON c.current_match_id = m.id
                 WHERE m.user_id = u.id
                   AND m.invalidated_at IS NULL
+                  AND NOT m.uses_inline_asm
               ) AS surviving,
+              (
+                SELECT COUNT(*)::int
+                FROM matches m
+                INNER JOIN chunks c ON c.current_match_id = m.id
+                WHERE m.user_id = u.id
+                  AND m.invalidated_at IS NULL
+                  AND m.uses_inline_asm
+              ) AS assembly,
               (
                 SELECT COUNT(*)::int
                 FROM proposal_regressions r
@@ -77,6 +88,7 @@ export class UsersRepo extends Context.Service<
             readonly language: string
             readonly created_at: Date | string
             readonly invalidated_at: Date | string | null
+            readonly uses_inline_asm: boolean
           }>`
             SELECT
               m.id AS match_id,
@@ -87,7 +99,8 @@ export class UsersRepo extends Context.Service<
               c.address,
               m.language,
               m.created_at,
-              m.invalidated_at
+              m.invalidated_at,
+              m.uses_inline_asm
             FROM matches m
             INNER JOIN chunks c ON c.id = m.chunk_id
             INNER JOIN projects p ON p.id = c.project_id
@@ -120,7 +133,8 @@ export class UsersRepo extends Context.Service<
             address: String(row.address),
             language: row.language,
             createdAt: toIso(row.created_at),
-            active: row.invalidated_at === null
+            active: row.invalidated_at === null,
+            usesInlineAsm: row.uses_inline_asm
           }))
 
           return {
@@ -129,6 +143,7 @@ export class UsersRepo extends Context.Service<
             createdAt: toIso(user.created_at),
             matchedCount: user.surviving,
             survivingMatches: user.surviving,
+            assemblyMatches: user.assembly,
             regressions: user.regressions,
             reputation: user.surviving - user.regressions,
             followerCount: user.follower_count,

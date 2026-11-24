@@ -2,6 +2,174 @@
 
 Changes made because of the audit. Newest first. Finding ids refer to [audit-findings.md](audit-findings.md). The plan is [audit-plan.md](audit-plan.md).
 
+## 2026-11-23 — Compiler flag allow-list and per-compile memory cap (A-013)
+
+Branch `audit/phase-4-security`. Not committed yet.
+
+### Flag allow-list
+
+- **New `apps/matchd/src/flagPolicy.ts`:** an allow-list per compiler family (`gcc-cc1`, `agbcc`, `clang`, `mwcc`). A flag must match a known-safe shape for its family:
+  - `-O…`, `-std=`, `-f…`, `-m…`, `-W…`, `-D…`, `-U…`, `-g…`, `-G<n>`, `-EB`/`-EL`
+  - `--target=` (clang only)
+  - mwcc's own options and their values
+- **Refused, each with a reason:**
+  - flags that run another program: `-wrapper`, `-fplugin`, `-B`, `-specs`, `-Wa,`/`-Wl,`/`-Wp,`, `-X…`, `-mllvm`, `-load`;
+  - flags that read or write named files: `@file`, `-include`, `-imacros`, `-I`, `-isystem`, `--sysroot`, `-o`, `-save-temps`, `-dump*`, `-fdump-*`, profile and sanitizer files;
+  - flags that change the output: `-S`, `-E`, `-x`;
+  - any path (`/`, `\`, `..`), control characters, and bare words;
+  - more than 64 flags.
+- **matchd** checks before every compile (`compile.ts`) and link (`link.ts`). A refusal is a compiler failure with `compiler flag not allowed: '<flag>' (<reason>)`.
+- **The API** imports the same module as `@re-hydra/matchd/flagPolicy`. Project creation and settings changes refuse a bad flag, or an unregistered image, with a new 400 problem, `FlagsRejected`, that names the flag and the reason.
+- **Unit tests:** `src/flagPolicy.test.ts` covers the real recipes for each family, the review's probes, and each refused group.
+
+### Memory cap
+
+- `sandbox.ts` runs each compile under `prlimit --data`, `MATCHD_MEMORY_MB` (default 1024). An allocation past the cap fails, so the compile fails instead of exhausting the container.
+- **Why `--data` and not `--as`:** I tried an address-space cap first. Under `--as=1G` the GameCube driver (a Node script) died with `std::bad_alloc` before compiling, because V8 reserves gigabytes of address space it never uses. `--data` counts only writable memory.
+- **Correction during testing:** my first memory check used awk, which fails at any cap because of its own `sprintf` buffer limit. It proved nothing. The check now uses a real 400 MB `Buffer.alloc`.
+
+### Verification
+
+- New `apps/api/scripts/verify-flags.mjs`: 40/40.
+  - All 17 matchd images compile a plain function under the cap.
+  - Every image refuses `-wrapper` and `@/etc/passwd` before compiling.
+  - A 400 MB allocation fails under 256 MB and succeeds under 1 GB.
+  - The API refuses `-wrapper` on create and `-fplugin=evil.so` on update, both with the reason. It also refuses an unregistered image, and accepts `-O2 -fno-common`.
+- Regression: `verify-audit-fixes` 14/14, `verify-phase3` 8/8, `verify-inline-asm` 14/14.
+- Unit tests: matchd 109, API 15. Typecheck is clean. All 17 images rebuilt, and the compose matchd recreated.
+
+### Known limits
+
+- **New legitimate flags:** a flag not on the list is refused until someone adds its shape to `flagPolicy.ts`, which is the intended trade-off. The list covers every recipe in `apps/web/src/lib/recipes.ts` and the common decompilation flags (`-G0`, `-EB`, `-mips3`, `-fno-PIC`, mwcc `-proc`, `-O4,p`).
+- **Existing projects:** if their flags are outside the list, every compile now fails with the reason. All current data is test data.
+- **Not covered:** `#include` of absolute paths in the source itself is A-033, still open.
+
+## 2026-11-23 — Request body caps and rate limits (A-034, A-035)
+
+Branch `audit/phase-4-security`. Not committed yet.
+
+### Body size (A-034)
+
+- **API:** a new global middleware (`apps/api/src/http/EdgeMiddleware.ts`) sets Effect's `MaxBodySize` on every request. The cap is `API_MAX_BODY_MB` (default 4), or `API_MAX_IMPORT_MB` (default 64) on `POST /v1/projects/:slug/imports`. A larger body is refused with 413 while it is being read. The largest ordinary payload is a 500,000-character type header, a little over 3 MB of JSON in the worst case.
+- **matchd:** `apps/matchd/src/http/BodyLimit.ts`, `MATCHD_MAX_BODY_MB` (default 64). A link job carries every unit's source.
+
+### Rate limits (A-035)
+
+- **Where:** the same middleware, backed by `services/RateLimits.ts` and `http/rateLimit.ts`. These are fixed windows in memory per client address, and a refused request gets 429 with `Retry-After`.
+- **Limits per address:**
+
+  | Route | Limit |
+  | --- | --- |
+  | sign-in | 10 per minute |
+  | sign-up | 5 per hour |
+  | password change | 5 per 15 minutes |
+  | new access token | 10 per hour |
+  | new project | 10 per hour |
+  | import | 20 per hour |
+  | checkout | 30 per minute |
+  | submit | 30 per minute |
+  | everything (backstop) | 600 per minute |
+
+- **Per account:** sign-in is also limited per email address, 10 per 15 minutes, in `AuthRepo.signIn`. Spreading guesses over many addresses still stops. The response is a new 429 problem, `SignInLimited`.
+- **Behind a load balancer:** `TRUSTED_PROXIES` (CIDRs) makes `X-Forwarded-For` from those proxies the client address, using Effect's `HttpMiddleware.xForwardedHeaders`. Without it, the socket address is used.
+- **For test runs:** `RATE_LIMITS=off` turns limiting off for local runs that sign up many accounts. The API logs a warning at startup when it is off.
+
+### Verification
+
+- New `apps/api/scripts/verify-limits.mjs`: 9/9 against an API with `RATE_LIMITS=on` and loopback trusted as a proxy.
+  - A 60 MB unauthenticated body gets 413 in 183 ms. 5 MB on sign-in gets 413, and small bodies still work.
+  - The import route accepts 6 MB (a 400 from the schema) and refuses 70 MB (413).
+  - matchd refuses a 70 MB job with 413.
+  - The 11th sign-in in a minute from one address gets 429 with `Retry-After: 60`.
+  - One account is limited after 10 attempts even when each attempt comes from a new address.
+  - The 6th sign-up in an hour from one address gets 429.
+- New unit tests: `src/http/rateLimit.test.ts` (windows, reset, separate keys, pruning, route matching). API unit tests: 15 pass.
+- Regression with `RATE_LIMITS=off`: `verify-audit-fixes` 14/14, `verify-phase3` 8/8, `verify-inline-asm` 14/14. Typecheck is clean.
+- Rebuilt all 17 matchd images and recreated the compose matchd.
+
+### Known limits
+
+- **Per process:** limits are in memory and per API process. Two processes count separately, and a second site needs a shared store (Redis or Postgres).
+- **Account lockout:** the per-email sign-in limit lets someone keep an account locked by sending 10 bad passwords every 15 minutes. That is the usual trade-off. A CAPTCHA or an emailed unlock would be the next step if it happens.
+- **Not tested here:** the 600-per-minute backstop (unit-tested only), and `X-Forwarded-For` from an untrusted address (relies on Effect's `xForwardedHeaders`).
+
+## 2026-11-23 — Assembly matches do not count toward reputation (A-041)
+
+Branch `audit/phase-4-security`. Not committed yet.
+
+- **Why:** any account can create a project, allow inline assembly on every chunk, and paste the original bytes. A positive weight for assembly matches would still be farmable, so they count as zero.
+- **Reputation:** `UsersRepo` (profile) and `DirectoryRepo` (people search, following) count only matches with `uses_inline_asm = false` as surviving. Reputation is still surviving matches minus regressions.
+- **New fields:** `assemblyMatches` on `PublicUserProfile` and `UserSearchHit`, and `usesInlineAsm` on each `MatchedChunkRef`.
+- **Web:**
+  - The profile shows "N assembly matches (not counted)" and an `asm` badge on those match rows.
+  - People search shows the assembly count.
+- **No penalty:** a submission refused for inline assembly is a miss, and misses never affected reputation. Assembly is neither rewarded nor punished.
+
+### Verification
+
+- `verify-inline-asm.mjs` adds two checks. Around an owner-allowed assembly match, the dev user's reputation and surviving count stay the same while `assemblyMatches` goes up by one, on the profile and in people search. Both pass.
+- Typecheck is clean.
+- **Checked in the web app (local, throwaway database):**
+  - The profile showed "reputation 0 · 0 surviving matches · 1 assembly match (not counted)" with an `asm` badge on the match.
+  - The project board showed `matched` with an `asm` badge.
+  - The activity feed logged "Allowed inline assembly for parse_header".
+  - Signed in as the owner, the chunk dialog showed the "Allow inline assembly" checkbox, checked.
+  - Turning it off in the UI was not clicked, because it opens a browser confirm dialog. The API check covers turning it off.
+
+## 2026-11-23 — Inline assembly is refused unless the chunk allows it (A-032)
+
+Branch `audit/phase-4-security`. Not committed yet.
+
+### matchd
+
+- New `src/inlineAsm.ts` and `src/asmCheck.ts`. Before compiling, matchd preprocesses the candidate in the sandbox with the target's own preprocessor:
+  - gcc and clang run with `-E` in place of `-c`.
+  - agbcc runs the driver's own `arm-none-eabi-cpp` step.
+  - mwcc-rs has no `-E`, so it uses GNU cpp with the CodeWarrior predefined macros, plus a scan of the raw candidate and `types.h`.
+- matchd then looks for `asm`, `__asm`, `__asm__`, or `_asm` on lines the preprocessor attributes to the candidate or `types.h`. Comments, strings, and system headers (glibc uses `__asm__` for symbol redirects) do not count. Macro expansions, token pasting, and `-D` flags that land on a candidate line do count.
+- Without the opt-in the job fails with `inline assembly is not allowed for this chunk: <file>:<line>: …`. With it, the result reports `usesInlineAsm: true`.
+- The integration build applies the same rule per unit.
+- `usesInlineAsm` is required in the job result. An API on this commit refuses results from an older matchd, so the job fails closed. **All matchd images must be rebuilt together with the API.** Done locally for all 17.
+
+### API and database
+
+- Migration `013_inline_asm`: `chunks.allow_inline_asm` and `matches.uses_inline_asm`, both default `false`.
+- The match worker sends the chunk's opt-in on interactive, type-recheck, and recipe-recheck jobs, and records `uses_inline_asm` on the match. The integration worker sends it per unit.
+- `PUT /v1/projects/:slug/chunks/:id/inline-asm` with `{ "allow": boolean }`, for owners and maintainers only. Turning it off invalidates a current match that used assembly, and the chunk goes stale. Both changes are logged in project activity.
+- `ChunkSummary` gains `allowInlineAsm` and `matchUsesInlineAsm`.
+
+### Web
+
+- The chunk dialog has an "Allow inline assembly" checkbox for owners and maintainers. It asks for confirmation before turning it off on an assembly match.
+- The board shows an `asm` badge on matches that used inline assembly, and "asm allowed" on opted-in chunks.
+
+### Verification
+
+- `apps/api/scripts/verify-inline-asm.mjs`: 14/14.
+  - matchd refuses the forged byte dump, and with the opt-in it matches and is marked.
+  - Honest C is unaffected, including `#include <string.h>` and the word "asm" in a string.
+  - Assembly built by token pasting, or injected through a `-D` flag, is caught.
+  - The integration build refuses an assembly unit.
+  - The GameCube (mwcc, approximated) and Switch (clang) images refuse `asm` and accept plain C.
+  - Through the API: a forged submit misses with the reason, a non-member gets 403 on the toggle, the owner's opt-in gives a marked match, and turning it off makes the chunk stale.
+- Regression: `verify-audit-fixes.mjs` 14/14, `verify-phase3.mjs` 8/8.
+- Unit tests: matchd 102 (8 new in `inlineAsm.test.ts`), API 10. Typecheck is clean.
+
+### Known limits
+
+- **CodeWarrior check is approximate.** Assembly could slip through only if all three hold: it's hidden behind a macro that real mwcc defines and the approximation does not, it's spelled with token pasting so the raw-text scan misses it, and mwcc-rs accepts it.
+- **Register variables count as assembly.** GNU `register int x asm("r3")` is refused like any other `asm`. Decomp projects sometimes use it to force register allocation. Those chunks need the opt-in.
+- **Reputation:** fixed in the next entry (A-041). Assembly matches count as zero.
+- **Your dev database** needs `npm run api:migrate` (012 and 013).
+
+## 2026-11-23 — Phase 4 security review (no code changes)
+
+Branch `audit/phase-4-security`, off `main` at `d2d49ec21`. Notes: [audit/phase-4.md](audit/phase-4.md).
+
+- Added findings A-032 to A-040. A-013 is now confirmed live.
+- No code changed. The fix order is in the phase notes. A-032 (inline assembly) and A-013 (flags) need decisions first.
+- Live tests used the local sandboxed matchd and a test API on `rehydra_audit`. The hostile test jobs (inline assembly, `-wrapper`, `@file`, `#include`) ran only inside the compile sandbox.
+
 ## 2026-11-23 — Phase 3: schema, races, and query plans
 
 Branch `audit/phase-3-schema`, off `main` at `f5418cf9b`. Not committed yet. Notes: [audit/phase-3.md](audit/phase-3.md).

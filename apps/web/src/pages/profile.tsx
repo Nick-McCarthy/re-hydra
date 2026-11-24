@@ -50,6 +50,11 @@ export function ProfilePage() {
         <p className="text-sm text-muted-foreground">
           Joined {new Date(profile.createdAt).toLocaleDateString()} · reputation {profile.reputation}{" "}
           · {profile.survivingMatches} surviving match{profile.survivingMatches === 1 ? "" : "es"} ·{" "}
+          {profile.assemblyMatches > 0 ? (
+            <span title="Matches that used inline assembly. They are shown but do not count toward reputation.">
+              {profile.assemblyMatches} assembly match{profile.assemblyMatches === 1 ? "" : "es"} (not counted) ·{" "}
+            </span>
+          ) : null}
           {profile.regressions} regression{profile.regressions === 1 ? "" : "s"} ·{" "}
           {profile.followerCount} follower{profile.followerCount === 1 ? "" : "s"}
         </p>
@@ -120,6 +125,11 @@ export function ProfilePage() {
                       {new Date(m.createdAt).toLocaleString()}
                     </td>
                     <td className="px-4 py-2">
+                      {m.usesInlineAsm ? (
+                        <Badge variant="outline" className="mr-1" title="Used inline assembly. Not counted toward reputation.">
+                          asm
+                        </Badge>
+                      ) : null}
                       <Badge variant={m.active ? "success" : "outline"}>
                         {m.active ? "active" : "invalidated"}
                       </Badge>

@@ -43,7 +43,7 @@ Each Docker image sets `MATCHD_SANDBOX=bwrap`. The compiler, assembler, and obje
 
 The digest recorded on a match is `sha256:v2:` plus the hashes of the compiler backend and the assembler, plus a hash of the recipe. GCC pins `cc1` or `cc1plus` and GNU `as`. `agbcc` pins its binary and `arm-none-eabi-as`. `mwcc` and Clang pin that compiler binary and leave the assembler half empty, because those compilers write the object themselves. A recheck that carries a v2 digest refuses a different binary. An older `sha256:` value is not a pin.
 
-A registry image digest, a 512 MB resident cap, and a microVM are still later. The current sandbox shares the container kernel. Unknown relocations fail the match closed.
+Each compile process also runs with a 1 GB data-segment cap (`prlimit --data`, `MATCHD_MEMORY_MB`). Compiler flags come from an allow-list per compiler family (`apps/matchd/src/flagPolicy.ts`), checked by the API when a recipe is saved and by matchd before every compile. It refuses flags that run another program (`-wrapper`, `-fplugin`, `-B`, `-specs`, `-Wa,`), read or write named files (`@file`, `-include`, `-I`, `-o`, `-save-temps`), or contain a path. A registry image digest and a microVM are still later. The current sandbox shares the container kernel. Unknown relocations fail the match closed.
 
 The link step is a separate worker and still uses host `gcc`. Isolated normalized match is the checkout success. Linking matched functions at their original addresses is an integration build, and a longer section fails even when the original bytes are a prefix of it.
 
@@ -64,6 +64,7 @@ An isolated compile will not be bit-identical to the slice in the original file.
 - Compile the submission with the pinned recipe, as one translation unit.
 - Take the entry symbol's bytes. Padding after the symbol is not part of the function.
 - Blank relocation fields on the candidate and at the same offsets in the original bytes. Blank only the bits the linker writes. Opcode and register bits must match, even when they share a byte with the field, so `b` does not match `bl`.
+- Inline assembly (`asm`, `__asm`, `__asm__`, `_asm`) is refused unless the chunk allows it. Otherwise a byte dump of the original would "match" with no translation. matchd checks the target compiler's preprocessed output, so a macro cannot hide the keyword, and only lines from the candidate and `types.h` count. CodeWarrior has no preprocessor mode, so its check uses GNU cpp with the CodeWarrior macros, plus a scan of the raw text. An owner or maintainer can allow it per chunk for code that really was assembly. Matches that use it are marked. Turning the opt-in off invalidates such a match.
 - A match compares the code around each relocation, not where the relocation points. A call to a different function can still match. The integration build is the check for that.
 - The match succeeds when the two masked sequences have the same length and the same bytes. The score is equal bytes divided by original bytes.
 - An unknown relocation fails closed.

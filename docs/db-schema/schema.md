@@ -818,6 +818,15 @@ CREATE INDEX chunks_validating_idx
 CREATE INDEX matches_chunk_id_idx ON matches (chunk_id);
 ```
 
+## Audit A-032 — migration 013
+
+```sql
+-- matchd rejects inline assembly unless the chunk allows it.
+ALTER TABLE chunks ADD COLUMN allow_inline_asm boolean NOT NULL DEFAULT false;
+-- Whether a match used inline assembly. Shown as a mark on the board.
+ALTER TABLE matches ADD COLUMN uses_inline_asm boolean NOT NULL DEFAULT false;
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.
@@ -841,6 +850,7 @@ CREATE INDEX matches_chunk_id_idx ON matches (chunk_id);
 6. Lease columns match `chunk_state` (CHECK constraint).
 7. Interactive jobs reference an attempt; revalidation jobs reference a proposal.
 8. At most one unfinished (`queued` or `claimed`) interactive job per chunk (migration `012`).
+9. A chunk's inline-assembly opt-in and a match's inline-assembly mark are never null (migration `013`).
 
 ## Invariants enforced in the application (same transaction as the write)
 

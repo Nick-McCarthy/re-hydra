@@ -3,7 +3,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import * as path from "node:path"
 import { Config, Effect } from "effect"
+import { inlineAsmRefusal, scanInlineAsm } from "./asmCheck.js"
 import type { MatchJobRequest } from "./domain/Job.js"
+import { checkFlags, describeRefusal } from "./flagPolicy.js"
 import { disassemblySize, extractSymbolMachineCode, scoreMaskedBytes } from "./normalize.js"
 import { runProcess, truncate, type RunResult } from "./proc.js"
 import { maxFunctionSourceBytes, maxHeadersBytes } from "./sandbox.js"
@@ -21,6 +23,8 @@ export type MatchEngineResult = {
   readonly diagnostics: string
   readonly toolchainDigest: string
   readonly canonicalSha256: string
+  /** True when the candidate contains inline assembly (audit A-032). */
+  readonly usesInlineAsm?: boolean
 }
 
 export const runMatchJob = (
@@ -51,6 +55,12 @@ export const runMatchJob = (
         `no matchd target for image ${job.toolchain.image}`,
         "sha256:v2:unavailable"
       )
+    }
+    // Audit A-013: owner-chosen flags must be on the allow-list for this
+    // compiler family before anything runs.
+    const flagCheck = checkFlags(target.pin, flags)
+    if (!flagCheck.ok) {
+      return refused(describeRefusal(flagCheck), "sha256:v2:unavailable")
     }
     const compilerSpec = language === "cpp" ? target.tools.cpp : target.tools.c
     if (compilerSpec === undefined) {
@@ -121,6 +131,7 @@ export const runMatchJob = (
       catch: () => undefined
     }).pipe(Effect.ignore)
 
+    let usesInlineAsm = false
     return yield* Effect.gen(function*() {
       for (const file of job.sources) {
         const dest = path.join(work, path.basename(file.path))
@@ -152,6 +163,42 @@ export const runMatchJob = (
           equalInsns: 0,
           compilerOk: false,
           diagnostics: `missing ${candidateFile} in sources`,
+          toolchainDigest,
+          canonicalSha256: createHash("sha256").update("").digest("hex")
+        }
+      }
+
+      // Audit A-032: inline assembly can reproduce the original bytes with no
+      // translation. Reject it unless this chunk allows it, and report it either way.
+      const asm = yield* scanInlineAsm({
+        compiler,
+        flags,
+        sourceFile: candidateFile,
+        work,
+        timeoutMs,
+        rawSources: job.sources.map((s) => ({ name: path.basename(s.path), text: s.text }))
+      })
+      if (!asm.ok) {
+        return {
+          matched: false,
+          score: 0,
+          originalInsns: 0,
+          equalInsns: 0,
+          compilerOk: false,
+          diagnostics: truncate(asm.reason),
+          toolchainDigest,
+          canonicalSha256: createHash("sha256").update("").digest("hex")
+        }
+      }
+      usesInlineAsm = asm.hit !== undefined
+      if (asm.hit !== undefined && job.allowInlineAsm !== true) {
+        return {
+          matched: false,
+          score: 0,
+          originalInsns: 0,
+          equalInsns: 0,
+          compilerOk: false,
+          diagnostics: truncate(inlineAsmRefusal(asm.hit)),
           toolchainDigest,
           canonicalSha256: createHash("sha256").update("").digest("hex")
         }
@@ -365,5 +412,8 @@ export const runMatchJob = (
         toolchainDigest,
         canonicalSha256
       }
-    }).pipe(Effect.ensuring(cleanup))
+    }).pipe(
+      Effect.map((result): MatchEngineResult => ({ ...result, usesInlineAsm })),
+      Effect.ensuring(cleanup)
+    )
   }).pipe(Effect.orDie)

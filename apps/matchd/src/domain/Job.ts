@@ -23,6 +23,8 @@ export const MatchJobRequest = Schema.Struct({
   toolchain: Toolchain,
   flags: Schema.optionalKey(Schema.Array(Schema.String)),
   expectedToolchainDigest: Schema.optionalKey(Schema.String),
+  /** The chunk allows inline assembly (audit A-032). Default false. */
+  allowInlineAsm: Schema.optionalKey(Schema.Boolean),
   entrySymbol: Schema.String.check(Schema.isMinLength(1)),
   originalBytesBase64: Schema.String.check(Schema.isMinLength(1)),
   sources: Schema.Array(SourceFile).check(Schema.isMinLength(1))
@@ -39,7 +41,9 @@ export const MatchJobResult = Schema.Struct({
   compilerOk: Schema.Boolean,
   diagnostics: Schema.String,
   toolchainDigest: Schema.String,
-  canonicalSha256: Schema.String
+  canonicalSha256: Schema.String,
+  /** Required, so an API never mistakes an older matchd for a checked result. */
+  usesInlineAsm: Schema.Boolean
 }).annotate({ identifier: "MatchJobResult" })
 
 export type MatchJobResult = typeof MatchJobResult.Type
@@ -51,7 +55,8 @@ export const LinkUnit = Schema.Struct({
   address: Schema.String.check(Schema.isMinLength(1)),
   size: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
   originalBytesBase64: Schema.String.check(Schema.isMinLength(1)),
-  source: Schema.String
+  source: Schema.String,
+  allowInlineAsm: Schema.optionalKey(Schema.Boolean)
 }).annotate({ identifier: "LinkUnit" })
 
 export const LinkJobRequest = Schema.Struct({

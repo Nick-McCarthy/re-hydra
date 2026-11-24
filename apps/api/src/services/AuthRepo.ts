@@ -16,10 +16,13 @@ import {
   AccountRejected,
   EmailTaken,
   InvalidCredentials,
+  SignInLimited,
   PasswordRejected,
   TokenRejected
 } from "../domain/Auth.js"
 import type { Uuid } from "../domain/Uuid.js"
+import { signInEmailRule } from "../http/rateLimit.js"
+import { RateLimits } from "./RateLimits.js"
 
 const hashToken = (token: string): Buffer =>
   createHash("sha256").update(token, "utf8").digest()
@@ -63,7 +66,7 @@ export class AuthRepo extends Context.Service<
     ) => Effect.Effect<SessionResponse, EmailTaken | AccountRejected>
     readonly signIn: (
       payload: SignInPayload
-    ) => Effect.Effect<SessionResponse, InvalidCredentials>
+    ) => Effect.Effect<SessionResponse, InvalidCredentials | SignInLimited>
     readonly changePassword: (
       userId: Uuid,
       payload: ChangePasswordPayload
@@ -92,6 +95,7 @@ export class AuthRepo extends Context.Service<
     AuthRepo,
     Effect.gen(function*() {
       const sql = yield* SqlClient.SqlClient
+      const limits = yield* RateLimits
       const sessionTtlDays = 30
       const dummyHash = yield* hashPassword("re-hydra-credential-placeholder").pipe(Effect.orDie)
 
@@ -174,6 +178,14 @@ export class AuthRepo extends Context.Service<
 
       const signIn = Effect.fn("AuthRepo.signIn")(function*(payload: SignInPayload) {
         const email = normalizeEmail(payload.email)
+        // Audit A-035: per account, so guesses spread over many addresses
+        // still stop. Counted before the password check, for every attempt.
+        const taken = limits.take(`sign-in-email:${email}`, signInEmailRule.limit, signInEmailRule.windowMs)
+        if (!taken.ok) {
+          return yield* new SignInLimited({
+            detail: `Too many sign-in attempts for this account. Try again in ${taken.retryAfterSeconds} seconds.`
+          })
+        }
         const rows = yield* sql<UserRow>`
           SELECT id, email, display_name, password_hash
           FROM users

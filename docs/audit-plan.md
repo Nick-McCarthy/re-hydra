@@ -12,11 +12,17 @@ Status: in progress. Written 2026-11-22 against `main` at `cd2a88feb` with uncom
 | Security fixes A-019, A-020, A-021, A-025 | Done 2026-11-23, merged to `main` locally (`e5aa1b7ed`) | [audit-changelog.md](audit-changelog.md) |
 | Housekeeping: merge, rebuild 17 matchd images, recreate containers | Done 2026-11-23. Found A-027 | [audit-changelog.md](audit-changelog.md) |
 | A-027 sandbox seccomp profile | Done 2026-11-23, merged to `main` locally (`f5418cf9b`) | [audit-changelog.md](audit-changelog.md), [../docker-yml/matchd-seccomp.md](../docker-yml/matchd-seccomp.md) |
-| Phase 3 — Schema | Done 2026-11-23, not committed (branch `audit/phase-3-schema`) | [audit/phase-3.md](audit/phase-3.md) |
-| Phase 4 — Security (rest) | Next | — |
+| Phase 3 — Schema | Done 2026-11-23, merged to `main` locally (`d2d49ec21`) | [audit/phase-3.md](audit/phase-3.md) |
+| Phase 4 — Security review | Done 2026-11-23 (branch `audit/phase-4-security`) | [audit/phase-4.md](audit/phase-4.md) |
+| A-032 and A-041 inline assembly and reputation | Fixed 2026-11-23, not committed (same branch) | [audit-changelog.md](audit-changelog.md) |
+| A-034 and A-035 body size and rate limits | Fixed 2026-11-23, not committed (same branch) | [audit-changelog.md](audit-changelog.md) |
+| A-013 flag allow-list and memory cap | Fixed 2026-11-23, not committed (same branch) | [audit-changelog.md](audit-changelog.md) |
 | Phases 5–8 | Not started | — |
 
-Findings: [audit-findings.md](audit-findings.md). 31 logged, 20 fixed, 1 closed as not applicable (A-024), 10 open. The highest open ones are A-011 (no member management) and A-013 (owner-supplied compiler flags).
+Findings: [audit-findings.md](audit-findings.md). 41 logged, 25 fixed, 1 closed as not applicable (A-024), 15 open. The highest open ones:
+
+- A-011 (High): no member management.
+- A-036 (Medium): bundle text and imported names reach the contributor's agent unmarked.
 
 Invariant status after the fixes:
 

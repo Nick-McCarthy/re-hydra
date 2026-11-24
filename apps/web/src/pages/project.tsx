@@ -989,6 +989,13 @@ export function ProjectPage() {
                     {chunk.state === "stale" ? (
                       <span className="ml-2 text-xs text-muted-foreground">last match invalidated</span>
                     ) : null}
+                    {chunk.matchUsesInlineAsm ? (
+                      <Badge variant="outline" className="ml-2" title="This match uses inline assembly">
+                        asm
+                      </Badge>
+                    ) : chunk.allowInlineAsm ? (
+                      <span className="ml-2 text-xs text-muted-foreground">asm allowed</span>
+                    ) : null}
                     {project.maxConcurrentLeases > 1 && chunk.leaseCount > 0 ? (
                       <span className="ml-2 text-xs text-muted-foreground">
                         {chunk.leaseCount}/{project.maxConcurrentLeases}

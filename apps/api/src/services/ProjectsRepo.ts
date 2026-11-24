@@ -1,4 +1,5 @@
 import { PgClient } from "@effect/sql-pg"
+import { checkFlagsForImage } from "@re-hydra/matchd/flagPolicy"
 import { Context, Effect, Layer } from "effect"
 import { BadRequest, Conflict, Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
@@ -6,6 +7,7 @@ import { likeContains } from "../domain/Directory.js"
 import type { UpdateProjectSettings } from "../domain/Directory.js"
 import type { ProjectMembership } from "../domain/Profile.js"
 import type { CreateProjectPayload, ProjectSummary } from "../domain/Project.js"
+import { FlagsRejected } from "../domain/Project.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { enqueueRecipeForProject } from "./RecipeJobs.js"
@@ -64,6 +66,18 @@ const toSummary = (row: ProjectRow): ProjectSummary => ({
   }
 })
 
+/**
+ * Audit A-013. Refuse flags outside matchd's allow-list for the image's
+ * compiler family when the recipe is saved, so an owner sees why at once.
+ * matchd checks again before every compile.
+ */
+const requireAllowedFlags = (image: string, flags: ReadonlyArray<string>) => {
+  const check = checkFlagsForImage(image, flags)
+  return check.ok
+    ? Effect.void
+    : Effect.fail(new FlagsRejected({ detail: `'${check.flag}': ${check.reason}` }))
+}
+
 export class ProjectsRepo extends Context.Service<
   ProjectsRepo,
   {
@@ -80,12 +94,12 @@ export class ProjectsRepo extends Context.Service<
     readonly create: (
       userId: Uuid,
       payload: CreateProjectPayload
-    ) => Effect.Effect<ProjectSummary, Conflict | NotFound>
+    ) => Effect.Effect<ProjectSummary, Conflict | NotFound | FlagsRejected>
     readonly updateSettings: (
       slug: string,
       userId: Uuid,
       payload: UpdateProjectSettings
-    ) => Effect.Effect<ProjectSummary, NotFound | Forbidden | BadRequest>
+    ) => Effect.Effect<ProjectSummary, NotFound | Forbidden | BadRequest | FlagsRejected>
   }
 >()("rehydra/services/ProjectsRepo") {
   static readonly layer = Layer.effect(
@@ -231,6 +245,7 @@ export class ProjectsRepo extends Context.Service<
 
       const create = Effect.fn("ProjectsRepo.create")(
         function*(userId: Uuid, payload: CreateProjectPayload) {
+          yield* requireAllowedFlags(payload.toolchain.image, payload.toolchain.flags)
           const leaseHours = payload.leaseHours ?? 24
           const maxHoldHours = payload.maxHoldHours ?? 48
           const maxConcurrentLeases = payload.maxConcurrentLeases ?? 1
@@ -326,6 +341,7 @@ export class ProjectsRepo extends Context.Service<
           payload.flags.some((flag, index) => flag !== toolchain.flags[index])
         )
         if (flagsChanged && payload.flags !== undefined) {
+          yield* requireAllowedFlags(toolchain.image, payload.flags)
           toolchain = { ...toolchain, flags: [...payload.flags] }
         }
         const languageChanged = payload.language !== undefined && payload.language !== row.language

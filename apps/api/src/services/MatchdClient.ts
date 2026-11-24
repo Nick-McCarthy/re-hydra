@@ -17,6 +17,7 @@ export const MatchJobRequest = Schema.Struct({
   }),
   flags: Schema.optionalKey(Schema.Array(Schema.String)),
   expectedToolchainDigest: Schema.optionalKey(Schema.String),
+  allowInlineAsm: Schema.optionalKey(Schema.Boolean),
   entrySymbol: Schema.String,
   originalBytesBase64: Schema.String,
   sources: Schema.Array(
@@ -38,7 +39,10 @@ export const MatchJobResult = Schema.Struct({
   compilerOk: Schema.Boolean,
   diagnostics: Schema.String,
   toolchainDigest: Schema.String,
-  canonicalSha256: Schema.String
+  canonicalSha256: Schema.String,
+  // Required: a matchd that cannot run the inline-assembly check (audit
+  // A-032) gives a result this schema refuses, so the job fails closed.
+  usesInlineAsm: Schema.Boolean
 })
 
 export type MatchJobResult = typeof MatchJobResult.Type
@@ -61,7 +65,8 @@ export const LinkJobRequest = Schema.Struct({
     address: Schema.String,
     size: Schema.Int,
     originalBytesBase64: Schema.String,
-    source: Schema.String
+    source: Schema.String,
+    allowInlineAsm: Schema.optionalKey(Schema.Boolean)
   }))
 })
 

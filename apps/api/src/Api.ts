@@ -25,6 +25,7 @@ import {
   CreateAccessTokenPayload,
   EmailTaken,
   InvalidCredentials,
+  SignInLimited,
   PasswordRejected,
   SessionCreated,
   SessionResponse,
@@ -42,6 +43,7 @@ import {
   ChunkState,
   ChunkSummary,
   LeaseResponse,
+  SetChunkInlineAsm,
   SetChunkLanguage
 } from "./domain/Chunk.js"
 import {
@@ -66,6 +68,7 @@ import {
 } from "./domain/Profile.js"
 import {
   CreateProjectPayload,
+  FlagsRejected,
   ProjectCreated,
   ProjectSummary
 } from "./domain/Project.js"
@@ -111,7 +114,7 @@ export const AuthGroup = HttpApiGroup.make("auth")
     HttpApiEndpoint.post("signIn", "/auth/sign-in", {
       payload: SignInPayload,
       success: SessionCreated,
-      error: [InvalidCredentials]
+      error: [InvalidCredentials, SignInLimited]
     })
   )
   .add(
@@ -239,7 +242,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
     HttpApiEndpoint.post("create", "/projects", {
       payload: CreateProjectPayload,
       success: ProjectCreated,
-      error: [Unauthorized, Conflict, NotFound]
+      error: [Unauthorized, Conflict, NotFound, FlagsRejected]
     }).middleware(Authorization)
   )
   .add(
@@ -275,7 +278,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
       params: { projectSlug: ProjectSlug },
       payload: UpdateProjectSettings,
       success: ProjectSummary,
-      error: [Unauthorized, Forbidden, NotFound, BadRequest]
+      error: [Unauthorized, Forbidden, NotFound, BadRequest, FlagsRejected]
     }).middleware(Authorization)
   )
   .add(
@@ -402,6 +405,17 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
         chunkId: Uuid
       },
       payload: SetChunkLanguage,
+      success: ChunkSummary,
+      error: [Unauthorized, Forbidden, NotFound, Conflict]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.put("setInlineAsm", "/projects/:projectSlug/chunks/:chunkId/inline-asm", {
+      params: {
+        projectSlug: ProjectSlug,
+        chunkId: Uuid
+      },
+      payload: SetChunkInlineAsm,
       success: ChunkSummary,
       error: [Unauthorized, Forbidden, NotFound, Conflict]
     }).middleware(Authorization)

@@ -26,7 +26,11 @@ export const ChunkSummary = Schema.Struct({
   leaseExpiresAt: Schema.optionalKey(Schema.String),
   holdStartedAt: Schema.optionalKey(Schema.String),
   languageOverride: Schema.optionalKey(Schema.String),
-  leaseCount: Schema.Int
+  leaseCount: Schema.Int,
+  /** Audit A-032: matchd accepts inline assembly for this chunk. */
+  allowInlineAsm: Schema.Boolean,
+  /** The current match used inline assembly. Shown as a mark on the board. */
+  matchUsesInlineAsm: Schema.Boolean
 }).annotate({ identifier: "ChunkSummary" })
 
 export type ChunkSummary = typeof ChunkSummary.Type
@@ -36,6 +40,12 @@ export const SetChunkLanguage = Schema.Struct({
 }).annotate({ identifier: "SetChunkLanguage" })
 
 export type SetChunkLanguage = typeof SetChunkLanguage.Type
+
+export const SetChunkInlineAsm = Schema.Struct({
+  allow: Schema.Boolean
+}).annotate({ identifier: "SetChunkInlineAsm" })
+
+export type SetChunkInlineAsm = typeof SetChunkInlineAsm.Type
 
 /** The person already holds as many chunks as this project allows. */
 export class CheckoutLimited extends HttpApiError.Problem<CheckoutLimited>()("CheckoutLimited", {

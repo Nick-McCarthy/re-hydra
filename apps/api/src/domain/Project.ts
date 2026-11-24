@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { HttpApiSchema } from "effect/http-api"
+import { HttpApiError, HttpApiSchema } from "effect/http-api"
 import { Uuid } from "./Uuid.js"
 
 export const SourceLanguage = Schema.Literals(["c", "cpp"]).annotate({
@@ -66,3 +66,10 @@ export const CreateProjectPayload = Schema.Struct({
 export type CreateProjectPayload = typeof CreateProjectPayload.Type
 
 export const ProjectCreated = ProjectSummary.pipe(HttpApiSchema.status("Created"))
+
+/** A compiler flag outside the allow-list for this toolchain (audit A-013). */
+export class FlagsRejected extends HttpApiError.Problem<FlagsRejected>()("FlagsRejected", {
+  type: "https://re-hydra.dev/problems/flags-rejected",
+  status: 400,
+  title: "Compiler flag not allowed"
+}) {}

@@ -163,19 +163,30 @@ export class DirectoryRepo extends Context.Service<
           readonly display_name: string
           readonly created_at: Date | string
           readonly surviving: number
+          readonly assembly: number
           readonly regressions: number
         }>`
           SELECT
             u.id,
             u.display_name,
             u.created_at,
+            -- Audit A-041: assembly matches do not count toward reputation.
             (
               SELECT COUNT(*)::int
               FROM matches m
               INNER JOIN chunks c ON c.current_match_id = m.id
               WHERE m.user_id = u.id
                 AND m.invalidated_at IS NULL
+                AND NOT m.uses_inline_asm
             ) AS surviving,
+            (
+              SELECT COUNT(*)::int
+              FROM matches m
+              INNER JOIN chunks c ON c.current_match_id = m.id
+              WHERE m.user_id = u.id
+                AND m.invalidated_at IS NULL
+                AND m.uses_inline_asm
+            ) AS assembly,
             (
               SELECT COUNT(*)::int
               FROM proposal_regressions r
@@ -191,6 +202,7 @@ export class DirectoryRepo extends Context.Service<
           id: row.id,
           displayName: row.display_name,
           survivingMatches: row.surviving,
+          assemblyMatches: row.assembly,
           regressions: row.regressions,
           reputation: row.surviving - row.regressions,
           createdAt: toIso(row.created_at)
@@ -203,19 +215,30 @@ export class DirectoryRepo extends Context.Service<
           readonly display_name: string
           readonly created_at: Date | string
           readonly surviving: number
+          readonly assembly: number
           readonly regressions: number
         }>`
           SELECT
             u.id,
             u.display_name,
             u.created_at,
+            -- Audit A-041: assembly matches do not count toward reputation.
             (
               SELECT COUNT(*)::int
               FROM matches m
               INNER JOIN chunks c ON c.current_match_id = m.id
               WHERE m.user_id = u.id
                 AND m.invalidated_at IS NULL
+                AND NOT m.uses_inline_asm
             ) AS surviving,
+            (
+              SELECT COUNT(*)::int
+              FROM matches m
+              INNER JOIN chunks c ON c.current_match_id = m.id
+              WHERE m.user_id = u.id
+                AND m.invalidated_at IS NULL
+                AND m.uses_inline_asm
+            ) AS assembly,
             (
               SELECT COUNT(*)::int
               FROM proposal_regressions r
@@ -231,6 +254,7 @@ export class DirectoryRepo extends Context.Service<
           id: row.id,
           displayName: row.display_name,
           survivingMatches: row.surviving,
+          assemblyMatches: row.assembly,
           regressions: row.regressions,
           reputation: row.surviving - row.regressions,
           createdAt: toIso(row.created_at)

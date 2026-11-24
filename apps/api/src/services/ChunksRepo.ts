@@ -26,6 +26,8 @@ type ChunkRow = {
   readonly language_override: string | null
   readonly lease_hours: number
   readonly lease_count: number
+  readonly allow_inline_asm: boolean
+  readonly match_uses_inline_asm: boolean
 }
 
 const toIso = (value: Date | string): string =>
@@ -43,7 +45,9 @@ const toSummary = (row: ChunkRow): ChunkSummary => ({
   ...(row.lease_expires_at !== null ? { leaseExpiresAt: toIso(row.lease_expires_at) } : {}),
   ...(row.hold_started_at !== null ? { holdStartedAt: toIso(row.hold_started_at) } : {}),
   ...(row.language_override !== null ? { languageOverride: row.language_override } : {}),
-  leaseCount: row.lease_count
+  leaseCount: row.lease_count,
+  allowInlineAsm: row.allow_inline_asm,
+  matchUsesInlineAsm: row.match_uses_inline_asm
 })
 
 const requireLeaseFields = (row: ChunkRow): Effect.Effect<LeaseResponse, Conflict> => {
@@ -111,6 +115,12 @@ export class ChunksRepo extends Context.Service<
       userId: Uuid,
       leaseToken: Uuid
     ) => Effect.Effect<LeaseResponse, NotFound | Conflict>
+    readonly setInlineAsm: (
+      projectSlug: string,
+      chunkId: Uuid,
+      userId: Uuid,
+      allow: boolean
+    ) => Effect.Effect<ChunkSummary, NotFound | Forbidden | Conflict>
     readonly clearLease: (
       projectSlug: string,
       chunkId: Uuid,
@@ -150,6 +160,11 @@ export class ChunksRepo extends Context.Service<
             c.lease_expires_at,
             c.hold_started_at,
             c.language_override,
+            c.allow_inline_asm,
+            COALESCE(
+              (SELECT m.uses_inline_asm FROM matches m WHERE m.id = c.current_match_id),
+              false
+            ) AS match_uses_inline_asm,
             p.lease_hours,
             (
               (c.lease_user_id IS NOT NULL)::int
@@ -208,6 +223,11 @@ export class ChunksRepo extends Context.Service<
               c.lease_expires_at,
               c.hold_started_at,
               c.language_override,
+              c.allow_inline_asm,
+              COALESCE(
+                (SELECT m.uses_inline_asm FROM matches m WHERE m.id = c.current_match_id),
+                false
+              ) AS match_uses_inline_asm,
               p.lease_hours,
               (
                 (c.lease_user_id IS NOT NULL)::int
@@ -691,6 +711,78 @@ export class ChunksRepo extends Context.Service<
         return toSummary(row)
       })
 
+      /**
+       * Audit A-032. Owners and maintainers decide per chunk whether matchd
+       * accepts inline assembly. Turning it off also invalidates a current
+       * match that used it, so the chunk goes back to the pool as stale.
+       */
+      const setInlineAsm = Effect.fn("ChunksRepo.setInlineAsm")(function*(
+        projectSlug: string,
+        chunkId: Uuid,
+        userId: Uuid,
+        allow: boolean
+      ) {
+        yield* auth.requireRole(projectSlug, userId, ["owner", "maintainer"])
+        const existing = yield* loadChunk(projectSlug, chunkId)
+        if (existing === undefined) return yield* new NotFound()
+        if (existing.allow_inline_asm === allow) return toSummary(existing)
+
+        yield* sql.withTransaction(Effect.gen(function*() {
+          const updated = yield* sql<{ readonly id: string }>`
+            UPDATE chunks
+            SET allow_inline_asm = ${allow}, updated_at = now()
+            WHERE id = ${chunkId}
+              AND project_id = ${existing.project_id}
+              AND fuse_parent_id IS NULL
+            RETURNING id
+          `
+          if (updated[0] === undefined) return
+          yield* activity.record({
+            projectId: existing.project_id,
+            actorId: userId,
+            kind: "settings_changed",
+            chunkId,
+            summary: allow
+              ? `Allowed inline assembly for ${existing.name}`
+              : `Disallowed inline assembly for ${existing.name}`
+          })
+          if (allow) return
+
+          const invalidated = yield* sql<{ readonly id: string }>`
+            UPDATE matches m
+            SET invalidated_at = now(), invalidated_reason = ${"inline assembly disallowed"}
+            FROM chunks c
+            WHERE c.id = ${chunkId}
+              AND m.id = c.current_match_id
+              AND m.uses_inline_asm
+              AND m.invalidated_at IS NULL
+            RETURNING m.id
+          `
+          if (invalidated[0] === undefined) return
+          yield* sql`
+            UPDATE chunks
+            SET
+              state = 'stale',
+              current_match_id = NULL,
+              updated_at = now()
+            WHERE id = ${chunkId}
+              AND state = 'matched'
+          `
+          yield* activity.record({
+            projectId: existing.project_id,
+            actorId: userId,
+            kind: "became_stale",
+            chunkId,
+            summary: `${existing.name} went stale: its match used inline assembly`
+          })
+          yield* stats.refresh(existing.project_id)
+        })).pipe(Effect.orDie)
+
+        const row = yield* loadChunk(projectSlug, chunkId)
+        if (row === undefined) return yield* new NotFound()
+        return toSummary(row)
+      })
+
       const setLanguage = Effect.fn("ChunksRepo.setLanguage")(function*(
         projectSlug: string,
         chunkId: Uuid,
@@ -743,7 +835,8 @@ export class ChunksRepo extends Context.Service<
         release,
         heartbeat,
         clearLease,
-        setLanguage
+        setLanguage,
+        setInlineAsm
       })
     })
   )

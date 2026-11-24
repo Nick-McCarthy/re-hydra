@@ -10,7 +10,9 @@ export const MatchedChunkRef = Schema.Struct({
   address: Schema.String,
   language: Schema.String,
   createdAt: Schema.String,
-  active: Schema.Boolean
+  active: Schema.Boolean,
+  /** The match used inline assembly (audit A-032). It does not count toward reputation. */
+  usesInlineAsm: Schema.Boolean
 }).annotate({ identifier: "MatchedChunkRef" })
 
 export type MatchedChunkRef = typeof MatchedChunkRef.Type
@@ -29,6 +31,8 @@ export const PublicUserProfile = Schema.Struct({
   createdAt: Schema.String,
   matchedCount: Schema.Int,
   survivingMatches: Schema.Int,
+  /** Surviving matches that used inline assembly. Not counted in reputation. */
+  assemblyMatches: Schema.Int,
   regressions: Schema.Int,
   reputation: Schema.Int,
   followerCount: Schema.Int,

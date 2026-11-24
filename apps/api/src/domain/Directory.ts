@@ -53,6 +53,8 @@ export const UserSearchHit = Schema.Struct({
   displayName: Schema.String,
   reputation: Schema.Int,
   survivingMatches: Schema.Int,
+  /** Surviving matches that used inline assembly. Not counted in reputation. */
+  assemblyMatches: Schema.Int,
   regressions: Schema.Int,
   createdAt: Schema.String
 }).annotate({ identifier: "UserSearchHit" })

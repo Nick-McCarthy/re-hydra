@@ -78,6 +78,7 @@ export function PeoplePage() {
                 <span className="text-xs text-muted-foreground">
                   reputation {hit.reputation} · {hit.survivingMatches} surviving · {hit.regressions}{" "}
                   regressions
+                  {hit.assemblyMatches > 0 ? ` · ${hit.assemblyMatches} assembly (not counted)` : ""}
                 </span>
               </div>
             ))}

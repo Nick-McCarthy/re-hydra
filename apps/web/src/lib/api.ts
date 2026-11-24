@@ -114,6 +114,10 @@ export type ChunkSummary = {
   holdStartedAt?: string
   languageOverride?: string
   leaseCount: number
+  /** matchd accepts inline assembly for this chunk. */
+  allowInlineAsm: boolean
+  /** The current match used inline assembly. */
+  matchUsesInlineAsm: boolean
 }
 
 export type Neighbor = {
@@ -189,6 +193,8 @@ export type MatchedChunkRef = {
   language: string
   createdAt: string
   active: boolean
+  /** Used inline assembly. Not counted in reputation. */
+  usesInlineAsm: boolean
 }
 
 export type MaintainedProjectRef = {
@@ -203,6 +209,8 @@ export type PublicUserProfile = {
   createdAt: string
   matchedCount: number
   survivingMatches: number
+  /** Surviving matches that used inline assembly. Not counted in reputation. */
+  assemblyMatches: number
   regressions: number
   reputation: number
   followerCount: number
@@ -234,6 +242,7 @@ export type UserSearchHit = {
   displayName: string
   reputation: number
   survivingMatches: number
+  assemblyMatches: number
   regressions: number
   createdAt: string
 }
@@ -569,6 +578,14 @@ export const api = {
     return request<ChunkSummary>(
       `/projects/${encodeURIComponent(slug)}/chunks/${encodeURIComponent(chunkId)}/language`,
       { method: "PUT", body: JSON.stringify({ language }) },
+      token
+    )
+  },
+
+  setChunkInlineAsm(slug: string, chunkId: string, allow: boolean, token: string) {
+    return request<ChunkSummary>(
+      `/projects/${encodeURIComponent(slug)}/chunks/${encodeURIComponent(chunkId)}/inline-asm`,
+      { method: "PUT", body: JSON.stringify({ allow }) },
       token
     )
   },

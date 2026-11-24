@@ -1,4 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { inlineAsmRefusal, scanInlineAsm } from "./asmCheck.js"
+import { checkFlags, describeRefusal } from "./flagPolicy.js"
+import { resolveTarget } from "./targets/registry.js"
 import { tmpdir } from "node:os"
 import * as path from "node:path"
 import { Config, Effect } from "effect"
@@ -137,6 +140,12 @@ export const runLinkJob = Effect.fn("runLinkJob")(function*(job: LinkJobRequest)
     )
   }
 
+  // Audit A-013: the same flag allow-list as a checkout compile.
+  const flagCheck = checkFlags(resolveTarget(job.toolchain.image)?.pin ?? "gcc-cc1", flags)
+  if (!flagCheck.ok) {
+    return unavailable(describeRefusal(flagCheck), "sha256:v2:unavailable")
+  }
+
   const resolved = yield* resolveGccToolchain(compiler, language, flags, process.cwd(), timeoutMs)
   if (!resolved.ok) {
     return unavailable(resolved.reason, "sha256:v2:unavailable")
@@ -203,6 +212,24 @@ export const runLinkJob = Effect.fn("runLinkJob")(function*(job: LinkJobRequest)
         try: () => writeFile(path.join(work, sourceName), unit.source, "utf8"),
         catch: (cause) => new Error(String(cause))
       }).pipe(Effect.orDie)
+
+      // Audit A-032: the same inline-assembly rule as a checkout match.
+      const asm = yield* scanInlineAsm({
+        compiler,
+        flags: compileFlags,
+        sourceFile: sourceName,
+        work,
+        timeoutMs,
+        rawSources: [{ name: sourceName, text: unit.source }, { name: "types.h", text: job.headers }]
+      })
+      if (!asm.ok) {
+        outcomes.set(unit.symbol, failed(unit.symbol, asm.reason))
+        continue
+      }
+      if (asm.hit !== undefined && unit.allowInlineAsm !== true) {
+        outcomes.set(unit.symbol, failed(unit.symbol, inlineAsmRefusal(asm.hit)))
+        continue
+      }
 
       const compiled = yield* catchRun(
         runProcess(compiler, [...compileFlags, "-o", objectName, sourceName], work, timeoutMs)

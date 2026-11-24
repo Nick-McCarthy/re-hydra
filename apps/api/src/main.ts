@@ -13,6 +13,7 @@ import { ImportsLive } from "./http/ImportsLive.js"
 import { ProjectsLive } from "./http/ProjectsLive.js"
 import { TypesLive } from "./http/TypesLive.js"
 import { DirectoryLive, UsersLive } from "./http/UsersLive.js"
+import { EdgeMiddlewareLive } from "./http/EdgeMiddleware.js"
 import { Activity } from "./services/Activity.js"
 import { AttemptsRepo } from "./services/AttemptsRepo.js"
 import { AuthRepo } from "./services/AuthRepo.js"
@@ -29,6 +30,7 @@ import { IntegrationsRepo } from "./services/IntegrationsRepo.js"
 import { MatchWorkerLive } from "./services/MatchWorker.js"
 import { ProjectAuth } from "./services/ProjectAuth.js"
 import { ProjectChunkStats } from "./services/ProjectChunkStats.js"
+import { RateLimits } from "./services/RateLimits.js"
 import { DirectoryRepo } from "./services/DirectoryRepo.js"
 import { ProjectsRepo } from "./services/ProjectsRepo.js"
 import { TypeProposalsRepo } from "./services/TypeProposalsRepo.js"
@@ -89,7 +91,8 @@ const DataLive = Layer.mergeAll(
     Layer.provide(ActivityLive)
   ),
   BlobsLive,
-  AuthRepo.layer,
+  RateLimits.layer,
+  AuthRepo.layer.pipe(Layer.provide(RateLimits.layer)),
   Layer.provideMerge(MatchdClient.layer, MatchdPool.layer)
 ).pipe(Layer.provide(SqlLive))
 
@@ -123,8 +126,10 @@ const ApiLive = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(HttpApiScalar.layer(Api))
 )
 
+// EdgeMiddlewareLive is global: rate limits and body-size caps on every route
+// (audit A-034, A-035).
 const HttpLive = HttpRouter.serve(
-  Layer.mergeAll(ApiLive, WorkersLive)
+  Layer.mergeAll(ApiLive, WorkersLive, EdgeMiddlewareLive)
 ).pipe(
   Layer.provide(DataLive),
   Layer.provide(SqlLive),

@@ -103,6 +103,18 @@ export const ChunksLive = HttpApiBuilder.group(Api, "chunks", (handlers) =>
         )
       })
     )
+    .handle("setInlineAsm", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const repo = yield* ChunksRepo
+        return yield* repo.setInlineAsm(
+          request.params.projectSlug,
+          request.params.chunkId,
+          user.id,
+          request.payload.allow
+        )
+      })
+    )
     .handle("clearLease", (request) =>
       Effect.gen(function*() {
         const user = yield* CurrentUser

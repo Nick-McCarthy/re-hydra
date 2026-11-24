@@ -29,7 +29,7 @@ These steps add compile capacity and keep the lease, the digest, and the byte ma
 | --- | --- |
 | 1. Route by image | Done. `MATCHD_ROUTES` sends a job to the process for `toolchain.image`. `MATCHD_URL` is the fallback. `docker-yml/docker-compose.matchd-pool.yml` publishes one warm process per image |
 | 2. More claimers | Done. `MATCHD_WORKERS` defaults to 4. A claimer waits 2 seconds only when the queue is empty. One worker runs recipe rechecks, and only when no submit is waiting |
-| 3. Sandbox the compile | Done inside the image. No network, read-only toolchain, private temp directory, 30 second cap. The container must run with `docker-yml/matchd-seccomp.json` (see `docker-yml/matchd-seccomp.md`). matchd checks the sandbox at startup and exits if it cannot start. A microVM and a 512 MB resident cap are still open |
+| 3. Sandbox the compile | Done inside the image. No network, read-only toolchain, private temp directory, 30 second cap. The container must run with `docker-yml/matchd-seccomp.json` (see `docker-yml/matchd-seccomp.md`). matchd checks the sandbox at startup and exits if it cannot start. Compiler flags are checked against an allow-list per compiler family, and each compile has a 1 GB data cap. A microVM is still open |
 | 4. Grow the busy image | Done. `MATCHD_SCALE=docker` starts another local copy when an interactive job has waited 30 seconds, and removes it after the image has been idle. The warm process stays |
 | 5. A second site | Next, after the us-east-1 deploy. The second-region section lists the API code, then a replica, a bucket copy, and a matchd pool. The writer stays single. See the later section of [architecture.md](architecture.md) |
 
@@ -108,12 +108,13 @@ Around the process:
 - Postgres in us-east-1, migrations applied, seed left unrun. The dev user and `rehydra-dev` password stay local.
 - The API and matchd in that same region. `BLOB_STORE=s3`, region `us-east-1`, and an access key that can only put and get objects in that bucket. `MATCHD_TOKEN` has to be a real secret, set on both the API and every matchd process. Neither starts without it, and the images no longer carry a default. `dev-matchd-token` still starts but logs a warning.
 - HTTPS on the public API URL. The web app talks to `/v1` on the same origin.
+- `TRUSTED_PROXIES` set to the load balancer's network, so rate limits see client addresses. Keep `RATE_LIMITS=on`. Rate limits are per API process and in memory, so with several API processes each one counts separately.
 
 `blob_objects` can remain for that first deploy. With `BLOB_STORE=s3` the API does not write it. Drop the table after one checkout and one match have both read from the bucket.
 
 The local copy (`npm run api:blobs`) fills this machine only. Production starts empty.
 
-A microVM sandbox, the 512 MB compile cap, Xbox 360, PlayStation 5, fuse-split, and another region wait. A public site also needs the written policy for copyrighted software and malware.
+A microVM sandbox, Xbox 360, PlayStation 5, fuse-split, and another region wait. A public site also needs the written policy for copyrighted software and malware.
 
 ## Second region
 
@@ -141,7 +142,7 @@ A project whose writer lives in Europe is a further change. The API would send t
 ## Still open
 
 - A second site, after this site's pool is dull. The writer stays single. The second-region section lists the code and the settings.
-- A microVM sandbox, and a 512 MB resident cap per compile. The image sandbox is the boundary that runs today.
+- A microVM sandbox. The image sandbox, the flag allow-list, and the 1 GB per-compile data cap are the boundary that runs today.
 - Xbox 360 and PlayStation 5, until a public compiler emits the retail object format.
 - Retail SDK compilers. They stay unregistered.
 - What happens to member matches if a fused chunk is later split. Split is not implemented.

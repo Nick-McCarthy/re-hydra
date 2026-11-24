@@ -257,6 +257,9 @@ export class FuseRepo extends Context.Service<
               ? { leaseUserId: parent.lease_user_id }
               : {}),
             leaseCount: 0,
+            // A new fused parent has no inline-assembly opt-in and no match yet.
+            allowInlineAsm: false,
+            matchUsesInlineAsm: false,
             ...(parent.lease_expires_at !== null
               ? { leaseExpiresAt: toIso(parent.lease_expires_at) }
               : {}),

@@ -18,7 +18,8 @@ export const JobsLive = HttpApiBuilder.group(Api, "jobs", (handlers) =>
           compilerOk: result.compilerOk,
           diagnostics: result.diagnostics,
           toolchainDigest: result.toolchainDigest,
-          canonicalSha256: result.canonicalSha256
+          canonicalSha256: result.canonicalSha256,
+          usesInlineAsm: result.usesInlineAsm ?? false
         }
       })
     )

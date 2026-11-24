@@ -31,6 +31,7 @@ test("the sandbox has no network and does not receive the token", () => {
   assert.equal(spawned.command, "prlimit")
   assert.ok(spawned.args.includes("--unshare-net"))
   assert.ok(spawned.args.includes("--cpu=30"))
+  assert.ok(spawned.args.includes(`--data=${1024 * 1024 * 1024}`))
   assert.equal(spawned.args.includes("dev-matchd-token"), false)
   assert.equal(spawned.args.includes("postgres://secret"), false)
   assert.equal(spawned.env.PATH.includes("MATCHD"), false)

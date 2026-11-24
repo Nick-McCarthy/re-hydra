@@ -67,6 +67,16 @@ export class EmailTaken extends HttpApiError.Problem<EmailTaken>()("EmailTaken",
   title: "Email already registered"
 }) {}
 
+/** Too many sign-in attempts for one email address (audit A-035). */
+export class SignInLimited extends HttpApiError.Problem<SignInLimited>()(
+  "SignInLimited",
+  {
+    type: "https://re-hydra.dev/problems/too-many-requests",
+    status: 429,
+    title: "Too many sign-in attempts"
+  }
+) {}
+
 export class InvalidCredentials extends HttpApiError.Problem<InvalidCredentials>()(
   "InvalidCredentials",
   {

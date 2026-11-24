@@ -37,6 +37,8 @@ type AttemptMeta = {
 
 type ArchRow = {
   readonly arch: string
+  /** Audit A-032: whether matchd may accept inline assembly for this chunk. */
+  readonly allow_inline_asm: boolean
 }
 
 /**
@@ -52,7 +54,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
 
   const loadArch = (chunkId: string) =>
     sql<ArchRow>`
-      SELECT b.arch
+      SELECT b.arch, c.allow_inline_asm
       FROM chunks c
       INNER JOIN binaries b ON b.id = c.binary_id
       WHERE c.id = ${chunkId}
@@ -215,6 +217,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         jobId: recipe.id,
         arch: archRows[0]?.arch ?? "x86_64",
         language,
+        allowInlineAsm: archRows[0]?.allow_inline_asm === true,
         toolchain: recipe.toolchain,
         flags: recipe.toolchain.flags,
         ...(isPinnedDigest(expectedDigest) ? { expectedToolchainDigest: expectedDigest } : {}),
@@ -235,7 +238,8 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
             compilerOk: false,
             diagnostics: `matchd error: ${String(err)}`,
             toolchainDigest: "unavailable",
-            canonicalSha256: "0".repeat(64)
+            canonicalSha256: "0".repeat(64),
+            usesInlineAsm: false
           })
         )
       )
@@ -274,7 +278,8 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         if (matchResult.matched) {
           yield* sql`
             UPDATE matches
-            SET toolchain_digest = ${matchResult.toolchainDigest}, language = ${language}
+            SET toolchain_digest = ${matchResult.toolchainDigest}, language = ${language},
+                uses_inline_asm = ${matchResult.usesInlineAsm}
             WHERE id = ${matchId}
           `
           return
@@ -487,6 +492,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
       jobId: job.id,
       arch,
       language,
+      allowInlineAsm: archRows[0]?.allow_inline_asm === true,
       toolchain: job.toolchain,
       flags: job.toolchain.flags,
       ...(isPinnedDigest(expectedDigest) ? { expectedToolchainDigest: expectedDigest } : {}),
@@ -507,7 +513,8 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
           compilerOk: false,
           diagnostics: `matchd error: ${String(err)}`,
           toolchainDigest: "unavailable",
-          canonicalSha256: "0".repeat(64)
+          canonicalSha256: "0".repeat(64),
+          usesInlineAsm: false
         })
       )
     )
@@ -537,7 +544,8 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
           if (matchResult.matched) {
             yield* sql`
               UPDATE matches
-              SET toolchain_digest = ${matchResult.toolchainDigest}
+              SET toolchain_digest = ${matchResult.toolchainDigest},
+                  uses_inline_asm = ${matchResult.usesInlineAsm}
               WHERE id = (
                 SELECT current_match_id FROM chunks
                 WHERE id = ${job.chunk_id} AND state = 'matched'
@@ -646,7 +654,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         const matchRows = yield* sql<{ readonly id: string }>`
           INSERT INTO matches (
             chunk_id, attempt_id, user_id, type_revision_id,
-            toolchain_digest, canonical_sha256, language
+            toolchain_digest, canonical_sha256, language, uses_inline_asm
           ) VALUES (
             ${job.chunk_id},
             ${attempt.id},
@@ -654,7 +662,8 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
             ${attempt.type_revision_id},
             ${matchResult.toolchainDigest},
             ${canonicalBytes},
-            ${attempt.language}
+            ${attempt.language},
+            ${matchResult.usesInlineAsm}
           )
           RETURNING id
         `

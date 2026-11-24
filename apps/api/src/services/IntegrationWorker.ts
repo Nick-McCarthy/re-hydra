@@ -25,6 +25,7 @@ type UnitSource = {
   readonly bytes_sha256: Uint8Array
   readonly source_sha256: Uint8Array | null
   readonly toolchain_digest: string | null
+  readonly allow_inline_asm: boolean
 }
 
 const asLanguage = (value: string): SourceLanguage => (value === "cpp" ? "cpp" : "c")
@@ -156,7 +157,8 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
         u.size,
         c.bytes_sha256,
         a.source_sha256,
-        m.toolchain_digest
+        m.toolchain_digest,
+        c.allow_inline_asm
       FROM integration_units u
       INNER JOIN chunks c ON c.id = u.chunk_id
       LEFT JOIN attempts a ON a.id = c.best_attempt_id
@@ -180,6 +182,7 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
       originalBytesBase64: string
       source: string
       chunkId: string
+      allowInlineAsm: boolean
     }> = []
     const localFailures: Array<{ chunkId: string; name: string; detail: string }> = []
 
@@ -208,7 +211,8 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
         size: unit.size,
         originalBytesBase64: Buffer.from(bytesOpt.value).toString("base64"),
         source: Buffer.from(sourceOpt.value).toString("utf8"),
-        chunkId: unit.chunk_id
+        chunkId: unit.chunk_id,
+        allowInlineAsm: unit.allow_inline_asm
       })
     }
 
@@ -257,7 +261,9 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
         address: unit.address,
         size: unit.size,
         originalBytesBase64: unit.originalBytesBase64,
-        source: unit.source
+        source: unit.source,
+        // Audit A-032: the same inline-assembly rule as the checkout match.
+        allowInlineAsm: unit.allowInlineAsm
       }))
     }).pipe(
       Effect.catch((err) =>
