@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { AttemptHistoryDialog } from "@/components/attempt-history-dialog"
 import { ChunkWorkDialog } from "@/components/chunk-work-dialog"
 import { ProjectAccessCard } from "@/components/project-access-card"
+import { ProjectDiscussion } from "@/components/project-discussion"
 import { ProjectMembersCard } from "@/components/project-members-card"
 import { ActivityList } from "@/components/activity-list"
 import { FollowButton } from "@/components/follow-button"
@@ -141,10 +142,11 @@ function IntegrationRun({
 
 const CHUNK_PAGE_SIZE = 100
 
-type ProjectTab = "chunks" | "activity" | "members" | "build" | "settings"
+type ProjectTab = "chunks" | "discussion" | "activity" | "members" | "build" | "settings"
 
 const tabLabels: Record<ProjectTab, string> = {
   chunks: "Chunks",
+  discussion: "Discussion",
   activity: "Activity",
   members: "Members",
   build: "Build",
@@ -209,8 +211,8 @@ export function ProjectPage() {
   const [joinVersion, setJoinVersion] = React.useState(0)
   const requestedTab = searchParams.get("tab")
   const tabs: ReadonlyArray<ProjectTab> = roleReady && canMaintain
-    ? ["chunks", "activity", "members", "build", "settings"]
-    : ["chunks", "activity", "members", "build"]
+    ? ["chunks", "discussion", "activity", "members", "build", "settings"]
+    : ["chunks", "discussion", "activity", "members", "build"]
   const tab: ProjectTab = tabs.find((t) => t === requestedTab) ?? "chunks"
 
   React.useEffect(() => {
@@ -230,8 +232,21 @@ export function ProjectPage() {
     const params = new URLSearchParams(searchParams)
     if (next === "chunks") params.delete("tab")
     else params.set("tab", next)
+    params.delete("thread")
+    params.delete("chunk")
     setSearchParams(params, { replace: true })
     setActionError(null)
+  }
+
+  /** Discussion state lives in the URL: ?tab=discussion&thread=…&chunk=…. */
+  function setDiscussion(change: { thread?: string | null; chunk?: string | null }) {
+    const params = new URLSearchParams(searchParams)
+    params.set("tab", "discussion")
+    for (const [key, value] of Object.entries(change)) {
+      if (value) params.set(key, value)
+      else params.delete(key)
+    }
+    setSearchParams(params)
   }
 
   const reload = React.useCallback(async () => {
@@ -899,6 +914,24 @@ export function ProjectPage() {
           </CardContent>
         </Card>
         </>
+      ) : null}
+
+      {tab === "discussion" ? (
+        <ProjectDiscussion
+          projectSlug={projectSlug}
+          viewer={session && user ? { token: session.token, userId: user.id } : null}
+          postBlockedReason={
+            roleReady && project.checkoutPolicy === "members" && myRole === null
+              ? "Only members post here. Ask to join on the Members tab."
+              : null
+          }
+          canModerate={roleReady && canMaintain}
+          threadId={searchParams.get("thread")}
+          chunkId={searchParams.get("chunk")}
+          onOpenThread={(thread) => setDiscussion({ thread })}
+          onClearChunk={() => setDiscussion({ chunk: null })}
+          onOpenChunk={(chunk) => setQuery("work", chunk)}
+        />
       ) : null}
 
       {tab === "activity" ? (

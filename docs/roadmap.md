@@ -17,7 +17,9 @@ Profiles have tabs. Everyone sees Overview, Matches (paged, filtered by project 
 
 On a members-only project, a signed-in non-member can ask to join, with an optional message of up to 200 characters. One open request per user per project; after a decline they may ask again 7 days later. Owners and maintainers answer in the project's Members card and in "Waiting on you" on their My work tab. Approving adds a contributor. Requesters see their state on the project page and in My work. Only approvals reach the feed. There is no nav badge or email. Checked by `apps/api/scripts/verify-join.mjs`.
 
-The project page has tabs, chosen with `?tab=`: Chunks (the default: the board, plus Fuse for managers), Activity, Members (with a count of open join requests for managers), Build (integration build and the compiler recipe), and Settings (owners and maintainers only: import, competing leases, recipe, who may work here). An unknown or unavailable tab falls back to Chunks.
+The project page has tabs, chosen with `?tab=`: Chunks (the default: the board, plus Fuse for managers), Discussion, Activity, Members (with a count of open join requests for managers), Build (integration build and the compiler recipe), and Settings (owners and maintainers only: import, competing leases, recipe, who may work here). An unknown or unavailable tab falls back to Chunks.
+
+Discussion is threads with flat replies. Anyone reads; anyone who may work on the project (not blocked, and a member when it is members-only) starts threads and replies. A thread may point at a chunk, and the chunk dialog links to its threads. Authors edit and remove their own posts and may rename or remove their thread; owners and maintainers remove any post and pin, lock, or remove threads. A removed post keeps its place. Posts are plain text with `inline code`, fenced blocks, and links. Only "X started a thread" reaches the feed. Thread starts are limited to 10 an hour and replies to 30 per 10 minutes per address. Not yet: unread tracking, mentions, notifications. Checked by `apps/api/scripts/verify-discussion.mjs`.
 
 Seed fixtures:
 

@@ -357,6 +357,41 @@ export type MyJoinRequests = {
   yours: Array<JoinRequest>
 }
 
+export type ThreadSummary = {
+  id: string
+  title: string
+  authorId: string | null
+  authorName: string | null
+  chunkId: string | null
+  chunkName: string | null
+  pinned: boolean
+  locked: boolean
+  replyCount: number
+  createdAt: string
+  lastPostAt: string
+  lastPostBy: string | null
+}
+
+export type ThreadPage = {
+  items: Array<ThreadSummary>
+  total: number
+}
+
+export type DiscussionPost = {
+  id: string
+  authorId: string | null
+  authorName: string | null
+  body: string
+  createdAt: string
+  editedAt: string | null
+  deleted: boolean
+}
+
+export type ThreadDetail = {
+  thread: ThreadSummary
+  posts: Array<DiscussionPost>
+}
+
 export type ProjectMembership = {
   projectSlug: string
   role: "owner" | "maintainer" | "contributor"
@@ -619,6 +654,67 @@ export const api = {
 
   myJoinRequests(token: string) {
     return request<MyJoinRequests>("/me/join-requests", {}, token)
+  },
+
+  listThreads(slug: string, options: { chunkId?: string | null; limit?: number; offset?: number } = {}) {
+    const params = new URLSearchParams()
+    if (options.chunkId) params.set("chunkId", options.chunkId)
+    if (options.limit !== undefined) params.set("limit", String(options.limit))
+    if (options.offset) params.set("offset", String(options.offset))
+    const query = params.toString()
+    return request<ThreadPage>(`/projects/${encodeURIComponent(slug)}/threads${query ? `?${query}` : ""}`)
+  },
+
+  getThread(slug: string, threadId: string) {
+    return request<ThreadDetail>(`/projects/${encodeURIComponent(slug)}/threads/${encodeURIComponent(threadId)}`)
+  },
+
+  createThread(slug: string, payload: { title: string; body: string; chunkId?: string }, token: string) {
+    return request<ThreadDetail>(
+      `/projects/${encodeURIComponent(slug)}/threads`,
+      { method: "POST", body: JSON.stringify(payload) },
+      token
+    )
+  },
+
+  updateThread(slug: string, threadId: string, payload: { title?: string; pinned?: boolean; locked?: boolean }, token: string) {
+    return request<ThreadDetail>(
+      `/projects/${encodeURIComponent(slug)}/threads/${encodeURIComponent(threadId)}`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+      token
+    )
+  },
+
+  deleteThread(slug: string, threadId: string, token: string) {
+    return request<void>(
+      `/projects/${encodeURIComponent(slug)}/threads/${encodeURIComponent(threadId)}`,
+      { method: "DELETE" },
+      token
+    )
+  },
+
+  replyToThread(slug: string, threadId: string, body: string, token: string) {
+    return request<ThreadDetail>(
+      `/projects/${encodeURIComponent(slug)}/threads/${encodeURIComponent(threadId)}/posts`,
+      { method: "POST", body: JSON.stringify({ body }) },
+      token
+    )
+  },
+
+  editPost(slug: string, threadId: string, postId: string, body: string, token: string) {
+    return request<ThreadDetail>(
+      `/projects/${encodeURIComponent(slug)}/threads/${encodeURIComponent(threadId)}/posts/${encodeURIComponent(postId)}`,
+      { method: "PATCH", body: JSON.stringify({ body }) },
+      token
+    )
+  },
+
+  deletePost(slug: string, threadId: string, postId: string, token: string) {
+    return request<ThreadDetail>(
+      `/projects/${encodeURIComponent(slug)}/threads/${encodeURIComponent(threadId)}/posts/${encodeURIComponent(postId)}`,
+      { method: "DELETE" },
+      token
+    )
   },
 
   listMembers(slug: string) {

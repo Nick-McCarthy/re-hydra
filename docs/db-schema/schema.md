@@ -929,6 +929,48 @@ CREATE INDEX join_requests_by_user
   ON join_requests (user_id, created_at DESC);
 ```
 
+## Discussion — migration 018
+
+```sql
+-- Only "X started a thread" reaches the activity feed; replies do not.
+ALTER TYPE project_event_kind ADD VALUE 'thread_started';
+
+-- A thread has a title and may point at one chunk. Its first post is the
+-- opening message. Removing a thread hides it from the list.
+CREATE TABLE project_threads (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id    uuid NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+  author_id     uuid REFERENCES users (id) ON DELETE SET NULL,
+  chunk_id      uuid REFERENCES chunks (id) ON DELETE SET NULL,
+  title         text NOT NULL CHECK (length(title) BETWEEN 1 AND 120),
+  pinned        boolean NOT NULL DEFAULT false,
+  locked        boolean NOT NULL DEFAULT false,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  last_post_at  timestamptz NOT NULL DEFAULT now(),
+  deleted_at    timestamptz,
+  deleted_by    uuid REFERENCES users (id) ON DELETE SET NULL
+);
+CREATE INDEX project_threads_list
+  ON project_threads (project_id, pinned DESC, last_post_at DESC)
+  WHERE deleted_at IS NULL;
+CREATE INDEX project_threads_by_chunk
+  ON project_threads (chunk_id)
+  WHERE deleted_at IS NULL AND chunk_id IS NOT NULL;
+
+-- Flat posts. A removed post keeps its place with its text hidden.
+CREATE TABLE project_posts (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  thread_id   uuid NOT NULL REFERENCES project_threads (id) ON DELETE CASCADE,
+  author_id   uuid REFERENCES users (id) ON DELETE SET NULL,
+  body        text NOT NULL CHECK (length(body) BETWEEN 1 AND 10000),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  edited_at   timestamptz,
+  deleted_at  timestamptz,
+  deleted_by  uuid REFERENCES users (id) ON DELETE SET NULL
+);
+CREATE INDEX project_posts_by_thread ON project_posts (thread_id, created_at);
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

@@ -67,7 +67,9 @@ export const routeRules: ReadonlyArray<RouteRule> = [
   { name: "create-project", method: "POST", path: /^\/v1\/projects$/, limit: 10, windowMs: hour },
   { name: "import", method: "POST", path: /^\/v1\/projects\/[^/]+\/imports$/, limit: 20, windowMs: hour },
   { name: "checkout", method: "POST", path: /^\/v1\/projects\/[^/]+\/chunks\/[^/]+\/checkout$/, limit: 30, windowMs: minute },
-  { name: "submit", method: "POST", path: /^\/v1\/projects\/[^/]+\/chunks\/[^/]+\/submit$/, limit: 30, windowMs: minute }
+  { name: "submit", method: "POST", path: /^\/v1\/projects\/[^/]+\/chunks\/[^/]+\/submit$/, limit: 30, windowMs: minute },
+  { name: "thread", method: "POST", path: /^\/v1\/projects\/[^/]+\/threads$/, limit: 10, windowMs: hour },
+  { name: "post", method: "POST", path: /^\/v1\/projects\/[^/]+\/threads\/[^/]+\/posts$/, limit: 30, windowMs: 10 * minute }
 ]
 
 /** Every request from one address, as a backstop against floods. */

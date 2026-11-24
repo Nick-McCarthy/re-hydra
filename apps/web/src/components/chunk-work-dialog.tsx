@@ -48,6 +48,18 @@ export function ChunkWorkDialog({
   const [lease, setLease] = React.useState<StoredLease | null>(null)
   const [source, setSource] = React.useState("")
   const [tab, setTab] = React.useState<Tab>("pseudocode")
+  const [threadCount, setThreadCount] = React.useState<number | null>(null)
+
+  React.useEffect(() => {
+    if (!open || !chunkId) return
+    let cancelled = false
+    setThreadCount(null)
+    api.listThreads(projectSlug, { chunkId, limit: 1 }).then(
+      (page) => { if (!cancelled) setThreadCount(page.total) },
+      () => {}
+    )
+    return () => { cancelled = true }
+  }, [open, projectSlug, chunkId])
   const [attempt, setAttempt] = React.useState<AttemptResult | null>(null)
   const [matching, setMatching] = React.useState(false)
   const [languageChoice, setLanguageChoice] = React.useState<"" | SourceLanguage>("")
@@ -294,6 +306,13 @@ export function ChunkWorkDialog({
           <p className="font-mono text-xs text-muted-foreground">
             {chunk.address} · {chunk.size} bytes · {chunk.state}
             {bundle ? ` · sha256 ${bundle.meta.bytesSha256.slice(0, 12)}…` : null}
+            {" · "}
+            <Link
+              to={`/projects/${projectSlug}?tab=discussion&chunk=${chunkId}`}
+              className="font-sans underline underline-offset-2"
+            >
+              Discussion{threadCount ? ` (${threadCount})` : ""}
+            </Link>
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">Loading…</p>

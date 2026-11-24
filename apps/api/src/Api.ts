@@ -35,6 +35,14 @@ import {
   UserProfile
 } from "./domain/Auth.js"
 import {
+  CreateThreadPayload,
+  DiscussionRefused,
+  PostPayload,
+  ThreadDetail,
+  ThreadPage,
+  UpdateThreadPayload
+} from "./domain/Discussion.js"
+import {
   LeaseCreatedWithBundle,
   WorkBundle
 } from "./domain/Bundle.js"
@@ -717,6 +725,82 @@ export const TypesGroup = HttpApiGroup.make("types")
     }).middleware(Authorization)
   )
 
+const ThreadParams = { projectSlug: ProjectSlug, threadId: Uuid }
+const PostParams = { projectSlug: ProjectSlug, threadId: Uuid, postId: Uuid }
+
+export const DiscussionGroup = HttpApiGroup.make("discussion")
+  .add(
+    HttpApiEndpoint.get("listThreads", "/projects/:projectSlug/threads", {
+      params: { projectSlug: ProjectSlug },
+      query: {
+        chunkId: Schema.optional(Uuid),
+        limit: Schema.optional(
+          Schema.NumberFromString.check(Schema.isInt())
+            .check(Schema.isGreaterThanOrEqualTo(1))
+            .check(Schema.isLessThanOrEqualTo(100))
+        ),
+        offset: Schema.optional(
+          Schema.NumberFromString.check(Schema.isInt())
+            .check(Schema.isGreaterThanOrEqualTo(0))
+        )
+      },
+      success: ThreadPage,
+      error: [NotFound]
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getThread", "/projects/:projectSlug/threads/:threadId", {
+      params: ThreadParams,
+      success: ThreadDetail,
+      error: [NotFound]
+    })
+  )
+  .add(
+    HttpApiEndpoint.post("createThread", "/projects/:projectSlug/threads", {
+      params: { projectSlug: ProjectSlug },
+      payload: CreateThreadPayload,
+      success: ThreadDetail.pipe(HttpApiSchema.status("Created")),
+      error: [Unauthorized, NotFound, ProjectAccessDenied, DiscussionRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.patch("updateThread", "/projects/:projectSlug/threads/:threadId", {
+      params: ThreadParams,
+      payload: UpdateThreadPayload,
+      success: ThreadDetail,
+      error: [Unauthorized, Forbidden, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.delete("deleteThread", "/projects/:projectSlug/threads/:threadId", {
+      params: ThreadParams,
+      error: [Unauthorized, Forbidden, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("reply", "/projects/:projectSlug/threads/:threadId/posts", {
+      params: ThreadParams,
+      payload: PostPayload,
+      success: ThreadDetail.pipe(HttpApiSchema.status("Created")),
+      error: [Unauthorized, NotFound, ProjectAccessDenied, DiscussionRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.patch("editPost", "/projects/:projectSlug/threads/:threadId/posts/:postId", {
+      params: PostParams,
+      payload: PostPayload,
+      success: ThreadDetail,
+      error: [Unauthorized, Forbidden, NotFound, ProjectAccessDenied, DiscussionRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.delete("deletePost", "/projects/:projectSlug/threads/:threadId/posts/:postId", {
+      params: PostParams,
+      success: ThreadDetail,
+      error: [Unauthorized, Forbidden, NotFound]
+    }).middleware(Authorization)
+  )
+
 export const Api = HttpApi.make("re-hydra-api")
   .add(HealthGroup)
   .add(AuthGroup)
@@ -726,4 +810,5 @@ export const Api = HttpApi.make("re-hydra-api")
   .add(ChunksGroup)
   .add(ImportsGroup)
   .add(TypesGroup)
+  .add(DiscussionGroup)
   .prefix("/v1")

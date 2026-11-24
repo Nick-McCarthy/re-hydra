@@ -11,6 +11,7 @@ import { ChunksLive } from "./http/ChunksLive.js"
 import { HealthLive } from "./http/HealthLive.js"
 import { ImportsLive } from "./http/ImportsLive.js"
 import { ProjectsLive } from "./http/ProjectsLive.js"
+import { DiscussionLive } from "./http/DiscussionLive.js"
 import { TypesLive } from "./http/TypesLive.js"
 import { DirectoryLive, UsersLive } from "./http/UsersLive.js"
 import { EdgeMiddlewareLive } from "./http/EdgeMiddleware.js"
@@ -36,6 +37,7 @@ import { ProjectsRepo } from "./services/ProjectsRepo.js"
 import { ProjectModeration } from "./services/ProjectModeration.js"
 import { ProjectMembers } from "./services/ProjectMembers.js"
 import { ProjectJoinRequests } from "./services/ProjectJoinRequests.js"
+import { ProjectDiscussion } from "./services/ProjectDiscussion.js"
 import { TypeProposalsRepo } from "./services/TypeProposalsRepo.js"
 import { UnresolvedTypesRepo } from "./services/UnresolvedTypesRepo.js"
 import { UsersRepo } from "./services/UsersRepo.js"
@@ -76,6 +78,10 @@ const DataLive = Layer.mergeAll(
     Layer.provide(StatsLive)
   ),
   ProjectJoinRequests.layer.pipe(
+    Layer.provide(Authz),
+    Layer.provide(ActivityLive)
+  ),
+  ProjectDiscussion.layer.pipe(
     Layer.provide(Authz),
     Layer.provide(ActivityLive)
   ),
@@ -122,7 +128,8 @@ const ApiHandlers = Layer.mergeAll(
   ProjectsLive,
   ChunksLive,
   ImportsLive,
-  TypesLive
+  TypesLive,
+  DiscussionLive
 ).pipe(
   Layer.provide(DataLive),
   Layer.provide(SqlLive)
