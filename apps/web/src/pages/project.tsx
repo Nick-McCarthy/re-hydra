@@ -141,6 +141,16 @@ function IntegrationRun({
 
 const CHUNK_PAGE_SIZE = 100
 
+type ProjectTab = "chunks" | "activity" | "members" | "build" | "settings"
+
+const tabLabels: Record<ProjectTab, string> = {
+  chunks: "Chunks",
+  activity: "Activity",
+  members: "Members",
+  build: "Build",
+  settings: "Settings"
+}
+
 function timed<T>(label: string, work: Promise<T>): Promise<T> {
   const started = performance.now()
   console.log(`[project] start ${label}`)
@@ -194,6 +204,35 @@ export function ProjectPage() {
   const [importError, setImportError] = React.useState<string | null>(null)
   const [importOver, setImportOver] = React.useState(false)
   const importInput = React.useRef<HTMLInputElement>(null)
+  // Open join requests, shown on the Members tab for owners and maintainers.
+  const [joinCount, setJoinCount] = React.useState(0)
+  const [joinVersion, setJoinVersion] = React.useState(0)
+  const requestedTab = searchParams.get("tab")
+  const tabs: ReadonlyArray<ProjectTab> = roleReady && canMaintain
+    ? ["chunks", "activity", "members", "build", "settings"]
+    : ["chunks", "activity", "members", "build"]
+  const tab: ProjectTab = tabs.find((t) => t === requestedTab) ?? "chunks"
+
+  React.useEffect(() => {
+    if (!roleReady || !canMaintain || !session) {
+      setJoinCount(0)
+      return
+    }
+    let cancelled = false
+    api.listJoinRequests(projectSlug, session.token).then(
+      (rows) => { if (!cancelled) setJoinCount(rows.length) },
+      () => {}
+    )
+    return () => { cancelled = true }
+  }, [projectSlug, session, roleReady, canMaintain, tab, membersKey, joinVersion])
+
+  function selectTab(next: ProjectTab) {
+    const params = new URLSearchParams(searchParams)
+    if (next === "chunks") params.delete("tab")
+    else params.set("tab", next)
+    setSearchParams(params, { replace: true })
+    setActionError(null)
+  }
 
   const reload = React.useCallback(async () => {
     const started = performance.now()
@@ -668,7 +707,305 @@ export function ProjectPage() {
         </div>
       </div>
 
-      {roleReady && canMaintain ? (
+      <nav className="flex flex-wrap gap-1 border-b" aria-label="Project sections">
+        {tabs.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => selectTab(t)}
+            aria-current={tab === t ? "page" : undefined}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm ${
+              tab === t
+                ? "border-primary font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tabLabels[t]}
+            {t === "members" && joinCount > 0 ? (
+              <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{joinCount}</span>
+            ) : null}
+          </button>
+        ))}
+      </nav>
+
+      {actionError ? <p className="text-sm text-destructive" role="alert">{actionError}</p> : null}
+
+      {tab === "chunks" ? (
+        <>
+        <div className="flex flex-wrap items-center gap-2">
+          {states.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => {
+                setFilter(s)
+                setPage(0)
+              }}
+              className={`rounded-md border px-2.5 py-1 text-xs ${
+                filter === s
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-input bg-background text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              {s}
+              {s !== "all" ? ` (${project.stats[s]})` : ` (${project.stats.total})`}
+            </button>
+          ))}
+          <ChunkQuery onChange={applyChunkQuery} />
+        </div>
+
+        {roleReady && canMaintain ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Fuse chunks</CardTitle>
+              <CardDescription>
+                Select two or more open, stale, or matched chunks from one binary. They
+                become one lease. A matched member loses its match.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-end gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="fuseName">Name</Label>
+                <Input
+                  id="fuseName"
+                  value={fuseName}
+                  onChange={(e) => setFuseName(e.target.value)}
+                  placeholder="optional"
+                  className="w-56"
+                />
+              </div>
+              <Button onClick={() => void fuse()} disabled={busy || selected.length < 2}>
+                Fuse {selected.length} {selected.length === 1 ? "chunk" : "chunks"}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Chunks</CardTitle>
+            <CardDescription>
+              {visible.length} shown · you hold {heldIds.size} of {project.maxHeldChunks}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 p-0">
+            <div className="flex flex-wrap items-center gap-3 px-4 pt-4">
+              <Button onClick={() => void checkoutSelected()} disabled={busy || checkoutCount === 0}>
+                {session ? `Check out ${checkoutCount}` : "Log in to check out"}
+              </Button>
+              {checkoutNote ? <p className="text-sm text-muted-foreground">{checkoutNote}</p> : null}
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {visible.length === 0
+                    ? "0 functions"
+                    : `${pageStart + 1}–${pageStart + pageRows.length} of ${visible.length}`}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={currentPage === 0}
+                  onClick={() => setPage(currentPage - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={currentPage >= pageCount - 1}
+                  onClick={() => setPage(currentPage + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
+                <tr>
+                  <th className="w-10 px-4 py-2 font-medium">Select</th>
+                  <th className="px-4 py-2 font-medium">Name</th>
+                  <th className="px-4 py-2 font-medium">Address</th>
+                  <th className="px-4 py-2 font-medium">Size</th>
+                  <th className="px-4 py-2 font-medium">State</th>
+                  <th className="px-4 py-2 text-right font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((chunk) => {
+                  return (
+                  <tr key={chunk.id} className="border-b last:border-0 hover:bg-muted/30">
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${chunk.name}`}
+                        checked={selected.includes(chunk.id)}
+                        disabled={!selectable(chunk) && !selected.includes(chunk.id)}
+                        onChange={() => toggle(chunk)}
+                      />
+                    </td>
+                    <td className="px-4 py-2 font-medium">{chunk.name}</td>
+                    <td className="px-4 py-2 font-mono text-xs">{chunk.address}</td>
+                    <td className="px-4 py-2 font-mono text-xs">{chunk.size}</td>
+                    <td className="px-4 py-2">
+                      <Badge variant={stateVariant[chunk.state]}>{chunk.state}</Badge>
+                      {heldIds.has(chunk.id) ? (
+                        <span className="ml-2 text-xs text-muted-foreground">yours</span>
+                      ) : null}
+                      {chunk.state === "stale" ? (
+                        <span className="ml-2 text-xs text-muted-foreground">last match invalidated</span>
+                      ) : null}
+                      {chunk.matchUsesInlineAsm ? (
+                        <Badge variant="outline" className="ml-2" title="This match uses inline assembly">
+                          asm
+                        </Badge>
+                      ) : chunk.allowInlineAsm ? (
+                        <span className="ml-2 text-xs text-muted-foreground">asm allowed</span>
+                      ) : null}
+                      {project.maxConcurrentLeases > 1 && chunk.leaseCount > 0 ? (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {chunk.leaseCount}/{project.maxConcurrentLeases}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant={canCheckout(chunk, leaseSlots, user?.id) ? "default" : "outline"}
+                          onClick={() => setQuery("work", chunk.id)}
+                        >
+                          Work
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setQuery("attempts", chunk.id)}>
+                          Attempts
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                  )
+                })}
+                {visible.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      No chunks in this filter.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+            </div>
+          </CardContent>
+        </Card>
+        </>
+      ) : null}
+
+      {tab === "activity" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity</CardTitle>
+            <CardDescription>Checkouts, matches, proposals, and other project events.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ActivityList events={events} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {tab === "members" && roleReady ? (
+        <ProjectMembersCard
+          key={membersKey}
+          projectSlug={projectSlug}
+          session={session && user ? { token: session.token, userId: user.id } : null}
+          myRole={myRole}
+          checkoutPolicy={project.checkoutPolicy}
+          onChanged={() => {
+            reloadMembership()
+            setJoinVersion((v) => v + 1)
+            void api.projectActivity(projectSlug).then(setEvents)
+          }}
+        />
+      ) : null}
+
+      {tab === "build" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Integration build</CardTitle>
+            <CardDescription>
+              Links matched functions and compares the bytes at their original addresses.
+              A miss reopens that chunk. An isolated match stays the success state until this link disagrees.
+            </CardDescription>
+            <p className="text-xs text-muted-foreground">
+              Recipe: {project.toolchain.compiler} {project.toolchain.version} · {project.language} ·{" "}
+              <span className="font-mono">{project.toolchain.flags.join(" ")}</span>
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {roleReady && canMaintain ? (
+              <div className="flex flex-wrap items-end gap-3">
+                {linkLanguages.length > 1 ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="linkLanguage">Language</Label>
+                    <select
+                      id="linkLanguage"
+                      value={activeLinkLanguage}
+                      onChange={(e) => setLinkLanguage(e.target.value === "cpp" ? "cpp" : "c")}
+                      className="flex h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                    >
+                      {linkLanguages.map((language) => (
+                        <option key={language} value={language}>
+                          {language}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                {linkBinaries.length > 1 ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="linkBinary">Binary</Label>
+                    <select
+                      id="linkBinary"
+                      value={activeBinary}
+                      onChange={(e) => setLinkBinary(e.target.value)}
+                      className="flex h-9 max-w-64 rounded-md border border-input bg-transparent px-3 text-sm"
+                    >
+                      {linkBinaries.map((id) => (
+                        <option key={id} value={id}>
+                          {id.slice(0, 8)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                <Button onClick={() => void startLink()} disabled={busy || linkCount < 2}>
+                  Link {linkCount} matched {linkCount === 1 ? "function" : "functions"}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Maintainers start a link once at least two functions are matched.
+              </p>
+            )}
+            {integrations.length > 0 ? (
+              <div className="space-y-3">
+                {integrations.map((integration) => (
+                  <IntegrationRun
+                    key={integration.id}
+                    projectSlug={project.slug}
+                    integration={integration}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No integration build yet.</p>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {tab === "settings" && roleReady && canMaintain ? (
+        <>
         <Card>
           <CardHeader>
             <CardTitle>Import Ghidra export</CardTitle>
@@ -716,31 +1053,7 @@ export function ProjectPage() {
             ) : null}
           </CardContent>
         </Card>
-      ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {states.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => {
-              setFilter(s)
-              setPage(0)
-            }}
-            className={`rounded-md border px-2.5 py-1 text-xs ${
-              filter === s
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-input bg-background text-muted-foreground hover:bg-accent"
-            }`}
-          >
-            {s}
-            {s !== "all" ? ` (${project.stats[s]})` : ` (${project.stats.total})`}
-          </button>
-        ))}
-        <ChunkQuery onChange={applyChunkQuery} />
-      </div>
-
-      {roleReady && canMaintain ? (
         <Card>
           <CardHeader>
             <CardTitle>Competing leases</CardTitle>
@@ -777,38 +1090,9 @@ export function ProjectPage() {
             <Button onClick={() => void saveHoldCap()} disabled={busy}>
               Save
             </Button>
-            {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
           </CardContent>
         </Card>
-      ) : null}
 
-      {roleReady ? (
-        <ProjectMembersCard
-          key={membersKey}
-          projectSlug={projectSlug}
-          session={session && user ? { token: session.token, userId: user.id } : null}
-          myRole={myRole}
-          checkoutPolicy={project.checkoutPolicy}
-          onChanged={() => {
-            reloadMembership()
-            void api.projectActivity(projectSlug).then(setEvents)
-          }}
-        />
-      ) : null}
-
-      {roleReady && canMaintain && session ? (
-        <ProjectAccessCard
-          project={project}
-          token={session.token}
-          onProjectChanged={(updated) => {
-            setProject(updated)
-            setMembersKey((k) => k + 1)
-            void api.projectActivity(projectSlug).then(setEvents)
-          }}
-        />
-      ) : null}
-
-      {roleReady && canMaintain ? (
         <Card>
           <CardHeader>
             <CardTitle>Compiler recipe</CardTitle>
@@ -844,223 +1128,20 @@ export function ProjectPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {roleReady && canMaintain && session ? (
+          <ProjectAccessCard
+            project={project}
+            token={session.token}
+            onProjectChanged={(updated) => {
+              setProject(updated)
+              setMembersKey((k) => k + 1)
+              void api.projectActivity(projectSlug).then(setEvents)
+            }}
+          />
+        ) : null}
+        </>
       ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Integration build</CardTitle>
-          <CardDescription>
-            Links matched functions and compares the bytes at their original addresses.
-            A miss reopens that chunk. An isolated match stays the success state until this link disagrees.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {roleReady && canMaintain ? (
-            <div className="flex flex-wrap items-end gap-3">
-              {linkLanguages.length > 1 ? (
-                <div className="space-y-2">
-                  <Label htmlFor="linkLanguage">Language</Label>
-                  <select
-                    id="linkLanguage"
-                    value={activeLinkLanguage}
-                    onChange={(e) => setLinkLanguage(e.target.value === "cpp" ? "cpp" : "c")}
-                    className="flex h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                  >
-                    {linkLanguages.map((language) => (
-                      <option key={language} value={language}>
-                        {language}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-              {linkBinaries.length > 1 ? (
-                <div className="space-y-2">
-                  <Label htmlFor="linkBinary">Binary</Label>
-                  <select
-                    id="linkBinary"
-                    value={activeBinary}
-                    onChange={(e) => setLinkBinary(e.target.value)}
-                    className="flex h-9 max-w-64 rounded-md border border-input bg-transparent px-3 text-sm"
-                  >
-                    {linkBinaries.map((id) => (
-                      <option key={id} value={id}>
-                        {id.slice(0, 8)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-              <Button onClick={() => void startLink()} disabled={busy || linkCount < 2}>
-                Link {linkCount} matched {linkCount === 1 ? "function" : "functions"}
-              </Button>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Maintainers start a link once at least two functions are matched.
-            </p>
-          )}
-          {integrations.length > 0 ? (
-            <div className="space-y-3">
-              {integrations.map((integration) => (
-                <IntegrationRun
-                  key={integration.id}
-                  projectSlug={project.slug}
-                  integration={integration}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No integration build yet.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {roleReady && canMaintain ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Fuse chunks</CardTitle>
-            <CardDescription>
-              Select two or more open, stale, or matched chunks from one binary. They
-              become one lease. A matched member loses its match.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-end gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="fuseName">Name</Label>
-              <Input
-                id="fuseName"
-                value={fuseName}
-                onChange={(e) => setFuseName(e.target.value)}
-                placeholder="optional"
-                className="w-56"
-              />
-            </div>
-            <Button onClick={() => void fuse()} disabled={busy || selected.length < 2}>
-              Fuse {selected.length} {selected.length === 1 ? "chunk" : "chunks"}
-            </Button>
-            {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Chunks</CardTitle>
-          <CardDescription>
-            {visible.length} shown · you hold {heldIds.size} of {project.maxHeldChunks}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 p-0">
-          <div className="flex flex-wrap items-center gap-3 px-4 pt-4">
-            <Button onClick={() => void checkoutSelected()} disabled={busy || checkoutCount === 0}>
-              {session ? `Check out ${checkoutCount}` : "Log in to check out"}
-            </Button>
-            {checkoutNote ? <p className="text-sm text-muted-foreground">{checkoutNote}</p> : null}
-            <div className="ml-auto flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                {visible.length === 0
-                  ? "0 functions"
-                  : `${pageStart + 1}–${pageStart + pageRows.length} of ${visible.length}`}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={currentPage === 0}
-                onClick={() => setPage(currentPage - 1)}
-              >
-                Previous
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={currentPage >= pageCount - 1}
-                onClick={() => setPage(currentPage + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-y bg-muted/40 text-xs text-muted-foreground">
-              <tr>
-                <th className="w-10 px-4 py-2 font-medium">Select</th>
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Address</th>
-                <th className="px-4 py-2 font-medium">Size</th>
-                <th className="px-4 py-2 font-medium">State</th>
-                <th className="px-4 py-2 text-right font-medium">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pageRows.map((chunk) => {
-                return (
-                <tr key={chunk.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="px-4 py-2">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${chunk.name}`}
-                      checked={selected.includes(chunk.id)}
-                      disabled={!selectable(chunk) && !selected.includes(chunk.id)}
-                      onChange={() => toggle(chunk)}
-                    />
-                  </td>
-                  <td className="px-4 py-2 font-medium">{chunk.name}</td>
-                  <td className="px-4 py-2 font-mono text-xs">{chunk.address}</td>
-                  <td className="px-4 py-2 font-mono text-xs">{chunk.size}</td>
-                  <td className="px-4 py-2">
-                    <Badge variant={stateVariant[chunk.state]}>{chunk.state}</Badge>
-                    {heldIds.has(chunk.id) ? (
-                      <span className="ml-2 text-xs text-muted-foreground">yours</span>
-                    ) : null}
-                    {chunk.state === "stale" ? (
-                      <span className="ml-2 text-xs text-muted-foreground">last match invalidated</span>
-                    ) : null}
-                    {chunk.matchUsesInlineAsm ? (
-                      <Badge variant="outline" className="ml-2" title="This match uses inline assembly">
-                        asm
-                      </Badge>
-                    ) : chunk.allowInlineAsm ? (
-                      <span className="ml-2 text-xs text-muted-foreground">asm allowed</span>
-                    ) : null}
-                    {project.maxConcurrentLeases > 1 && chunk.leaseCount > 0 ? (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {chunk.leaseCount}/{project.maxConcurrentLeases}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant={canCheckout(chunk, leaseSlots, user?.id) ? "default" : "outline"}
-                        onClick={() => setQuery("work", chunk.id)}
-                      >
-                        Work
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setQuery("attempts", chunk.id)}>
-                        Attempts
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-                )
-              })}
-              {visible.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    No chunks in this filter.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-          </div>
-        </CardContent>
-      </Card>
 
       <ChunkWorkDialog
         open={workId !== null && chunks.some((chunk) => chunk.id === workId)}
@@ -1079,16 +1160,6 @@ export function ProjectPage() {
         chunkName={chunks.find((chunk) => chunk.id === attemptsId)?.name ?? "Function"}
         onClose={() => setQuery("attempts", null)}
       />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Activity</CardTitle>
-          <CardDescription>Checkouts, matches, proposals, and other project events.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ActivityList events={events} />
-        </CardContent>
-      </Card>
     </div>
   )
 }

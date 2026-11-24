@@ -75,7 +75,7 @@ export function ProjectMembersCard(props: {
   }
 
   if (members === null && error === null) {
-    return null
+    return <p className="text-sm text-muted-foreground">Loading members…</p>
   }
 
   const memberIds = new Set((members ?? []).map((m) => m.userId))
@@ -217,7 +217,7 @@ export function ProjectMembersCard(props: {
           <JoinRequestsReview
             projectSlug={projectSlug}
             token={token}
-            onApproved={() => {
+            onAnswered={() => {
               void api.listMembers(projectSlug).then(setMembers)
               onChanged()
             }}

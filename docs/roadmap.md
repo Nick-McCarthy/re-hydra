@@ -17,6 +17,8 @@ Profiles have tabs. Everyone sees Overview, Matches (paged, filtered by project 
 
 On a members-only project, a signed-in non-member can ask to join, with an optional message of up to 200 characters. One open request per user per project; after a decline they may ask again 7 days later. Owners and maintainers answer in the project's Members card and in "Waiting on you" on their My work tab. Approving adds a contributor. Requesters see their state on the project page and in My work. Only approvals reach the feed. There is no nav badge or email. Checked by `apps/api/scripts/verify-join.mjs`.
 
+The project page has tabs, chosen with `?tab=`: Chunks (the default: the board, plus Fuse for managers), Activity, Members (with a count of open join requests for managers), Build (integration build and the compiler recipe), and Settings (owners and maintainers only: import, competing leases, recipe, who may work here). An unknown or unavailable tab falls back to Chunks.
+
 Seed fixtures:
 
 | Slug | What it is |

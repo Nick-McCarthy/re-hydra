@@ -50,14 +50,15 @@ function RequestLine(props: {
 
 /**
  * For owners and maintainers, inside the project's Members card: open
- * requests to join, with Approve (adds a contributor) and Decline.
+ * requests to join, with Approve (adds a contributor) and Decline. onAnswered
+ * runs after either, so the page can refresh members and counts.
  */
 export function JoinRequestsReview(props: {
   readonly projectSlug: string
   readonly token: string
-  readonly onApproved: () => void
+  readonly onAnswered: () => void
 }) {
-  const { projectSlug, token, onApproved } = props
+  const { projectSlug, token, onAnswered } = props
   const [requests, setRequests] = React.useState<ReadonlyArray<JoinRequest>>([])
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -80,7 +81,7 @@ export function JoinRequestsReview(props: {
           ? await api.approveJoinRequest(projectSlug, request.id, token)
           : await api.declineJoinRequest(projectSlug, request.id, token)
       )
-      if (approve) onApproved()
+      onAnswered()
     } catch (err) {
       setError(errorText(err, "Could not answer the request"))
     } finally {
