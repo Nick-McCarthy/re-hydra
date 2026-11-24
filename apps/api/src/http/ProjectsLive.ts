@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import { ProjectMembers } from "../services/ProjectMembers.js"
 import { ProjectModeration } from "../services/ProjectModeration.js"
 import { HttpApiBuilder } from "effect/http-api"
 import { Api } from "../Api.js"
@@ -26,6 +27,68 @@ export const ProjectsLive = HttpApiBuilder.group(Api, "projects", (handlers) =>
         const user = yield* CurrentUser
         const repo = yield* ProjectsRepo
         return yield* repo.membership(request.params.projectSlug, user.id)
+      })
+    )
+    .handle("listMembers", (request) =>
+      Effect.gen(function*() {
+        const members = yield* ProjectMembers
+        return yield* members.list(request.params.projectSlug)
+      })
+    )
+    .handle("addMember", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const members = yield* ProjectMembers
+        return yield* members.add(request.params.projectSlug, user.id, request.payload)
+      })
+    )
+    .handle("changeMemberRole", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const members = yield* ProjectMembers
+        return yield* members.changeRole(request.params.projectSlug, user.id, request.params.userId, request.payload)
+      })
+    )
+    .handle("removeMember", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const members = yield* ProjectMembers
+        return yield* members.remove(request.params.projectSlug, user.id, request.params.userId)
+      })
+    )
+    .handle("getOwnershipOffer", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const members = yield* ProjectMembers
+        return yield* members.getOffer(request.params.projectSlug, user.id)
+      })
+    )
+    .handle("offerOwnership", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const members = yield* ProjectMembers
+        return yield* members.offer(request.params.projectSlug, user.id, request.payload)
+      })
+    )
+    .handle("acceptOwnership", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const members = yield* ProjectMembers
+        return yield* members.accept(request.params.projectSlug, user.id)
+      })
+    )
+    .handle("withdrawOwnership", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const members = yield* ProjectMembers
+        return yield* members.withdraw(request.params.projectSlug, user.id)
+      })
+    )
+    .handle("myOwnershipOffers", () =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const members = yield* ProjectMembers
+        return yield* members.myOffers(user.id)
       })
     )
     .handle("listBlocks", (request) =>

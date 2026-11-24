@@ -34,6 +34,7 @@ import { RateLimits } from "./services/RateLimits.js"
 import { DirectoryRepo } from "./services/DirectoryRepo.js"
 import { ProjectsRepo } from "./services/ProjectsRepo.js"
 import { ProjectModeration } from "./services/ProjectModeration.js"
+import { ProjectMembers } from "./services/ProjectMembers.js"
 import { TypeProposalsRepo } from "./services/TypeProposalsRepo.js"
 import { UnresolvedTypesRepo } from "./services/UnresolvedTypesRepo.js"
 import { UsersRepo } from "./services/UsersRepo.js"
@@ -64,6 +65,11 @@ const DataLive = Layer.mergeAll(
     Layer.provide(Authz)
   ),
   ProjectModeration.layer.pipe(
+    Layer.provide(Authz),
+    Layer.provide(ActivityLive),
+    Layer.provide(StatsLive)
+  ),
+  ProjectMembers.layer.pipe(
     Layer.provide(Authz),
     Layer.provide(ActivityLive),
     Layer.provide(StatsLive)

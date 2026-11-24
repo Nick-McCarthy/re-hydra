@@ -36,7 +36,19 @@ function message(err: unknown, fallback: string) {
 export function TypesPage() {
   const { projectSlug = "" } = useParams()
   const { session } = useAuth()
-  const { canMaintain, canPropose, ready: roleReady } = useMembership(projectSlug)
+  const { canMaintain, role, ready: roleReady } = useMembership(projectSlug)
+  // Audit A-012: anyone allowed to check out may propose, so on an open
+  // project that is every signed-in user. The API refuses blocked users.
+  const [checkoutPolicy, setCheckoutPolicy] = React.useState<"open" | "members" | null>(null)
+  React.useEffect(() => {
+    let cancelled = false
+    api.getProject(projectSlug).then(
+      (project) => { if (!cancelled) setCheckoutPolicy(project.checkoutPolicy) },
+      () => {}
+    )
+    return () => { cancelled = true }
+  }, [projectSlug])
+  const canPropose = role !== null || checkoutPolicy === "open"
   const navigate = useNavigate()
 
   const [environment, setEnvironment] = React.useState<TypeEnvironment | null>(null)
@@ -447,10 +459,16 @@ export function TypesPage() {
             </form>
           ) : (
             <p className="text-sm text-muted-foreground">
-              <Link to="/login" className="underline underline-offset-2">
-                Log in
-              </Link>{" "}
-              as a project member to open a type proposal.
+              {session ? (
+                "This project takes type proposals from its members only."
+              ) : (
+                <>
+                  <Link to="/login" className="underline underline-offset-2">
+                    Log in
+                  </Link>{" "}
+                  to open a type proposal.
+                </>
+              )}
             </p>
           )}
         </CardContent>

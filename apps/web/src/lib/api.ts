@@ -265,6 +265,26 @@ export type FollowedProject = {
   language: string
 }
 
+/** Audit A-011. */
+export type ProjectMember = {
+  userId: string
+  displayName: string
+  role: "owner" | "maintainer" | "contributor"
+  joinedAt: string
+}
+
+export type OwnershipOffer = {
+  id: string
+  projectSlug: string
+  projectName: string
+  offeredBy: string
+  offeredByName: string
+  offeredTo: string
+  offeredToName: string
+  createdAt: string
+  expiresAt: string
+}
+
 export type ProjectMembership = {
   projectSlug: string
   role: "owner" | "maintainer" | "contributor"
@@ -487,6 +507,58 @@ export const api = {
 
   listBlocks(slug: string, token: string) {
     return request<Array<BlockedUser>>(`/projects/${encodeURIComponent(slug)}/blocks`, {}, token)
+  },
+
+  listMembers(slug: string) {
+    return request<Array<ProjectMember>>(`/projects/${encodeURIComponent(slug)}/members`)
+  },
+
+  addMember(slug: string, userId: string, role: "maintainer" | "contributor", token: string) {
+    return request<Array<ProjectMember>>(
+      `/projects/${encodeURIComponent(slug)}/members`,
+      { method: "POST", body: JSON.stringify({ userId, role }) },
+      token
+    )
+  },
+
+  changeMemberRole(slug: string, userId: string, role: "maintainer" | "contributor", token: string) {
+    return request<Array<ProjectMember>>(
+      `/projects/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
+      { method: "PATCH", body: JSON.stringify({ role }) },
+      token
+    )
+  },
+
+  removeMember(slug: string, userId: string, token: string) {
+    return request<Array<ProjectMember>>(
+      `/projects/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
+      { method: "DELETE" },
+      token
+    )
+  },
+
+  ownershipOffer(slug: string, token: string) {
+    return request<{ offer: OwnershipOffer | null }>(`/projects/${encodeURIComponent(slug)}/ownership-transfer`, {}, token)
+  },
+
+  offerOwnership(slug: string, userId: string, token: string) {
+    return request<{ offer: OwnershipOffer | null }>(
+      `/projects/${encodeURIComponent(slug)}/ownership-transfer`,
+      { method: "POST", body: JSON.stringify({ userId }) },
+      token
+    )
+  },
+
+  acceptOwnership(slug: string, token: string) {
+    return request<Array<ProjectMember>>(`/projects/${encodeURIComponent(slug)}/ownership-transfer/accept`, { method: "POST" }, token)
+  },
+
+  withdrawOwnership(slug: string, token: string) {
+    return request<{ offer: OwnershipOffer | null }>(`/projects/${encodeURIComponent(slug)}/ownership-transfer`, { method: "DELETE" }, token)
+  },
+
+  myOwnershipOffers(token: string) {
+    return request<Array<OwnershipOffer>>("/ownership-offers", {}, token)
   },
 
   blockUser(slug: string, userId: string, reason: string, token: string) {

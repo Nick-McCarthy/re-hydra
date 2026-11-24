@@ -21,7 +21,8 @@ export const ProjectEventKind = Schema.Literals([
   "integration_started",
   "integration_passed",
   "integration_failed",
-  "integration_reopened"
+  "integration_reopened",
+  "members_changed"
 ]).annotate({ identifier: "ProjectEventKind" })
 
 export type ProjectEventKind = typeof ProjectEventKind.Type

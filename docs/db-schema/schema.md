@@ -871,6 +871,35 @@ CREATE TABLE project_blocks (
 );
 ```
 
+## Members and ownership transfer — migration 016
+
+```sql
+-- A-011: joins, role changes, removals, and transfers in the activity feed.
+ALTER TYPE project_event_kind ADD VALUE 'members_changed';
+
+-- A-011: the owner offers the project; the recipient accepts or declines.
+-- On accept, the old owner becomes a maintainer in the same transaction,
+-- so project_members_one_owner always holds.
+CREATE TABLE ownership_transfers (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id   uuid NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+  offered_by   uuid NOT NULL REFERENCES users (id),
+  offered_to   uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  state        text NOT NULL DEFAULT 'open'
+    CHECK (state IN ('open', 'accepted', 'declined', 'cancelled', 'expired')),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  expires_at   timestamptz NOT NULL DEFAULT now() + interval '7 days',
+  resolved_at  timestamptz,
+  CHECK (offered_by <> offered_to)
+);
+
+-- At most one open offer per project.
+CREATE UNIQUE INDEX ownership_transfers_one_open
+  ON ownership_transfers (project_id) WHERE state = 'open';
+CREATE INDEX ownership_transfers_offered_to_idx
+  ON ownership_transfers (offered_to) WHERE state = 'open';
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

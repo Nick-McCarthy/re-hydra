@@ -4,7 +4,7 @@ import { SqlClient } from "effect/sql"
 import { type BlockedUser, type BlockUserPayload, ProjectAccessDenied } from "../domain/Project.js"
 import type { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
-import { returnChunkToPool } from "./PoolReturn.js"
+import { endUserLeasesOnProject } from "./PoolReturn.js"
 import { ProjectAuth } from "./ProjectAuth.js"
 import { ProjectChunkStats } from "./ProjectChunkStats.js"
 
@@ -21,8 +21,9 @@ const toIso = (value: Date | string): string =>
  * so the feed cannot be used to single anyone out. Owners and maintainers see
  * names in the block list.
  *
- * Owners and maintainers cannot be blocked. Removing a maintainer is
- * membership management (A-011).
+ * Owners and maintainers cannot be blocked; demote them first (A-011).
+ * Blocking a contributor also removes them from the project, and cancels any
+ * ownership offer made to them, so the member and block lists never disagree.
  */
 export class ProjectModeration extends Context.Service<
   ProjectModeration,
@@ -104,7 +105,7 @@ export class ProjectModeration extends Context.Service<
         const target = targets[0]
         if (target === undefined) return yield* new NotFound()
         if (target.role === "owner" || target.role === "maintainer") {
-          return yield* new ProjectAccessDenied({ detail: "Owners and maintainers cannot be blocked." })
+          return yield* new ProjectAccessDenied({ detail: "Owners and maintainers cannot be blocked. Demote them to contributor first." })
         }
 
         yield* sql.withTransaction(Effect.gen(function*() {
@@ -115,25 +116,17 @@ export class ProjectModeration extends Context.Service<
             RETURNING user_id
           `
           // Their leases here end now, as a maintainer's "clear lease" would.
-          const held = yield* sql<{ readonly id: string }>`
-            SELECT id FROM chunks
-            WHERE project_id = ${projectId}
-              AND state = 'leased'
-              AND lease_user_id = ${payload.userId}
-            FOR UPDATE
-          `
-          for (const chunk of held) {
-            yield* returnChunkToPool(sql, chunk.id)
-            yield* activity.releaseSideLeases(chunk.id)
-          }
+          yield* endUserLeasesOnProject(sql, activity.releaseSideLeases, projectId, payload.userId)
+          // A-011: a blocked contributor stops being a member, and loses any
+          // pending ownership offer. Owners and maintainers were refused above.
           yield* sql`
-            UPDATE chunk_leases cl
-            SET released_at = now()
-            FROM chunks c
-            WHERE cl.chunk_id = c.id
-              AND c.project_id = ${projectId}
-              AND cl.user_id = ${payload.userId}
-              AND cl.released_at IS NULL
+            DELETE FROM project_members
+            WHERE project_id = ${projectId} AND user_id = ${payload.userId} AND role = 'contributor'
+          `
+          yield* sql`
+            UPDATE ownership_transfers
+            SET state = 'cancelled', resolved_at = now()
+            WHERE project_id = ${projectId} AND offered_to = ${payload.userId} AND state = 'open'
           `
           if (inserted[0] !== undefined) {
             yield* activity.record({

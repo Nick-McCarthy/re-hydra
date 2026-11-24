@@ -85,7 +85,7 @@ Submitting the same bytes again under the same lease returns the existing attemp
 
 ### Types
 
-Type headers are immutable revisions. A proposal points at a base revision and a new headers blob. Revalidation inserts one job per affected matched chunk. A compiler failure on that job leaves the match in place. When revalidation finishes and the project has a second owner or maintainer, the proposal waits in `ready` until a different privileged member accepts. One privileged member can land it alone. Accept writes a new revision. Membership is read when the proposal lands, not when it was opened.
+Type headers are immutable revisions. A proposal points at a base revision and a new headers blob. Revalidation inserts one job per affected matched chunk. A compiler failure on that job leaves the match in place. When revalidation finishes and the project has a second owner or maintainer, the proposal waits in `ready` until a different privileged member accepts. One privileged member can land it alone. Accept writes a new revision. Membership is read when the proposal lands, not when it was opened. The owner adds and removes members and sets their role; maintainers add and remove contributors; ownership moves only when the recipient accepts an offer, and the old owner stays on as a maintainer.
 
 An unresolved type moves the open and stale chunks that use it to `blocked`. Clearing it returns them to `open` or `stale`.
 

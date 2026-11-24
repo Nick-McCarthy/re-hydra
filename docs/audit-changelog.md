@@ -2,6 +2,49 @@
 
 Changes made because of the audit. Newest first. Finding ids refer to [audit-findings.md](audit-findings.md). The plan is [audit-plan.md](audit-plan.md).
 
+## 2026-11-24 — Members, roles, and ownership transfer (A-011)
+
+Branch `audit/members`, off `main` at `500178c87`. Not committed yet. Run `npm run api:migrate` (migration 016).
+
+### Rules
+
+| Action | Owner | Maintainer | Contributor |
+| --- | --- | --- | --- |
+| Add a contributor | yes | yes | no |
+| Add a maintainer, or promote to maintainer | yes | no | no |
+| Demote a maintainer | yes | no | no |
+| Remove a contributor | yes | yes | no |
+| Remove a maintainer | yes | no | no |
+| Offer ownership | yes | no | no |
+| Leave | after handing over ownership | yes | yes |
+
+- Adding is direct. An unknown user is `404`, an existing member `409`, a blocked user `403` ("Lift the block first").
+- Ownership moves by an offer the recipient accepts. On accept, in one transaction, the old owner becomes a maintainer and the recipient the owner. One open offer per project; it expires after 7 days. The owner can withdraw it and the recipient can decline it.
+- Removal or leaving on a members-only project ends the user's leases there. On an open project they keep working as a non-member.
+- With A-012: blocking a contributor also removes them from the project and cancels any ownership offer to them. Owners and maintainers still cannot be blocked; the message now says to demote them first.
+- Changes are public in the activity feed, with names (kind `members_changed`): "X joined as contributor", "X is now a maintainer", "X left the project", "X was removed from the project", "Ownership offered to X", "X is now the owner", and declines and withdrawals.
+
+### API
+
+- New `ProjectMembers` service. `GET /projects/:slug/members` (public), `POST /projects/:slug/members`, `PATCH` and `DELETE /projects/:slug/members/:userId` (`DELETE` on yourself is leaving).
+- `GET`, `POST`, `DELETE /projects/:slug/ownership-transfer` and `POST /projects/:slug/ownership-transfer/accept`. `GET` shows the open offer only to the owner who made it and the person it was made to. `GET /ownership-offers` lists the caller's pending offers.
+- The lease clean-up blocking used moved to `endUserLeasesOnProject` in `PoolReturn.ts`, shared by blocking and removal.
+
+### Web and CLI
+
+- "Members" card on the project page for everyone: the member list with role badges and profile links; controls for whoever may use them; add by search (the owner picks the role); an accept/decline banner for the recipient of an ownership offer and a withdraw banner for the owner. The page re-reads your own role after a change.
+- The types page now offers the proposal form to any signed-in user on an open project (A-012 made the API allow it, but the page still required membership).
+- `hydra members <project>` lists members and roles.
+
+### Verification
+
+`apps/api/scripts/verify-members.mjs`, 33 checks on the audit database, all passing. It covers every row of the rules table, conflicts and unknown users, leaving on a members-only project ending leases and access, blocks and membership, the whole transfer flow (visibility, wrong recipient, accept, decline, withdraw, expiry, a block cancelling an offer), and that with two reviewers the person who started a recheck cannot accept it while the other can. The earlier suites (access, audit fixes, phase 3, inline asm, agent input, call targets, hardening) and the unit tests still pass. The Members card was checked in the browser from a maintainer's view.
+
+### Known limits
+
+- No email or in-app notification for an ownership offer beyond the project page banner, the `/ownership-offers` endpoint, and the activity feed. There is no mail sending yet.
+- Adding someone does not ask them first. Anyone added can leave.
+
 ## 2026-11-24 — Who may work on a project, and blocking (A-012)
 
 Commit `bdeee5e42`, pushed to `main`. Run `npm run api:migrate` (migration 015).

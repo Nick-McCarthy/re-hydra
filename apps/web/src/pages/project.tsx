@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { AttemptHistoryDialog } from "@/components/attempt-history-dialog"
 import { ChunkWorkDialog } from "@/components/chunk-work-dialog"
 import { ProjectAccessCard } from "@/components/project-access-card"
+import { ProjectMembersCard } from "@/components/project-members-card"
 import { ActivityList } from "@/components/activity-list"
 import { FollowButton } from "@/components/follow-button"
 import { Badge } from "@/components/ui/badge"
@@ -159,7 +160,9 @@ function timed<T>(label: string, work: Promise<T>): Promise<T> {
 export function ProjectPage() {
   const { projectSlug = "" } = useParams()
   const { session, user } = useAuth()
-  const { canMaintain, ready: roleReady } = useMembership(projectSlug)
+  const { canMaintain, role: myRole, reload: reloadMembership, ready: roleReady } = useMembership(projectSlug)
+  // Bumped when the access card changes membership (blocking removes a contributor).
+  const [membersKey, setMembersKey] = React.useState(0)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [project, setProject] = React.useState<ProjectSummary | null>(null)
@@ -779,12 +782,26 @@ export function ProjectPage() {
         </Card>
       ) : null}
 
+      {roleReady ? (
+        <ProjectMembersCard
+          key={membersKey}
+          projectSlug={projectSlug}
+          session={session && user ? { token: session.token, userId: user.id } : null}
+          myRole={myRole}
+          onChanged={() => {
+            reloadMembership()
+            void api.projectActivity(projectSlug).then(setEvents)
+          }}
+        />
+      ) : null}
+
       {roleReady && canMaintain && session ? (
         <ProjectAccessCard
           project={project}
           token={session.token}
           onProjectChanged={(updated) => {
             setProject(updated)
+            setMembersKey((k) => k + 1)
             void api.projectActivity(projectSlug).then(setEvents)
           }}
         />

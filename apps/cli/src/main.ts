@@ -459,6 +459,24 @@ const watch = Command.make(
   })
 ).pipe(Command.withDescription("Heartbeat the current checkout until Ctrl+C"))
 
+const members = Command.make(
+  "members",
+  {
+    project: Argument.String("project").pipe(
+      Argument.withDescription("Project slug")
+    )
+  },
+  Effect.fn(function*({ project }) {
+    yield* ensureUrl
+    const client = yield* ApiClient
+    const rows = yield* client.projects.listMembers({ params: { projectSlug: project } })
+    yield* say(
+      rows,
+      rows.map((m) => `${m.role.padEnd(11)}  ${m.displayName}  (${m.userId})`)
+    )
+  })
+).pipe(Command.withDescription("List a project's members and their roles"))
+
 const MainLive = Layer.mergeAll(ApiClientLive, NodeServices.layer)
 
 hydra.pipe(
@@ -472,6 +490,7 @@ hydra.pipe(
     release,
     heartbeat,
     attempts,
+    members,
     watch
   ]),
   Command.run({ version: "0.0.0" }),

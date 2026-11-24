@@ -104,3 +104,50 @@ export const BlockUserPayload = Schema.Struct({
   reason: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200)))
 }).annotate({ identifier: "BlockUserPayload" })
 export type BlockUserPayload = typeof BlockUserPayload.Type
+
+/** Audit A-011. Roles that can be given by adding or changing a member. */
+export const AssignableRole = Schema.Literals(["maintainer", "contributor"]).annotate({ identifier: "AssignableRole" })
+export type AssignableRole = typeof AssignableRole.Type
+
+export const ProjectMember = Schema.Struct({
+  userId: Uuid,
+  displayName: Schema.String,
+  role: Schema.Literals(["owner", "maintainer", "contributor"]),
+  joinedAt: Schema.String
+}).annotate({ identifier: "ProjectMember" })
+export type ProjectMember = typeof ProjectMember.Type
+
+export const AddMemberPayload = Schema.Struct({
+  userId: Uuid,
+  role: AssignableRole
+}).annotate({ identifier: "AddMemberPayload" })
+export type AddMemberPayload = typeof AddMemberPayload.Type
+
+export const ChangeRolePayload = Schema.Struct({
+  role: AssignableRole
+}).annotate({ identifier: "ChangeRolePayload" })
+export type ChangeRolePayload = typeof ChangeRolePayload.Type
+
+export const OwnershipOffer = Schema.Struct({
+  id: Uuid,
+  projectSlug: Schema.String,
+  projectName: Schema.String,
+  offeredBy: Uuid,
+  offeredByName: Schema.String,
+  offeredTo: Uuid,
+  offeredToName: Schema.String,
+  createdAt: Schema.String,
+  expiresAt: Schema.String
+}).annotate({ identifier: "OwnershipOffer" })
+export type OwnershipOffer = typeof OwnershipOffer.Type
+
+export const OfferOwnershipPayload = Schema.Struct({
+  userId: Uuid
+}).annotate({ identifier: "OfferOwnershipPayload" })
+export type OfferOwnershipPayload = typeof OfferOwnershipPayload.Type
+
+/** The offer, if any, that the caller made or received. Null for everyone else. */
+export const OwnershipOfferState = Schema.Struct({
+  offer: Schema.NullOr(OwnershipOffer)
+}).annotate({ identifier: "OwnershipOfferState" })
+export type OwnershipOfferState = typeof OwnershipOfferState.Type

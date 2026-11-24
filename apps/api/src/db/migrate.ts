@@ -18,6 +18,7 @@ import migration012 from "./migrations/012_job_integrity.js"
 import migration013 from "./migrations/013_inline_asm.js"
 import migration014 from "./migrations/014_small_fixes.js"
 import migration015 from "./migrations/015_project_access.js"
+import migration016 from "./migrations/016_project_members.js"
 
 const program = PgMigrator.run({
   loader: Migrator.fromRecord({
@@ -35,7 +36,8 @@ const program = PgMigrator.run({
     "012_job_integrity": migration012,
     "013_inline_asm": migration013,
     "014_small_fixes": migration014,
-    "015_project_access": migration015
+    "015_project_access": migration015,
+    "016_project_members": migration016
   })
 }).pipe(
   Effect.tap((applied) =>

@@ -67,7 +67,13 @@ import {
   PublicUserProfile
 } from "./domain/Profile.js"
 import {
+  AddMemberPayload,
+  ChangeRolePayload,
   CreateProjectPayload,
+  OfferOwnershipPayload,
+  OwnershipOffer,
+  OwnershipOfferState,
+  ProjectMember,
   BlockedUser,
   BlockUserPayload,
   FlagsRejected,
@@ -239,6 +245,71 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
       params: { projectSlug: ProjectSlug },
       success: ProjectMembership,
       error: [Unauthorized, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("listMembers", "/projects/:projectSlug/members", {
+      params: { projectSlug: ProjectSlug },
+      success: Schema.Array(ProjectMember),
+      error: [NotFound]
+    })
+  )
+  .add(
+    HttpApiEndpoint.post("addMember", "/projects/:projectSlug/members", {
+      params: { projectSlug: ProjectSlug },
+      payload: AddMemberPayload,
+      success: Schema.Array(ProjectMember),
+      error: [Unauthorized, Forbidden, NotFound, Conflict, ProjectAccessDenied]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.patch("changeMemberRole", "/projects/:projectSlug/members/:userId", {
+      params: { projectSlug: ProjectSlug, userId: Uuid },
+      payload: ChangeRolePayload,
+      success: Schema.Array(ProjectMember),
+      error: [Unauthorized, Forbidden, NotFound, ProjectAccessDenied]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.delete("removeMember", "/projects/:projectSlug/members/:userId", {
+      params: { projectSlug: ProjectSlug, userId: Uuid },
+      success: Schema.Array(ProjectMember),
+      error: [Unauthorized, Forbidden, NotFound, ProjectAccessDenied]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("getOwnershipOffer", "/projects/:projectSlug/ownership-transfer", {
+      params: { projectSlug: ProjectSlug },
+      success: OwnershipOfferState,
+      error: [Unauthorized, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("offerOwnership", "/projects/:projectSlug/ownership-transfer", {
+      params: { projectSlug: ProjectSlug },
+      payload: OfferOwnershipPayload,
+      success: OwnershipOfferState,
+      error: [Unauthorized, Forbidden, NotFound, Conflict, ProjectAccessDenied]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("acceptOwnership", "/projects/:projectSlug/ownership-transfer/accept", {
+      params: { projectSlug: ProjectSlug },
+      success: Schema.Array(ProjectMember),
+      error: [Unauthorized, NotFound, ProjectAccessDenied]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.delete("withdrawOwnership", "/projects/:projectSlug/ownership-transfer", {
+      params: { projectSlug: ProjectSlug },
+      success: OwnershipOfferState,
+      error: [Unauthorized, Forbidden, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("myOwnershipOffers", "/ownership-offers", {
+      success: Schema.Array(OwnershipOffer),
+      error: [Unauthorized]
     }).middleware(Authorization)
   )
   .add(

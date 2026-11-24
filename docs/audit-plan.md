@@ -22,11 +22,10 @@ Status: in progress. Written 2026-11-22 against `main` at `cd2a88feb` with uncom
 | A-007 call targets | Fixed 2026-11-24, pushed to `main` (`6ceea7694`) | [audit-changelog.md](audit-changelog.md) |
 | A-037, A-039, A-040 headers, pinned sources, password cost | Fixed 2026-11-24, pushed to `main` (`1ed2ec9bf`) | [audit-changelog.md](audit-changelog.md) |
 | A-012 open vs members-only projects, block list | Fixed 2026-11-24, pushed to `main` (`bdeee5e42`) | [audit-changelog.md](audit-changelog.md) |
+| A-011 members, roles, ownership transfer | Fixed 2026-11-24, not committed (branch `audit/members`) | [audit-changelog.md](audit-changelog.md) |
 | Phases 5–8 | Not started | — |
 
-Findings: [audit-findings.md](audit-findings.md). 41 logged, 39 fixed, 1 closed as not applicable (A-024), 1 open:
-
-- A-011 (High): no member management. Until it lands, a members-only project (A-012) takes work only from members the seed or the creator step added.
+Findings: [audit-findings.md](audit-findings.md). 41 logged, 40 fixed, 1 closed as not applicable (A-024), none open. Phases 5–8 remain.
 
 Invariant status after the fixes:
 

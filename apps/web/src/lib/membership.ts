@@ -6,6 +6,9 @@ export function useMembership(projectSlug: string) {
   const { session, ready: authReady } = useAuth()
   const [role, setRole] = React.useState<ProjectMembership["role"] | null>(null)
   const [ready, setReady] = React.useState(false)
+  // Bumped after a member change (A-011) so the caller's own role is re-read.
+  const [version, setVersion] = React.useState(0)
+  const reload = React.useCallback(() => setVersion((v) => v + 1), [])
 
   React.useEffect(() => {
     if (!authReady) {
@@ -41,12 +44,12 @@ export function useMembership(projectSlug: string) {
     return () => {
       cancelled = true
     }
-  }, [projectSlug, session, authReady])
+  }, [projectSlug, session, authReady, version])
 
   return {
     role,
     ready,
     canMaintain: role === "owner" || role === "maintainer",
-    canPropose: role !== null
+    reload
   }
 }
