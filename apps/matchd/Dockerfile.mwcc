@@ -1,6 +1,6 @@
 # gamecube-mwcc target. Also includes host gcc, so x86 jobs still run in this image.
 # mwcc is the open reimplementation at zcanann/mwcc-rs (commit c00fecef), not a Metrowerks SDK binary.
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUSTUP_HOME=/opt/rustup
@@ -13,8 +13,15 @@ RUN apt-get update \
     binutils-powerpc-linux-gnu \
     pkg-config \
   && rm -rf /var/lib/apt/lists/* \
-  && curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
-    | sh -s -- -y --profile minimal --default-toolchain stable
+  # Audit A-039: a fixed rustup-init (1.29.3, x86_64) checked against its
+  # published sha256, and a fixed Rust (1.100.0), instead of piping
+  # sh.rustup.rs into sh and taking whatever stable is that day.
+  && curl --proto '=https' --tlsv1.2 -fsSL -o /tmp/rustup-init \
+    https://static.rust-lang.org/rustup/archive/1.29.3/x86_64-unknown-linux-gnu/rustup-init \
+  && echo "b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55  /tmp/rustup-init" | sha256sum -c \
+  && chmod +x /tmp/rustup-init \
+  && /tmp/rustup-init -y --profile minimal --default-toolchain 1.100.0 \
+  && rm /tmp/rustup-init
 
 ARG MWCC_REV=c00fecefe48b73be47af50f447822697bd8a1683
 RUN git init /tmp/mwcc-rs \

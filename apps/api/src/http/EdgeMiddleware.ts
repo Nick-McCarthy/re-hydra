@@ -4,6 +4,22 @@ import { IpNetwork } from "effect/net"
 import { RateLimits } from "../services/RateLimits.js"
 import { globalRule, isImportPath, matchingRules } from "./rateLimit.js"
 
+/**
+ * Audit A-037. The API serves JSON, so it can refuse everything a browser
+ * might do with a response beyond reading it. /docs (the Scalar reference)
+ * loads its own script and styles, so it gets the same headers without the
+ * strict content policy. HSTS is opt-in with API_HSTS=on, for when the API is
+ * served over HTTPS.
+ */
+const baseHeaders = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "cross-origin-resource-policy": "same-origin"
+}
+const apiCsp = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+const hstsValue = "max-age=31536000; includeSubDomains"
+
 const tooMany = (retryAfterSeconds: number) =>
   HttpServerResponse.jsonUnsafe(
     {
@@ -37,6 +53,7 @@ export const EdgeMiddlewareLive = HttpRouter.middleware(
     const maxBodyMb = yield* Config.Int("API_MAX_BODY_MB").pipe(Config.withDefault(4))
     const maxImportMb = yield* Config.Int("API_MAX_IMPORT_MB").pipe(Config.withDefault(64))
     const proxiesRaw = yield* Config.String("TRUSTED_PROXIES").pipe(Config.withDefault(""))
+    const hsts = (yield* Config.String("API_HSTS").pipe(Config.withDefault("off"))) === "on"
 
     const trustedProxies: Array<IpNetwork.IpNetwork> = []
     for (const entry of proxiesRaw.split(",").map((s) => s.trim()).filter(Boolean)) {
@@ -53,22 +70,30 @@ export const EdgeMiddlewareLive = HttpRouter.middleware(
     const defaultBody = ByteSize.megabytes(maxBodyMb)
     const importBody = ByteSize.megabytes(maxImportMb)
 
+    const securityHeaders = (path: string) => ({
+      ...baseHeaders,
+      ...(path === "/docs" || path.startsWith("/docs/") ? {} : { "content-security-policy": apiCsp }),
+      ...(hsts ? { "strict-transport-security": hstsValue } : {})
+    })
+
     return (httpEffect) =>
       forwarded(Effect.gen(function*() {
         const request = yield* HttpServerRequest.HttpServerRequest
         const path = request.url.split("?")[0] ?? request.url
+        const withHeaders = HttpServerResponse.setHeaders(securityHeaders(path))
         const client = Option.getOrElse(request.remoteAddress, () => "unknown")
 
         for (const rule of [...matchingRules(request.method, path), globalRule]) {
           const taken = limits.take(`${rule.name}:${client}`, rule.limit, rule.windowMs)
           if (!taken.ok) {
             yield* Effect.logWarning(`rate limit ${rule.name} for ${client} on ${request.method} ${path}`)
-            return tooMany(taken.retryAfterSeconds)
+            return withHeaders(tooMany(taken.retryAfterSeconds))
           }
         }
 
         return yield* httpEffect.pipe(
-          Effect.provideService(HttpIncomingMessage.MaxBodySize, isImportPath(path) ? importBody : defaultBody)
+          Effect.provideService(HttpIncomingMessage.MaxBodySize, isImportPath(path) ? importBody : defaultBody),
+          Effect.map(withHeaders)
         )
       }))
   }),

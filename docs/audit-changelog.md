@@ -2,6 +2,61 @@
 
 Changes made because of the audit. Newest first. Finding ids refer to [audit-findings.md](audit-findings.md). The plan is [audit-plan.md](audit-plan.md).
 
+## 2026-11-24 — Security headers, pinned image sources, password cost (A-037, A-039, A-040)
+
+Branch `audit/hardening`, off `main` at `6ceea7694`. Not committed yet.
+
+### A-040: password hashing cost
+
+- scrypt N goes from 2^14 to 2^17 (r = 8, p = 1), OWASP's current minimum. That needs 128 MiB, so `maxmem` is raised to 256 MiB for the call.
+- Stored hashes keep their parameters and still verify. A successful sign-in rehashes an older hash at the new cost (`needsRehash`), and a failed rehash never blocks the sign-in.
+- Stored parameters above N = 2^20, r = 32, or p = 4 are refused, so a bad row cannot cost gigabytes.
+- **Cost:** on this machine a hash takes about 266 ms instead of 33 ms. Each one needs 128 MiB. Node runs scrypt on its thread pool (4 threads by default), which bounds concurrent hashing to about 512 MiB. Sign-in is also limited to 10 per minute per address and per account.
+
+### A-037: security headers
+
+- **API:** the edge middleware adds `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-origin`, and `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'` to every routed response, including 429s.
+  - `/docs` (the Scalar reference) gets the same headers without the CSP, so its scripts load.
+  - `Strict-Transport-Security` is sent when `API_HSTS=on`.
+- **Web:** production builds (`apps/web/vite.config.ts`) get a CSP `<meta>` tag:
+  - scripts from the app's own origin, plus the one inline theme script by its SHA-256, computed from the final HTML;
+  - styles and fonts from the app's own origin and Google Fonts;
+  - API calls to the same origin;
+  - no `unsafe-inline` and no objects.
+
+  Dev builds are unchanged, because Vite's dev server injects inline scripts.
+
+### A-039: pinned image sources
+
+- All 18 matchd Dockerfiles pin `FROM` by digest (`node:22-bookworm-slim@sha256:5ec23b7c…`, `node:22-trixie-slim@sha256:be1e2a3d…`). The digests come from the images already on this machine.
+- `Dockerfile.n64` checks the GCC 2.8.1 tarball's sha256 (`3b30fbfd…`). With your OK, I downloaded it once to compute this.
+- `Dockerfile.mwcc` no longer pipes `sh.rustup.rs` into `sh`. It downloads rustup-init 1.29.3 for x86_64, checks it against the published `rustup-init.sha256` (also downloaded with your OK), and installs Rust 1.100.0 instead of `stable`.
+- `apps/matchd/README.md` has a "Pinned sources" section on how to bump these.
+
+### Verification
+
+- New `apps/api/scripts/verify-hardening.mjs`: 7/7.
+  - API headers, and `/docs` without the deny-all CSP.
+  - The web build's CSP has a script hash and no `unsafe-inline`.
+  - The seeded dev account's hash went from `scrypt$16384` to `scrypt$131072` on sign-in, and signs in again afterwards.
+  - Every Dockerfile pins `FROM`, and both downloads are checksummed.
+- **Web build, opened in the browser pane** (`vite preview` against the API):
+  - The project list rendered with live data, and the console showed no CSP violations.
+  - The hash-allowed theme script ran (dark mode applied after reload), and IBM Plex Sans loaded from Google Fonts.
+  - An injected inline script was blocked, and the browser logged the CSP violation.
+- **Image rebuild:** all 17 images rebuilt. The build log shows `/tmp/gcc-2.8.1.tar.gz: OK` and `/tmp/rustup-init: OK`, and the GameCube image reports rustc 1.100.0 and rustup 1.29.3.
+- **Regression:**
+  - `verify-audit-fixes` 14/14, `verify-phase3` 8/8, `verify-inline-asm` 14/14, `verify-agent-input` 6/6, `verify-small-fixes` 12/12, `verify-call-targets` 4/4, `verify-flags` 40/40;
+  - `verify-limits` 9/9 (with limits on);
+  - unit tests: API 28 (3 new password tests), matchd 119. Typecheck is clean.
+
+### Known limits
+
+- **Unmatched routes:** 404s for unknown routes come back without the security headers, because Effect answers them before the global middleware. They carry no data.
+- **Frame protection for the web app:** `frame-ancestors` cannot be set from a `<meta>` tag. The host serving the web build should send `X-Frame-Options: DENY`, as noted in the roadmap.
+- **Debian packages:** `apt-get` packages are still not pinned. The toolchain digest recorded on matches is what catches a changed compiler binary.
+- **x86_64 only:** rustup-init is pinned for x86_64, so the GameCube image builds only on x86_64 hosts, as the N64 image already did.
+
 ## 2026-11-24 — Call targets are part of a match (A-007)
 
 Branch `audit/small-fixes` (on top of the small fixes). Not committed yet.

@@ -17,12 +17,13 @@ Status: in progress. Written 2026-11-22 against `main` at `cd2a88feb` with uncom
 | A-032 and A-041 inline assembly and reputation | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [audit-changelog.md](audit-changelog.md) |
 | A-034 and A-035 body size and rate limits | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [audit-changelog.md](audit-changelog.md) |
 | A-013 flag allow-list and memory cap | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [audit-changelog.md](audit-changelog.md) |
-| A-036 bundle text reaching the agent | Fixed 2026-11-23, committed (`0b5b55142`, branch `audit/a036-agent-input`) | [audit-changelog.md](audit-changelog.md) |
-| Small fixes A-010, A-014, A-015, A-018, A-026, A-028, A-033, A-038 | Fixed 2026-11-23, not committed (branch `audit/small-fixes`) | [audit-changelog.md](audit-changelog.md) |
-| A-007 call targets | Fixed 2026-11-24, not committed (same branch) | [audit-changelog.md](audit-changelog.md) |
+| A-036 bundle text reaching the agent | Fixed 2026-11-23, pushed to `main` (`0b5b55142`) | [audit-changelog.md](audit-changelog.md) |
+| Small fixes A-010, A-014, A-015, A-018, A-026, A-028, A-033, A-038 | Fixed 2026-11-23, pushed to `main` (`6ceea7694`) | [audit-changelog.md](audit-changelog.md) |
+| A-007 call targets | Fixed 2026-11-24, pushed to `main` (`6ceea7694`) | [audit-changelog.md](audit-changelog.md) |
+| A-037, A-039, A-040 headers, pinned sources, password cost | Fixed 2026-11-24, not committed (branch `audit/hardening`) | [audit-changelog.md](audit-changelog.md) |
 | Phases 5–8 | Not started | — |
 
-Findings: [audit-findings.md](audit-findings.md). 41 logged, 35 fixed, 1 closed as not applicable (A-024), 5 open. The highest open ones:
+Findings: [audit-findings.md](audit-findings.md). 41 logged, 38 fixed, 1 closed as not applicable (A-024), 2 open (A-011 and A-012, waiting on product decisions). The highest open ones:
 
 - A-011 (High): no member management.
 - A-012 (Medium): any signed-in user can check out on any project, and nothing blocks an abusive user.

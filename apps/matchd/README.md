@@ -48,3 +48,15 @@ Compiles with `-c` inside the image sandbox (`MATCHD_SANDBOX=bwrap`): no network
 `POST /v1/link-jobs`
 
 Same auth. Body is `language`, `headers`, and `units[]` of `{ symbol, address, size, originalBytesBase64, source }`. Each unit is compiled alone with `-ffunction-sections`, then `ld` places `.text.<symbol>` at `address`. The section has to be the same length as the original range, and those bytes have to match. A longer section fails even when the original bytes are a prefix. `compilerOk` is false when the compiler or the link itself fails. A unit with `passed: false` is the chunk to reopen. Unresolved calls are left unresolved so one missing callee does not fail the link.
+
+## Pinned sources
+
+Every image is built from pinned inputs, so two builds of the same commit use the same base and the same downloads (audit A-039):
+
+- `FROM node:22-bookworm-slim@sha256:…` and `node:22-trixie-slim@sha256:…`. To move to a newer base, pull the tag and read its digest with `docker image inspect node:22-bookworm-slim --format '{{index .RepoDigests 0}}'`, then update every Dockerfile.
+- `Dockerfile.n64` checks the GCC 2.8.1 tarball's sha256.
+- `Dockerfile.psp` checks the pspdev tarball's sha256.
+- `Dockerfile.mwcc` installs rustup-init 1.29.3, checked against its published sha256, and Rust 1.100.0.
+- Git sources (agbcc, mwcc-rs) are fixed by commit.
+
+Debian packages from `apt-get` are not pinned. A rebuild can pick up newer compiler packages, which changes the toolchain digest recorded on matches. That is how the digest is meant to work: a recheck against a different binary is refused.

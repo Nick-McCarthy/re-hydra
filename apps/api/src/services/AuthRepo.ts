@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto"
 import { Context, Effect, Layer, Option } from "effect"
 import { NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
-import { hashPassword, verifyPassword } from "../auth/password.js"
+import { hashPassword, needsRehash, verifyPassword } from "../auth/password.js"
 import type {
   AccessTokenCreatedBody,
   AccessTokenSummary,
@@ -198,6 +198,14 @@ export class AuthRepo extends Context.Service<
         )
         if (row === undefined || row.password_hash === null || !matches) {
           return yield* wrongCredentials()
+        }
+        // Audit A-040: move older, cheaper hashes up to the current cost. A
+        // failure here never blocks the sign-in.
+        if (needsRehash(row.password_hash)) {
+          yield* hashPassword(payload.password).pipe(
+            Effect.flatMap((hash) => sql`UPDATE users SET password_hash = ${hash} WHERE id = ${row.id}`),
+            Effect.ignore
+          )
         }
         return yield* issueSession(row.id).pipe(Effect.orDie)
       })

@@ -1,6 +1,6 @@
 # n64-gcc target: GNU GCC 2.8.1 for big-endian MIPS, plus host gcc.
 # This is the public GNU release, not the Nintendo SDK compiler and not IDO.
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -14,7 +14,9 @@ RUN apt-get update \
 
 # Stock 2.8.1 defaults to big-endian MIPS, which is what N64 uses.
 # The obstack change is the one needed to compile this release with a modern gcc.
+# Audit A-039: the tarball is checked against the sha256 recorded 2026-11-24.
 RUN wget -O /tmp/gcc-2.8.1.tar.gz https://ftp.gnu.org/gnu/gcc/gcc-2.8.1.tar.gz \
+  && echo "3b30fbfdf93e628373d90d174243f3267b0eec9ebe792bb64fd15b8828c2ea4c  /tmp/gcc-2.8.1.tar.gz" | sha256sum -c \
   && tar -xzf /tmp/gcc-2.8.1.tar.gz -C /tmp \
   && cd /tmp/gcc-2.8.1 \
   && sed -i 's/include <varargs.h>/include <stdarg.h>/g' *.c \

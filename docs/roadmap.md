@@ -108,6 +108,7 @@ Around the process:
 - Postgres in us-east-1, migrations applied, seed left unrun. The dev user and `rehydra-dev` password stay local.
 - The API and matchd in that same region. `BLOB_STORE=s3`, region `us-east-1`, and an access key that can only put and get objects in that bucket. `MATCHD_TOKEN` has to be a real secret, set on both the API and every matchd process. Neither starts without it, and the images no longer carry a default. `dev-matchd-token` still starts but logs a warning.
 - HTTPS on the public API URL. The web app talks to `/v1` on the same origin.
+- `API_HSTS=on` once the API is served over HTTPS. The host that serves the web build should also send `X-Frame-Options: DENY` (or `frame-ancestors 'none'`), which a `<meta>` CSP cannot set.
 - `TRUSTED_PROXIES` set to the load balancer's network, so rate limits see client addresses. Keep `RATE_LIMITS=on`. Rate limits are per API process and in memory, so with several API processes each one counts separately.
 
 `blob_objects` can remain for that first deploy. With `BLOB_STORE=s3` the API does not write it. Drop the table after one checkout and one match have both read from the bucket.
