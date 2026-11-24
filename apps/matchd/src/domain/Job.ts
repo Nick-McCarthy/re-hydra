@@ -25,6 +25,12 @@ export const MatchJobRequest = Schema.Struct({
   expectedToolchainDigest: Schema.optionalKey(Schema.String),
   /** The chunk allows inline assembly (audit A-032). Default false. */
   allowInlineAsm: Schema.optionalKey(Schema.Boolean),
+  /**
+   * Linked address of the original function, decimal or 0x hex (audit A-007).
+   * When given, the result lists the address the original uses at each
+   * relocated field.
+   */
+  originalAddress: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^(0x[0-9a-fA-F]{1,16}|[0-9]{1,20})$/))),
   entrySymbol: Schema.String.check(Schema.isMinLength(1)),
   originalBytesBase64: Schema.String.check(Schema.isMinLength(1)),
   sources: Schema.Array(SourceFile).check(Schema.isMinLength(1))
@@ -43,7 +49,13 @@ export const MatchJobResult = Schema.Struct({
   toolchainDigest: Schema.String,
   canonicalSha256: Schema.String,
   /** Required, so an API never mistakes an older matchd for a checked result. */
-  usesInlineAsm: Schema.Boolean
+  usesInlineAsm: Schema.Boolean,
+  references: Schema.optionalKey(Schema.Array(Schema.Struct({
+    offset: Schema.Int,
+    type: Schema.String,
+    symbol: Schema.String,
+    originalTarget: Schema.String
+  })))
 }).annotate({ identifier: "MatchJobResult" })
 
 export type MatchJobResult = typeof MatchJobResult.Type

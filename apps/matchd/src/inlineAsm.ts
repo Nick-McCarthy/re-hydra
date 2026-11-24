@@ -172,3 +172,48 @@ export const preprocessCommand = (
   if (!args.includes("-E")) args.unshift("-E")
   return { cmd: compiler, args: [...args, "-o", outFile, sourceFile], approximate: false }
 }
+
+/**
+ * Audit A-033. A source may only pull in its own files (the candidate and
+ * types.h), the preprocessor's built-ins, and real header directories: paths
+ * under /usr/ or /opt/ with an /include/ segment and no "..". Anything else
+ * (/etc/hostname, /proc/..., matchd's own files) would echo container files
+ * back to the contributor in diagnostics.
+ */
+export const isAllowedIncludePath = (file: string, ownFiles: ReadonlyArray<string>): boolean => {
+  if (file === "" || file.startsWith("<")) return true
+  const own = new Set(ownFiles.map((f) => path.posix.basename(f)))
+  if (!file.startsWith("/")) {
+    // Relative names resolve in the job directory.
+    return !file.split("/").includes("..") && own.has(path.posix.basename(file))
+  }
+  if (file.split("/").includes("..")) return false
+  if (/^\/tmp\/rehydra-(match|link)-[^/]+\//.test(file)) return own.has(path.posix.basename(file))
+  return (file.startsWith("/usr/") || file.startsWith("/opt/")) && file.includes("/include/")
+}
+
+/** First file the preprocessor read that a source may not include. */
+export const findOutsideInclude = (
+  preprocessed: string,
+  ownFiles: ReadonlyArray<string>
+): string | undefined => {
+  for (const raw of preprocessed.split(/\r?\n/)) {
+    const marker = /^#\s*(?:line\s+)?\d+\s+"([^"]*)"/.exec(raw)
+    const file = marker?.[1]
+    if (file !== undefined && !isAllowedIncludePath(file, ownFiles)) return file
+  }
+  return undefined
+}
+
+/** Paths named at the start of compiler diagnostics ("/etc/x:1:2: error ..."). */
+export const outsidePathsInDiagnostics = (
+  text: string,
+  ownFiles: ReadonlyArray<string>
+): ReadonlyArray<string> => {
+  const found = new Set<string>()
+  for (const match of text.matchAll(/(?:^|\s)(\/[^\s:"]+):\d+/gm)) {
+    const file = match[1]
+    if (file !== undefined && !isAllowedIncludePath(file, ownFiles)) found.add(file)
+  }
+  return [...found]
+}

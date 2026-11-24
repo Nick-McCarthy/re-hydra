@@ -827,6 +827,30 @@ ALTER TABLE chunks ADD COLUMN allow_inline_asm boolean NOT NULL DEFAULT false;
 ALTER TABLE matches ADD COLUMN uses_inline_asm boolean NOT NULL DEFAULT false;
 ```
 
+## Audit small fixes — migration 014
+
+```sql
+-- A-026: rechecks that could not run (compile failure, missing input). The match stays.
+ALTER TABLE type_proposals ADD COLUMN revalidation_unchecked integer NOT NULL DEFAULT 0;
+
+-- A-015: a failed matchd call puts the job back with a backoff.
+ALTER TABLE jobs ADD COLUMN transport_retries integer NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN not_before timestamptz;
+
+-- A-018: one API process runs the matchd scaler.
+CREATE TABLE scaler_leader (
+  id          integer PRIMARY KEY CHECK (id = 1),
+  holder      text NOT NULL,
+  expires_at  timestamptz NOT NULL
+);
+
+-- A-028: substring search on the board.
+CREATE EXTENSION pg_trgm;
+CREATE INDEX chunks_name_trgm_idx ON chunks USING gin (name gin_trgm_ops) WHERE fuse_parent_id IS NULL;
+CREATE INDEX chunks_address_trgm_idx ON chunks USING gin ((address::text) gin_trgm_ops) WHERE fuse_parent_id IS NULL;
+CREATE INDEX chunks_hex_address_trgm_idx ON chunks USING gin (('0x' || to_hex(address)) gin_trgm_ops) WHERE fuse_parent_id IS NULL;
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

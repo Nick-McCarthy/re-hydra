@@ -19,7 +19,8 @@ export const JobsLive = HttpApiBuilder.group(Api, "jobs", (handlers) =>
           diagnostics: result.diagnostics,
           toolchainDigest: result.toolchainDigest,
           canonicalSha256: result.canonicalSha256,
-          usesInlineAsm: result.usesInlineAsm ?? false
+          usesInlineAsm: result.usesInlineAsm ?? false,
+          ...(result.references === undefined ? {} : { references: result.references })
         }
       })
     )

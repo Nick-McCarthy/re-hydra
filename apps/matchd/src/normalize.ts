@@ -67,6 +67,13 @@ const blankParts = (field: RelocField, endian: ObjectEndian): ReadonlyArray<Blan
   )
 }
 
+/** "leaf-0x4" or "leaf+0x10" to "leaf". */
+const symbolName = (text: string | undefined): string | undefined => {
+  if (text === undefined || text.length === 0) return undefined
+  const name = text.replace(/[+-]0x[0-9a-fA-F]+$/, "")
+  return name.length === 0 ? undefined : name
+}
+
 const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
@@ -152,7 +159,17 @@ export const extractSymbolMachineCode = (
   widths: RelocationWidths = allRelocationWidths(),
   endian: ObjectEndian = "little"
 ):
-  | { readonly ok: true; readonly bytes: Uint8Array; readonly relocations: ReadonlyArray<Relocation> }
+  | {
+    readonly ok: true
+    readonly bytes: Uint8Array
+    readonly relocations: ReadonlyArray<Relocation>
+    /**
+     * The symbol each relocation refers to, by the same index, without its
+     * addend ("leaf-0x4" gives "leaf"). Undefined when objdump printed none.
+     * Used to check call targets (audit A-007).
+     */
+    readonly relocationSymbols: ReadonlyArray<string | undefined>
+  }
   | { readonly ok: false; readonly reason: string } => {
   if (size < 1) {
     return { ok: false, reason: `symbol ${symbol} has no size` }
@@ -167,13 +184,14 @@ export const extractSymbolMachineCode = (
   const end = start + size
   const bytes: number[] = []
   const relocations: Array<Relocation> = []
+  const relocationSymbols: Array<string | undefined> = []
   let cursor = start
 
   for (let i = header + 1; i < lines.length; i++) {
     const line = lines[i] ?? ""
     if (/^[0-9a-fA-F]+\s+<[^>]+>:/.test(line)) break
 
-    const reloc = /^\s+([0-9a-fA-F]+):\s+((?:R_|IMAGE_REL_)\S+)/.exec(line)
+    const reloc = /^\s+([0-9a-fA-F]+):\s+((?:R_|IMAGE_REL_)\S+)(?:\s+(\S+))?/.exec(line)
     if (reloc?.[1] !== undefined && reloc[2] !== undefined) {
       const offset = Number.parseInt(reloc[1], 16) - start
       const type = reloc[2]
@@ -189,6 +207,7 @@ export const extractSymbolMachineCode = (
         }
       }
       relocations.push({ offset, type })
+      relocationSymbols.push(symbolName(reloc[3]))
       continue
     }
 
@@ -220,7 +239,7 @@ export const extractSymbolMachineCode = (
       reason: `disassembly of '${symbol}' is ${bytes.length} bytes, symbol is ${size}`
     }
   }
-  return { ok: true, bytes: Uint8Array.from(bytes), relocations }
+  return { ok: true, bytes: Uint8Array.from(bytes), relocations, relocationSymbols }
 }
 
 /**

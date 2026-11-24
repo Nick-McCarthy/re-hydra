@@ -31,10 +31,17 @@ function outcome(proposal: TypeProposal): string {
       proposal.revalidationFailed > 0
         ? `${proposal.revalidationFailed} failed and stay stale. `
         : ""
-    return `${failed}Revalidation finished. Another owner or maintainer accepts these headers.`
+    const unchecked =
+      proposal.revalidationUnchecked > 0
+        ? `${proposal.revalidationUnchecked} could not be checked (the compile failed or an input was missing); their matches stay. `
+        : ""
+    return `${failed}${unchecked}Revalidation finished. Another owner or maintainer accepts these headers.`
   }
   if (proposal.state === "accepted" && proposal.revalidationTotal === 0) {
     return "No matched functions were in scope. These headers are now the current revision."
+  }
+  if (proposal.state === "accepted" && proposal.revalidationUnchecked > 0) {
+    return `${proposal.revalidationFailed} failed and returned to the pool as stale. ${proposal.revalidationUnchecked} could not be checked (the compile failed or an input was missing); their matches stay. The proposal landed.`
   }
   if (proposal.state === "accepted" && proposal.revalidationFailed === 0) {
     return "Every rechecked function still matches and is pinned to the new revision."
@@ -123,7 +130,7 @@ export function ProposalPage() {
     return <p className="text-sm text-muted-foreground">Loading proposal…</p>
   }
 
-  const finished = proposal.revalidationDone + proposal.revalidationFailed
+  const finished = proposal.revalidationDone + proposal.revalidationFailed + proposal.revalidationUnchecked
   const progress =
     proposal.revalidationTotal === 0
       ? proposal.state === "open"
@@ -176,6 +183,7 @@ export function ProposalPage() {
           </div>
           <p className="font-mono text-xs text-muted-foreground">
             {proposal.revalidationDone} matched · {proposal.revalidationFailed} failed ·{" "}
+            {proposal.revalidationUnchecked > 0 ? `${proposal.revalidationUnchecked} not checked · ` : ""}
             {proposal.revalidationTotal} total
           </p>
           <p className="text-sm">

@@ -346,6 +346,9 @@ export function TypesPage() {
                     {proposal.revalidationFailed > 0
                       ? ` · ${proposal.revalidationFailed} failed`
                       : ""}
+                    {proposal.revalidationUnchecked > 0
+                      ? ` · ${proposal.revalidationUnchecked} not checked`
+                      : ""}
                   </td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">
                     {new Date(proposal.createdAt).toLocaleString()}

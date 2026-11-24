@@ -6,6 +6,8 @@ import {
   type AsmHit,
   findInlineAsmInPreprocessed,
   findInlineAsmInSource,
+  findOutsideInclude,
+  outsidePathsInDiagnostics,
   preprocessCommand
 } from "./inlineAsm.js"
 import { runProcess } from "./proc.js"
@@ -55,16 +57,28 @@ export const scanInlineAsm = (options: {
     const run = yield* runProcess(command.cmd, command.args, options.work, options.timeoutMs).pipe(
       Effect.catch((error) => Effect.succeed({ code: 1, stdout: "", stderr: String(error) }))
     )
+    const ownFiles = [options.sourceFile, "types.h"]
     if (run.code !== 0) {
-      return { ok: false, reason: `preprocess failed:\n${run.stderr || run.stdout}` }
+      // Audit A-033: never echo a container file back. If the failure is in
+      // a file the source may not include, name the file and nothing else.
+      const output = run.stderr || run.stdout
+      const outside = outsidePathsInDiagnostics(output, ownFiles)
+      if (outside.length > 0) return { ok: false, reason: includeRefusal(outside[0] ?? "") }
+      return { ok: false, reason: `preprocess failed:\n${output}` }
     }
     const text = yield* Effect.tryPromise({
       try: () => readFile(path.join(options.work, outFile), "utf8"),
       catch: (cause) => String(cause)
     }).pipe(Effect.option)
     if (text._tag === "None") return { ok: false, reason: "preprocess wrote no output" }
-    return { ok: true, hit: findInlineAsmInPreprocessed(text.value, [options.sourceFile, "types.h"]) }
+    const outside = findOutsideInclude(text.value, ownFiles)
+    if (outside !== undefined) return { ok: false, reason: includeRefusal(outside) }
+    return { ok: true, hit: findInlineAsmInPreprocessed(text.value, ownFiles) }
   })
+
+export const includeRefusal = (file: string): string =>
+  `the source includes a file outside the job: ${file}\n` +
+  "Only the candidate, types.h, and the compiler's own header directories may be included."
 
 export const inlineAsmRefusal = (hit: AsmHit): string =>
   `inline assembly is not allowed for this chunk: ${hit.file}:${hit.line}: ${hit.text}\n` +

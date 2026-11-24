@@ -2,6 +2,92 @@
 
 Changes made because of the audit. Newest first. Finding ids refer to [audit-findings.md](audit-findings.md). The plan is [audit-plan.md](audit-plan.md).
 
+## 2026-11-24 — Call targets are part of a match (A-007)
+
+Branch `audit/small-fixes` (on top of the small fixes). Not committed yet.
+
+Masking relocated fields on both sides hid where a call goes. On the `link` fixture, a "translation" of `caller` that calls `decoy` instead of `leaf` matched.
+
+### matchd
+
+- `normalize.ts` keeps the symbol objdump prints for each relocation, without its addend, as `relocationSymbols`.
+- New `callTargets.ts` decodes the address the original uses at each relocated field from its linked bytes, given the function's linked address. Decoded:
+  - x86 and x86-64 rel32
+  - ARM B/BL/BLX
+  - Thumb BL/BLX/B.W (old and new encodings)
+  - AArch64 B/BL
+  - MIPS `j`/`jal`
+  - PowerPC `b`/`bl` (relative and absolute)
+  - absolute 32- and 64-bit address words
+
+  High and low halves, GOT, and small-data relocations are not decoded. Section and local symbols are skipped.
+- A job may carry `originalAddress`. When it does, the result lists `references`: offset, type, the candidate's symbol, and the original's target.
+
+### API
+
+- New `services/callCheck.ts` compares references with the binary's imported functions. A reference is wrong when:
+  - the original's target is a known function and the candidate names a different known function;
+  - the original's target is a known function and the candidate names another plain C function;
+  - the original's target is not a known function, but the candidate names one.
+
+  It also handles the `_` and `.` decorations objdump adds. Itanium-mangled and other non-C names are only checked against known functions, so mangling never causes a false refusal.
+- `MatchWorker` sends `originalAddress` on checkout jobs, type rechecks, and recipe rechecks. A reported mismatch turns the result into a miss before anything is saved, with `not a match: …` appended to the diagnostics.
+
+### Verification
+
+- New `apps/api/scripts/verify-call-targets.mjs`: 4/4 on the seeded `link` project.
+  - Without the check, matchd alone reports the decoy as a match. That confirms the gap was real.
+  - Through the API, `caller` calling `decoy` is refused: "the candidate calls decoy at +0x5, but the original calls leaf (0x401000) there".
+  - Calling an undeclared `other` is refused the same way.
+  - The honest translation calling `leaf` matches.
+- New unit tests: `matchd/src/callTargets.test.ts` (one decoder per encoding, symbol parsing) and `api/src/services/callCheck.test.ts` (each rule, decorations, mangled names). Unit tests: matchd 119, API 25.
+- Regression: `verify-audit-fixes` 14/14, `verify-phase3` 8/8, `verify-inline-asm` 14/14, `verify-agent-input` 6/6, `verify-small-fixes` 12/12, `verify-flags` 40/40. Typecheck is clean. All 17 images rebuilt.
+
+### Known limits
+
+- **Only imported functions are judged.** A call to the wrong library function, or a reference to the wrong global variable, is not caught, because the import does not list them. The integration build still catches some of these.
+- **Encodings not decoded:** high/low halves (MIPS `lui`/`addiu`, PowerPC `@ha`/`@l`), GOT, and small-data relocations. A function pointer loaded that way is not checked.
+- **Decoders tested by hand-built instructions:** every decoder has a hand-built test. Only the x86 path ran end to end here, because the seeded link fixture is x86-64. The other architectures' fixtures are single functions with no calls.
+
+## 2026-11-23 — Small fixes (A-010, A-014, A-015, A-018, A-026, A-028, A-033, A-038)
+
+Branch `audit/small-fixes`, off `audit/a036-agent-input` (`0b5b55142`). Not committed yet. Migration `014_small_fixes` holds the database changes. It applies cleanly to an empty database.
+
+- **A-038 (CLI token file):** `apps/cli/src/config.ts` writes `config.json` (session or access token) and `.lease.json` (lease token) with mode 0600, in a 0700 directory, and also runs chmod on them. Checked on Linux: a file created the old way is 644, passing `mode` alone does not change a file that already exists, and chmod makes it 600. Windows ignores these modes.
+- **A-010 (expired leases):** heartbeat and submit refuse a lease whose `lease_expires_at` has passed, even before the sweeper runs. This covers both primary and extra holders. A same-bytes resubmit while `validating` still returns the earlier attempt.
+- **A-014 (silent defaults):** a missing type revision, headers blob, or binary architecture now fails the job with the reason. That applies to interactive jobs, type rechecks, and recipe rechecks. Before, they compiled against `/* empty */` or as x86-64.
+- **A-026 (unchecked rechecks):** a type recheck that cannot run (compile failure, missing input) keeps the match and counts toward the new `type_proposals.revalidation_unchecked`, not as passed. The API returns `revalidationUnchecked`. The proposal page shows "N not checked" and says those matches stay.
+- **A-015 (matchd outages):** if the matchd call fails, the job goes back to `queued` with `not_before` backoff (15, 30, 60, 120, 240 s, tracked by `transport_retries`) instead of recording a miss. After five tries it fails with the reason, and the chunk returns to its holder. The claim query honours `not_before`.
+- **A-018 (scaler leader):** `MatchdScaler` takes or renews row 1 of `scaler_leader` each tick (10 s) for 30 s. Only the leader starts or stops copies. Another process takes over when the lease lapses.
+- **A-028 (board search):** `pg_trgm` and three GIN trigram indexes, on the name, the decimal address, and the `0x` hex address. The board query already uses those exact expressions, so it needed no change.
+- **A-033 (includes):** matchd's preprocess pass reads the preprocessor's line markers, and refuses any included file other than:
+  - the candidate and `types.h`;
+  - the preprocessor's built-ins;
+  - paths under `/usr/` or `/opt/` with an `/include/` segment and no `..`.
+
+  The refusal names the file and never shows its contents. If preprocessing fails inside such a file, the diagnostics are replaced with the refusal.
+
+### Verification
+
+- New `apps/api/scripts/verify-small-fixes.mjs`: 12/12.
+  - **A-033:** `#include "/etc/hostname"`, a macro-built `#include P`, and `../../etc/passwd` are refused, and the container's hostname is not in the output. `<stddef.h>` and `<string.h>` still compile.
+  - **A-010:** heartbeat and submit on an expired, unswept lease both get 409.
+  - **A-014:** a missing headers blob gives "type headers blob missing".
+  - **A-015:** with the matchd container stopped, the job went back to `queued` with a backoff, and the chunk stayed `validating` with no miss. After matchd restarted, the same job ran and the chunk matched.
+  - **A-026:** a real proposal with an invalid header, rechecked through the API, finished with done 0, failed 0, unchecked 1, and the API reports `revalidationUnchecked: 1`.
+  - **A-028:** board search on the 100k-chunk project finds `fn_4242` in 9 ms over HTTP. In `EXPLAIN`, the search drops from about 50–100 ms to 0.5 ms (a bitmap OR of the three trigram indexes), including after seven prepared runs.
+- **A-018, two API processes with `MATCHD_SCALE=docker`:** the first logged that it is the leader, and the second logged that another process is the leader. After the first was stopped, the second took over within the 30 s lease. Not run: a scale-out while two processes are up.
+- **Regression:**
+  - `verify-audit-fixes` 14/14, `verify-phase3` 8/8, `verify-inline-asm` 14/14, `verify-agent-input` 6/6;
+  - `verify-flags` 40/40 (all 17 images still compile under the include rule).
+- **Unit tests:** matchd 110 (one new include-rule test), API 19. Typecheck is clean. All 17 matchd images rebuilt.
+
+### Known limits
+
+- **Recipe rechecks:** a failed matchd call still ends the recheck as failed, which keeps the match, instead of retrying.
+- **Scaled copies across processes:** copies the leader starts are routed only by the leader's own API process. Other API processes keep their configured routes. This was already true before, and leader election only stops copies being started twice.
+- **Include rule false positives:** a toolchain whose headers live outside `/usr/` or `/opt/` would be refused. All 17 images pass.
+
 ## 2026-11-23 — Bundle text and the contributor's agent (A-036)
 
 Branch `audit/a036-agent-input`, off `main` at `8953d8407`. Not committed yet.

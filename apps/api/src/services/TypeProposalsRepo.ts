@@ -29,6 +29,7 @@ type ProposalRow = {
   readonly revalidation_total: number
   readonly revalidation_done: number
   readonly revalidation_failed: number
+  readonly revalidation_unchecked: number
   readonly created_at: Date | string
   readonly closed_at: Date | string | null
   readonly headers_sha256?: Uint8Array
@@ -57,6 +58,7 @@ const toProposal = (row: ProposalRow, reviewers: number): TypeProposal => ({
   revalidationTotal: row.revalidation_total,
   revalidationDone: row.revalidation_done,
   revalidationFailed: row.revalidation_failed,
+  revalidationUnchecked: row.revalidation_unchecked,
   createdAt: toIso(row.created_at),
   ...(row.closed_at !== null ? { closedAt: toIso(row.closed_at) } : {})
 })
@@ -362,7 +364,8 @@ export class TypeProposalsRepo extends Context.Service<
                 revalidation_started_by = ${userId},
                 revalidation_total = ${targets.length},
                 revalidation_done = 0,
-                revalidation_failed = 0
+                revalidation_failed = 0,
+                revalidation_unchecked = 0
               WHERE id = ${proposalId}
             `
 

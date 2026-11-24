@@ -284,6 +284,7 @@ export type TypeProposal = {
   revalidationTotal: number
   revalidationDone: number
   revalidationFailed: number
+  revalidationUnchecked: number
   createdAt: string
   closedAt?: string
 }

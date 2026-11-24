@@ -164,13 +164,19 @@ export class AttemptsRepo extends Context.Service<
             AND c.id = ${options.chunkId}
             AND c.state IN ('leased', 'validating')
             AND (
-              (c.lease_user_id = ${options.userId} AND c.lease_token = ${options.leaseToken})
+              (
+                c.lease_user_id = ${options.userId}
+                AND c.lease_token = ${options.leaseToken}
+                -- Audit A-010: an expired lease is over, even before the sweep.
+                AND (c.state = 'validating' OR c.lease_expires_at > now())
+              )
               OR EXISTS (
                 SELECT 1 FROM chunk_leases cl
                 WHERE cl.chunk_id = c.id
                   AND cl.user_id = ${options.userId}
                   AND cl.lease_token = ${options.leaseToken}
                   AND cl.released_at IS NULL
+                  AND cl.lease_expires_at > now()
               )
             )
           LIMIT 1
@@ -251,6 +257,7 @@ export class AttemptsRepo extends Context.Service<
                 AND c.state = 'leased'
                 AND c.lease_user_id = ${options.userId}
                 AND c.lease_token = ${options.leaseToken}
+                AND c.lease_expires_at > now()
               RETURNING
                 c.id AS chunk_id,
                 c.project_id,
@@ -279,6 +286,7 @@ export class AttemptsRepo extends Context.Service<
                   AND cl.user_id = ${options.userId}
                   AND cl.lease_token = ${options.leaseToken}
                   AND cl.released_at IS NULL
+                  AND cl.lease_expires_at > now()
               ),
               displaced_primary AS (
                 INSERT INTO chunk_leases (

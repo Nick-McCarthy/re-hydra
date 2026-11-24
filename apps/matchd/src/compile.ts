@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import * as path from "node:path"
 import { Config, Effect } from "effect"
 import { inlineAsmRefusal, scanInlineAsm } from "./asmCheck.js"
+import { collectReferences, type Reference } from "./callTargets.js"
 import type { MatchJobRequest } from "./domain/Job.js"
 import { checkFlags, describeRefusal } from "./flagPolicy.js"
 import { disassemblySize, extractSymbolMachineCode, scoreMaskedBytes } from "./normalize.js"
@@ -25,6 +26,12 @@ export type MatchEngineResult = {
   readonly canonicalSha256: string
   /** True when the candidate contains inline assembly (audit A-032). */
   readonly usesInlineAsm?: boolean
+  /**
+   * Each relocated field the candidate names a symbol for, with the address
+   * the original uses there (audit A-007). Only when the job gives
+   * originalAddress.
+   */
+  readonly references?: ReadonlyArray<Reference>
 }
 
 export const runMatchJob = (
@@ -402,6 +409,16 @@ export const runMatchJob = (
         .update(scored.candidateLines.join("\n"))
         .digest("hex")
 
+      const references = job.originalAddress === undefined
+        ? undefined
+        : collectReferences(
+          extracted.relocations,
+          extracted.relocationSymbols,
+          original,
+          BigInt(job.originalAddress),
+          target.endian
+        )
+
       return {
         matched: scored.matched,
         score: scored.score,
@@ -410,7 +427,8 @@ export const runMatchJob = (
         compilerOk: true,
         diagnostics,
         toolchainDigest,
-        canonicalSha256
+        canonicalSha256,
+        ...(references === undefined ? {} : { references })
       }
     }).pipe(
       Effect.map((result): MatchEngineResult => ({ ...result, usesInlineAsm })),

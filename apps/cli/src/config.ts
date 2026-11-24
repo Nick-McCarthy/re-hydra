@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -55,10 +56,25 @@ export const loadConfig: Effect.Effect<CliConfig> = Effect.sync(() => {
   return { baseUrl: defaultBaseUrl }
 })
 
+/**
+ * Audit A-038. The config holds a session or access token, and .lease.json a
+ * lease token, so both are owner-only (0600, directory 0700). `mode` applies
+ * only when a file is created, so chmod also fixes files from older versions.
+ * Windows ignores these modes; the files sit under the user's own profile.
+ */
+const writePrivate = (file: string, text: string): void => {
+  writeFileSync(file, text, { encoding: "utf8", mode: 0o600 })
+  try {
+    chmodSync(file, 0o600)
+  } catch {
+    // Not supported on this file system.
+  }
+}
+
 export const saveConfig = (config: CliConfig): Effect.Effect<void> =>
   Effect.sync(() => {
-    mkdirSync(configDir(), { recursive: true })
-    writeFileSync(configPath(), `${JSON.stringify(config, null, 2)}\n`, "utf8")
+    mkdirSync(configDir(), { recursive: true, mode: 0o700 })
+    writePrivate(configPath(), `${JSON.stringify(config, null, 2)}\n`)
   })
 
 export const requireToken: Effect.Effect<CliConfig, Error> = Effect.gen(function*() {
@@ -75,11 +91,7 @@ export const requireToken: Effect.Effect<CliConfig, Error> = Effect.gen(function
 
 export const writeLease = (lease: LeaseState): Effect.Effect<void> =>
   Effect.sync(() => {
-    writeFileSync(
-      path.join(lease.workDir, ".lease.json"),
-      `${JSON.stringify(lease, null, 2)}\n`,
-      "utf8"
-    )
+    writePrivate(path.join(lease.workDir, ".lease.json"), `${JSON.stringify(lease, null, 2)}\n`)
   })
 
 export const readLeaseNear = (

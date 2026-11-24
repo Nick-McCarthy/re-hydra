@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
+import { hostname } from "node:os"
 import { fileURLToPath } from "node:url"
 import { Config, Effect, Layer, Redacted, Result } from "effect"
 import { SqlClient } from "effect/sql"
@@ -176,7 +178,35 @@ export const MatchdScalerLive = Layer.effectDiscard(Effect.gen(function*() {
     }
   }).pipe(Effect.ignore)
 
+  /**
+   * Audit A-018. With several API processes, each would start its own copies
+   * for the same queue. The leader holds row 1 of scaler_leader and renews it
+   * every tick (10 s) for 30 s. Another process takes over once it lapses.
+   */
+  const holderId = `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`
+  let leading: boolean | undefined
+  const takeLeadership = Effect.gen(function*() {
+    const rows = yield* sql<{ readonly holder: string }>`
+      INSERT INTO scaler_leader (id, holder, expires_at)
+      VALUES (1, ${holderId}, now() + interval '30 seconds')
+      ON CONFLICT (id) DO UPDATE
+        SET holder = EXCLUDED.holder, expires_at = EXCLUDED.expires_at
+        WHERE scaler_leader.holder = EXCLUDED.holder
+           OR scaler_leader.expires_at < now()
+      RETURNING holder
+    `
+    const now = rows[0] !== undefined
+    if (now !== leading) {
+      leading = now
+      yield* Effect.logInfo(now
+        ? `matchd scaler: this process (${holderId}) is the leader`
+        : "matchd scaler: another API process is the leader; this one waits")
+    }
+    return now
+  })
+
   const tick = Effect.gen(function*() {
+    if (!(yield* takeLeadership)) return
     if (Date.now() < dockerQuietUntil) return
     const waits = yield* sql<WaitRow>`
       SELECT

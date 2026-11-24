@@ -1,9 +1,10 @@
 import { PgClient } from "@effect/sql-pg"
-import { Cause, Config, Effect, Layer, Option } from "effect"
+import { Cause, Config, Effect, Layer, Option, Result } from "effect"
 import { SqlClient } from "effect/sql"
 import { Activity } from "./Activity.js"
 import { Blobs } from "./Blobs.js"
-import { MatchdClient } from "./MatchdClient.js"
+import { findReferenceMismatch, nameVariants } from "./callCheck.js"
+import { MatchdClient, type MatchJobResult } from "./MatchdClient.js"
 import { landProposal, reviewerCount } from "./ProposalAccept.js"
 import { ProjectChunkStats } from "./ProjectChunkStats.js"
 import { isPinnedDigest } from "./ToolchainPin.js"
@@ -37,6 +38,9 @@ type AttemptMeta = {
 
 type ArchRow = {
   readonly arch: string
+  readonly binary_id: string
+  /** Linked address of the original function, for the call-target check (audit A-007). */
+  readonly address: string | number | bigint
   /** Audit A-032: whether matchd may accept inline assembly for this chunk. */
   readonly allow_inline_asm: boolean
 }
@@ -54,12 +58,46 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
 
   const loadArch = (chunkId: string) =>
     sql<ArchRow>`
-      SELECT b.arch, c.allow_inline_asm
+      SELECT b.arch, c.allow_inline_asm, c.binary_id, c.address
       FROM chunks c
       INNER JOIN binaries b ON b.id = c.binary_id
       WHERE c.id = ${chunkId}
       LIMIT 1
     `.pipe(Effect.orDie)
+
+  /**
+   * Audit A-007. A match whose call or address references point somewhere
+   * other than the original's becomes a miss, with the reason appended. The
+   * known functions are this binary's chunks at the original targets or with
+   * the candidate's symbol names.
+   */
+  const checkReferences = <R extends MatchJobResult>(binaryId: string, result: R) =>
+    Effect.gen(function*() {
+      const references = result.references ?? []
+      if (!result.matched || references.length === 0) return result
+      const targets = [...new Set(references.map((r) => r.originalTarget))]
+      const names = [...new Set(references.flatMap((r) => nameVariants(r.symbol)))]
+      const rows = yield* sql<{ readonly name: string; readonly address: string | number | bigint }>`
+        SELECT name, address
+        FROM chunks
+        WHERE binary_id = ${binaryId}
+          AND fuse_parent_id IS NULL
+          AND (
+            address = ANY(${targets.map((x) => BigInt(x).toString())}::bigint[])
+            OR name = ANY(${names}::text[])
+          )
+      `.pipe(Effect.orDie)
+      const mismatch = findReferenceMismatch(
+        references,
+        rows.map((row) => ({ name: row.name, address: BigInt(row.address) }))
+      )
+      if (mismatch === undefined) return result
+      return {
+        ...result,
+        matched: false,
+        diagnostics: `${result.diagnostics}\nnot a match: ${mismatch}`
+      }
+    })
 
   const finalizeProposalIfDone = (proposalId: string) =>
     Effect.gen(function*() {
@@ -72,11 +110,13 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         readonly revalidation_total: number
         readonly revalidation_done: number
         readonly revalidation_failed: number
+        readonly revalidation_unchecked: number
         readonly state: string
       }>`
         SELECT
           project_id, headers_sha256, created_by, revalidation_started_by, title,
-          revalidation_total, revalidation_done, revalidation_failed, state
+          revalidation_total, revalidation_done, revalidation_failed,
+          revalidation_unchecked, state
         FROM type_proposals
         WHERE id = ${proposalId}
         FOR UPDATE
@@ -87,7 +127,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         return
       }
       const finished =
-        proposal.revalidation_done + proposal.revalidation_failed
+        proposal.revalidation_done + proposal.revalidation_failed + proposal.revalidation_unchecked
       if (finished < proposal.revalidation_total) {
         return
       }
@@ -194,16 +234,26 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         WHERE c.id = ${recipe.chunk_id}
         LIMIT 1
       `
-      let typesText = "/* empty */\n"
+      // Audit A-014: no silent defaults. A recheck against an empty header
+      // or the wrong architecture could make a correct match look stale.
       const headersSha = headerRows[0]?.headers_sha256
-      if (headersSha != null) {
-        const headersOpt = yield* blobs.get(headersSha)
-        if (Option.isSome(headersOpt)) {
-          typesText = Buffer.from(headersOpt.value).toString("utf8")
-        }
+      if (headersSha == null) {
+        yield* fail("type revision missing")
+        return true
       }
+      const headersOpt = yield* blobs.get(headersSha)
+      if (Option.isNone(headersOpt)) {
+        yield* fail("type headers blob missing")
+        return true
+      }
+      const typesText = Buffer.from(headersOpt.value).toString("utf8")
 
       const archRows = yield* loadArch(recipe.chunk_id)
+      const recipeArch = archRows[0]?.arch
+      if (recipeArch === undefined) {
+        yield* fail("binary architecture missing")
+        return true
+      }
       const language = recipe.language === "cpp" ? "cpp" : "c"
       const pinRows = yield* sql<{ readonly toolchain_digest: string }>`
         SELECT m.toolchain_digest
@@ -213,10 +263,11 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         LIMIT 1
       `
       const expectedDigest = pinRows[0]?.toolchain_digest
-      const matchResult = yield* matchd.runJob({
+      const rawRecipeResult = yield* matchd.runJob({
         jobId: recipe.id,
-        arch: archRows[0]?.arch ?? "x86_64",
+        arch: recipeArch,
         language,
+        ...(archRows[0] ? { originalAddress: String(archRows[0].address) } : {}),
         allowInlineAsm: archRows[0]?.allow_inline_asm === true,
         toolchain: recipe.toolchain,
         flags: recipe.toolchain.flags,
@@ -244,6 +295,9 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         )
       )
 
+      const matchResult = archRows[0]
+        ? yield* checkReferences(archRows[0].binary_id, rawRecipeResult)
+        : rawRecipeResult
       if (!matchResult.compilerOk) {
         yield* fail(matchResult.diagnostics)
         return true
@@ -384,9 +438,10 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
 
       if (job.kind === "revalidation") {
         if (job.proposal_id !== null) {
+          // Audit A-026: the match stays, but the recheck did not run.
           yield* sql`
             UPDATE type_proposals
-            SET revalidation_done = revalidation_done + 1
+            SET revalidation_unchecked = revalidation_unchecked + 1
             WHERE id = ${job.proposal_id}
           `.pipe(Effect.orDie)
           yield* finalizeProposalIfDone(job.proposal_id)
@@ -415,6 +470,36 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         yield* stats.refresh(job.project_id)
       }
     })).pipe(Effect.orDie)
+
+  /**
+   * Audit A-015. matchd could not be reached or gave no usable answer: an
+   * outage or a restart, not a result about the source. Put the job back with
+   * a backoff (15 s, 30 s, 60 s, 120 s, 240 s). After five tries, end it with
+   * the reason, so the chunk goes back to its holder.
+   */
+  const maxTransportRetries = 5
+  const retryLater = (job: JobRow, reason: string) =>
+    Effect.gen(function*() {
+      const requeued = yield* sql<{ readonly transport_retries: number }>`
+        UPDATE jobs
+        SET
+          state = 'queued',
+          claimed_by = NULL,
+          claim_expires_at = NULL,
+          transport_retries = transport_retries + 1,
+          not_before = now() + make_interval(secs => 15 * power(2, transport_retries))
+        WHERE id = ${job.id}
+          AND state = 'claimed'
+          AND transport_retries < ${maxTransportRetries}
+        RETURNING transport_retries
+      `.pipe(Effect.orDie)
+      const tries = requeued[0]?.transport_retries
+      if (tries !== undefined) {
+        yield* Effect.logWarning(`matchd call for job ${job.id} failed (try ${tries} of ${maxTransportRetries}), retrying later: ${reason}`)
+        return
+      }
+      yield* failJob(job, `matchd unavailable after ${maxTransportRetries} tries: ${reason}`)
+    })
 
   const runJob = (job: JobRow) => Effect.gen(function*() {
     if (job.attempt_id === null) {
@@ -448,36 +533,37 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
       return true
     }
 
-    let typesText = "/* empty */\n"
-    if (job.kind === "revalidation" && job.proposal_id !== null) {
-      const proposals = yield* sql<{ readonly headers_sha256: Uint8Array }>`
-        SELECT headers_sha256 FROM type_proposals WHERE id = ${job.proposal_id}
-      `
-      const headersSha = proposals[0]?.headers_sha256
-      if (headersSha !== undefined) {
-        const headersOpt = yield* blobs.get(headersSha)
-        if (Option.isSome(headersOpt)) {
-          typesText = Buffer.from(headersOpt.value).toString("utf8")
-        }
-      }
-    } else {
-      const revisions = yield* sql<{ readonly headers_sha256: Uint8Array }>`
-        SELECT headers_sha256
-        FROM type_revisions
-        WHERE id = ${attempt.type_revision_id}
-        LIMIT 1
-      `
-      const headersSha = revisions[0]?.headers_sha256
-      if (headersSha !== undefined) {
-        const headersOpt = yield* blobs.get(headersSha)
-        if (Option.isSome(headersOpt)) {
-          typesText = Buffer.from(headersOpt.value).toString("utf8")
-        }
-      }
+    // Audit A-014: a missing header or architecture fails the job with the
+    // reason. Compiling against an empty header or as x86-64 would give a
+    // wrong result that looks real.
+    const headersRows = job.kind === "revalidation" && job.proposal_id !== null
+      ? yield* sql<{ readonly headers_sha256: Uint8Array }>`
+          SELECT headers_sha256 FROM type_proposals WHERE id = ${job.proposal_id}
+        `
+      : yield* sql<{ readonly headers_sha256: Uint8Array }>`
+          SELECT headers_sha256
+          FROM type_revisions
+          WHERE id = ${attempt.type_revision_id}
+          LIMIT 1
+        `
+    const headersSha = headersRows[0]?.headers_sha256
+    if (headersSha === undefined) {
+      yield* failJob(job, job.kind === "revalidation" ? "type proposal missing" : "type revision missing")
+      return true
     }
+    const headersOpt = yield* blobs.get(headersSha)
+    if (Option.isNone(headersOpt)) {
+      yield* failJob(job, "type headers blob missing")
+      return true
+    }
+    const typesText = Buffer.from(headersOpt.value).toString("utf8")
 
     const archRows = yield* loadArch(job.chunk_id)
-    const arch = archRows[0]?.arch ?? "x86_64"
+    const arch = archRows[0]?.arch
+    if (arch === undefined) {
+      yield* failJob(job, "binary architecture missing")
+      return true
+    }
     const language = job.language === "cpp" ? "cpp" : "c"
     const pinRows = yield* sql<{ readonly toolchain_digest: string }>`
       SELECT m.toolchain_digest
@@ -488,10 +574,11 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
     `
     const expectedDigest = pinRows[0]?.toolchain_digest
 
-    const matchResult = yield* matchd.runJob({
+    const called = yield* matchd.runJob({
       jobId: job.id,
       arch,
       language,
+      originalAddress: String(archRows[0]?.address ?? 0),
       allowInlineAsm: archRows[0]?.allow_inline_asm === true,
       toolchain: job.toolchain,
       flags: job.toolchain.flags,
@@ -502,22 +589,12 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         { path: language === "cpp" ? "candidate.cpp" : "candidate.c", text: sourceText },
         { path: "types.h", text: typesText }
       ]
-    }).pipe(
-      Effect.catch((err) =>
-        Effect.succeed({
-          jobId: job.id,
-          matched: false,
-          score: 0,
-          originalInsns: 0,
-          equalInsns: 0,
-          compilerOk: false,
-          diagnostics: `matchd error: ${String(err)}`,
-          toolchainDigest: "unavailable",
-          canonicalSha256: "0".repeat(64),
-          usesInlineAsm: false
-        })
-      )
-    )
+    }).pipe(Effect.result)
+    if (Result.isFailure(called)) {
+      yield* retryLater(job, String(called.failure))
+      return true
+    }
+    const matchResult = yield* checkReferences(archRows[0]?.binary_id ?? "", called.success)
 
     const canonical = Buffer.from(matchResult.canonicalSha256, "hex")
     const canonicalBytes = canonical.byteLength === 32
@@ -535,10 +612,13 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         if (!finished) return
 
         if (!matchResult.compilerOk || matchResult.matched) {
-          // A compiler failure keeps the match, so it counts as done (A-005).
+          // A compiler failure keeps the match (A-005) but counts as
+          // unchecked, so the proposal page shows it (A-026).
           yield* sql`
             UPDATE type_proposals
-            SET revalidation_done = revalidation_done + 1
+            SET
+              revalidation_done = revalidation_done + ${matchResult.compilerOk ? 1 : 0},
+              revalidation_unchecked = revalidation_unchecked + ${matchResult.compilerOk ? 0 : 1}
             WHERE id = ${proposalId}
           `
           if (matchResult.matched) {
@@ -738,7 +818,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         claim_expires_at = now() + interval '2 minutes'
       WHERE id = (
         SELECT id FROM jobs
-        WHERE state = 'queued'
+        WHERE (state = 'queued' AND (not_before IS NULL OR not_before <= now()))
            OR (state = 'claimed' AND claim_expires_at < now())
         ORDER BY priority ASC, created_at ASC
         FOR UPDATE SKIP LOCKED

@@ -33,6 +33,8 @@ A submit inserts a `jobs` row and moves the chunk to `validating`. Several API w
 
 Interactive jobs (`kind = 'interactive'`, priority 10) are claimed ahead of type-proposal rechecks (priority 100). Recipe rechecks, which rerun current matches after a language or flag change, live in `recipe_jobs`. Only one worker drains them, and only when no submit is waiting.
 
+If the call to matchd itself fails (an outage or a restart, not a result about the source), the job goes back to the queue with a backoff of 15, 30, 60, 120, then 240 seconds, and fails with the reason after five tries. With several API processes, one at a time runs the scaler: it holds the `scaler_leader` row and renews it every 10 seconds for 30.
+
 `MATCHD_URL` is the host-gcc process. `MATCHD_ROUTES` is `image=url` pairs. Several copies of one image are `url|url`. A job goes to the copy with the fewest compiles in flight. Unlisted images use `MATCHD_URL`.
 
 `MATCHD_SCALE=docker` starts another local container of an image when an interactive job for that image has waited 30 seconds, up to `MATCHD_SCALE_MAX` (4). It removes that copy after the image has been idle for 60 seconds. The warm process stays up. `MATCHD_SCALE=off` leaves only the warm processes. The scaler only starts an image tag this repo already builds. It does not start a container for each submit.
@@ -65,7 +67,7 @@ An isolated compile will not be bit-identical to the slice in the original file.
 - Take the entry symbol's bytes. Padding after the symbol is not part of the function.
 - Blank relocation fields on the candidate and at the same offsets in the original bytes. Blank only the bits the linker writes. Opcode and register bits must match, even when they share a byte with the field, so `b` does not match `bl`.
 - Inline assembly (`asm`, `__asm`, `__asm__`, `_asm`) is refused unless the chunk allows it. Otherwise a byte dump of the original would "match" with no translation. matchd checks the target compiler's preprocessed output, so a macro cannot hide the keyword, and only lines from the candidate and `types.h` count. CodeWarrior has no preprocessor mode, so its check uses GNU cpp with the CodeWarrior macros, plus a scan of the raw text. An owner or maintainer can allow it per chunk for code that really was assembly. Matches that use it are marked. Turning the opt-in off invalidates such a match.
-- A match compares the code around each relocation, not where the relocation points. A call to a different function can still match. The integration build is the check for that.
+- Masking hides where a relocation points, so matchd also decodes the address the original uses at each relocated field from its linked bytes. That covers x86 rel32, ARM and Thumb BL, AArch64 B/BL, MIPS `jal`, PowerPC `bl`, and absolute address words. The API compares those addresses with the symbols the candidate uses there, against the binary's imported functions. A call to the wrong known function, or to a plain C function where the original calls a known one, is not a match. References to things the import does not list (data, library code) are not judged. The integration build stays the full check.
 - The match succeeds when the two masked sequences have the same length and the same bytes. The score is equal bytes divided by original bytes.
 - An unknown relocation fails closed.
 

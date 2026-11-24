@@ -34,6 +34,8 @@ export const TypeProposal = Schema.Struct({
   revalidationTotal: Schema.Int,
   revalidationDone: Schema.Int,
   revalidationFailed: Schema.Int,
+  /** Rechecks that could not run (compile failure, missing input). The match stays (audit A-026). */
+  revalidationUnchecked: Schema.Int,
   createdAt: Schema.String,
   closedAt: Schema.optionalKey(Schema.String)
 }).annotate({ identifier: "TypeProposal" })

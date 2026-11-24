@@ -604,6 +604,8 @@ export class ChunksRepo extends Context.Service<
               AND c.lease_user_id = ${userId}
               AND c.lease_token = ${leaseToken}
               AND c.hold_started_at IS NOT NULL
+              -- Audit A-010: an expired lease is over, even before the sweep.
+              AND c.lease_expires_at > now()
               AND now() < c.hold_started_at + make_interval(hours => p.max_hold_hours)
             RETURNING c.id
           `.pipe(Effect.orDie)
@@ -634,6 +636,7 @@ export class ChunksRepo extends Context.Service<
               AND cl.user_id = ${userId}
               AND cl.lease_token = ${leaseToken}
               AND cl.released_at IS NULL
+              AND cl.lease_expires_at > now()
               AND c.state = 'leased'
               AND now() < cl.hold_started_at + make_interval(hours => p.max_hold_hours)
             RETURNING cl.lease_token, cl.lease_expires_at, cl.hold_started_at

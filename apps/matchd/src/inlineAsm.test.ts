@@ -96,3 +96,23 @@ test("preprocess command: mwcc is approximated with GNU cpp and marked so", () =
   assert.ok(command.args.includes("-DGAME=1"))
   assert.ok(!command.args.includes("-O4"))
 })
+
+test("A-033: includes are limited to own files, built-ins, and header directories", async () => {
+  const { isAllowedIncludePath, findOutsideInclude, outsidePathsInDiagnostics } = await import("./inlineAsm.js")
+  const own = ["candidate.c", "types.h"]
+  for (const ok of [
+    "candidate.c", "./types.h", "<built-in>", "<command-line>",
+    "/usr/include/string.h", "/usr/lib/gcc/x86_64-linux-gnu/12/include/stddef.h",
+    "/opt/tools/agbcc/include/stdio.h", "/usr/local/pspdev/psp/include/stdint.h",
+    "/tmp/rehydra-match-abc123/types.h"
+  ]) assert.equal(isAllowedIncludePath(ok, own), true, ok)
+  for (const bad of [
+    "/etc/hostname", "/etc/passwd", "/proc/self/environ", "/app/src/main.ts",
+    "/usr/include/../../etc/passwd", "../secret.h", "other.h",
+    "/tmp/rehydra-match-other/secret.h", "/proc/self/root/usr/include/x.h", "/usr/share/doc/x"
+  ]) assert.equal(isAllowedIncludePath(bad, own), false, bad)
+  assert.equal(findOutsideInclude('# 1 "candidate.c"\n# 1 "/etc/hostname" 1\nabc\n# 2 "candidate.c" 2\n', own), "/etc/hostname")
+  assert.equal(findOutsideInclude('# 1 "candidate.c"\n# 1 "/usr/include/string.h" 1 3 4\n', own), undefined)
+  assert.deepEqual(outsidePathsInDiagnostics("/etc/hostname:1:13: error: expected ';'\n    1 | secret\n", own), ["/etc/hostname"])
+  assert.deepEqual(outsidePathsInDiagnostics("candidate.c:3:1: error: expected ';'\n", own), [])
+})

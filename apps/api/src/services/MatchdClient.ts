@@ -18,6 +18,7 @@ export const MatchJobRequest = Schema.Struct({
   flags: Schema.optionalKey(Schema.Array(Schema.String)),
   expectedToolchainDigest: Schema.optionalKey(Schema.String),
   allowInlineAsm: Schema.optionalKey(Schema.Boolean),
+  originalAddress: Schema.optionalKey(Schema.String),
   entrySymbol: Schema.String,
   originalBytesBase64: Schema.String,
   sources: Schema.Array(
@@ -42,7 +43,14 @@ export const MatchJobResult = Schema.Struct({
   canonicalSha256: Schema.String,
   // Required: a matchd that cannot run the inline-assembly check (audit
   // A-032) gives a result this schema refuses, so the job fails closed.
-  usesInlineAsm: Schema.Boolean
+  usesInlineAsm: Schema.Boolean,
+  // Audit A-007: the symbol and the original's address at each relocated field.
+  references: Schema.optionalKey(Schema.Array(Schema.Struct({
+    offset: Schema.Int,
+    type: Schema.String,
+    symbol: Schema.String,
+    originalTarget: Schema.String
+  })))
 })
 
 export type MatchJobResult = typeof MatchJobResult.Type
