@@ -19,6 +19,25 @@ export const UsersLive = HttpApiBuilder.group(Api, "users", (handlers) =>
         return yield* repo.getPublicProfile(request.params.userId)
       })
     )
+    .handle("matches", (request) =>
+      Effect.gen(function*() {
+        const repo = yield* UsersRepo
+        return yield* repo.matches(request.params.userId, request.query)
+      })
+    )
+    .handle("projects", (request) =>
+      Effect.gen(function*() {
+        const repo = yield* UsersRepo
+        return yield* repo.projects(request.params.userId)
+      })
+    )
+    .handle("myWork", () =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const repo = yield* UsersRepo
+        return yield* repo.myWork(user.id)
+      })
+    )
     .handle("followState", (request) =>
       Effect.gen(function*() {
         const user = yield* CurrentUser

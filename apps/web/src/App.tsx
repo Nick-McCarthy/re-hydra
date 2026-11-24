@@ -4,8 +4,7 @@ import { AuthProvider } from "@/lib/auth"
 import { ThemeProvider } from "@/lib/theme"
 import { ChunkPage } from "@/pages/chunk"
 import { FaqPage } from "@/pages/faq"
-import { FollowingProjectsPage } from "@/pages/following-projects"
-import { FollowingUsersPage } from "@/pages/following-users"
+import { FollowingRedirect } from "@/pages/following-redirect"
 import { HomePage } from "@/pages/home"
 import { LoginPage } from "@/pages/login"
 import { PasswordPage } from "@/pages/password"
@@ -31,8 +30,8 @@ export default function App() {
               <Route path="account/password" element={<PasswordPage />} />
               <Route path="faq" element={<FaqPage />} />
               <Route path="people" element={<PeoplePage />} />
-              <Route path="following/users" element={<FollowingUsersPage />} />
-              <Route path="following/projects" element={<FollowingProjectsPage />} />
+              {/* The follow lists moved to the profile's Following tab. */}
+              <Route path="following/*" element={<FollowingRedirect />} />
               <Route path="users/:userId" element={<ProfilePage />} />
               <Route path="projects" element={<ProjectsPage />} />
               <Route path="projects/new" element={<NewProjectPage />} />

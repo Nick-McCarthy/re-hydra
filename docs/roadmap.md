@@ -13,6 +13,8 @@ Milestones 1–4 are done. Compiler images through Genesis are registered. Match
 
 The CLI covers milestone 1. Follow, search, the lease cap, language, and integration builds are API and web.
 
+Profiles have tabs. Everyone sees Overview, Matches (paged, filtered by project and status, sorted), and Projects (memberships, including contributor, and projects with surviving matches). Your own profile adds My work: every lease you hold across projects, with a countdown, Extend, and Release, plus submissions still being checked and your last ten results. Following (also yours only) lists the people and projects you follow, with Unfollow; the old `/following/...` pages redirect there. Pending ownership offers show above the tabs. API: `GET /me/work`, `GET /users/:id/matches`, `GET /users/:id/projects`. Checked by `apps/api/scripts/verify-profile.mjs`.
+
 Seed fixtures:
 
 | Slug | What it is |

@@ -63,8 +63,11 @@ import {
   UserSearchHit
 } from "./domain/Directory.js"
 import {
+  MyWork,
   ProjectMembership,
-  PublicUserProfile
+  PublicUserProfile,
+  UserMatchesPage,
+  UserProjectRef
 } from "./domain/Profile.js"
 import {
   AddMemberPayload,
@@ -179,6 +182,40 @@ export const UsersGroup = HttpApiGroup.make("users")
       success: PublicUserProfile,
       error: [NotFound]
     })
+  )
+  .add(
+    HttpApiEndpoint.get("matches", "/users/:userId/matches", {
+      params: { userId: Uuid },
+      query: {
+        project: Schema.optional(Schema.String),
+        status: Schema.optional(Schema.Literals(["active", "invalidated"])),
+        sort: Schema.optional(Schema.Literals(["newest", "oldest"])),
+        limit: Schema.optional(
+          Schema.NumberFromString.check(Schema.isInt())
+            .check(Schema.isGreaterThanOrEqualTo(1))
+            .check(Schema.isLessThanOrEqualTo(100))
+        ),
+        offset: Schema.optional(
+          Schema.NumberFromString.check(Schema.isInt())
+            .check(Schema.isGreaterThanOrEqualTo(0))
+        )
+      },
+      success: UserMatchesPage,
+      error: [NotFound]
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("projects", "/users/:userId/projects", {
+      params: { userId: Uuid },
+      success: Schema.Array(UserProjectRef),
+      error: [NotFound]
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("myWork", "/me/work", {
+      success: MyWork,
+      error: [Unauthorized]
+    }).middleware(Authorization)
   )
   .add(
     HttpApiEndpoint.get("followState", "/users/:userId/follow", {

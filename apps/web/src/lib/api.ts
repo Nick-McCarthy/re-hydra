@@ -205,6 +205,57 @@ export type MaintainedProjectRef = {
   role: "owner" | "maintainer"
 }
 
+/** Profile phase 1. */
+export type WorkLease = {
+  projectSlug: string
+  projectName: string
+  chunkId: string
+  chunkName: string
+  address: string
+  kind: "primary" | "competing"
+  leaseToken: string
+  leaseExpiresAt: string
+  holdStartedAt: string
+}
+
+export type WorkAttempt = {
+  attemptId: string
+  projectSlug: string
+  projectName: string
+  chunkId: string
+  chunkName: string
+  createdAt: string
+  finishedAt: string | null
+  result: "checking" | "matched" | "missed" | "compile_error"
+  score: number | null
+}
+
+export type MyWork = {
+  leases: Array<WorkLease>
+  checking: Array<WorkAttempt>
+  recent: Array<WorkAttempt>
+}
+
+export type UserMatchesPage = {
+  items: Array<MatchedChunkRef>
+  total: number
+}
+
+export type UserProjectRef = {
+  slug: string
+  name: string
+  role: "owner" | "maintainer" | "contributor" | null
+  matchCount: number
+}
+
+export type MatchesQuery = {
+  project?: string
+  status?: "active" | "invalidated"
+  sort?: "newest" | "oldest"
+  limit?: number
+  offset?: number
+}
+
 export type PublicUserProfile = {
   id: string
   displayName: string
@@ -709,6 +760,23 @@ export const api = {
 
   getUser(userId: string) {
     return request<PublicUserProfile>(`/users/${encodeURIComponent(userId)}`)
+  },
+
+  userMatches(userId: string, query: MatchesQuery) {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== "") params.set(key, String(value))
+    }
+    const qs = params.toString()
+    return request<UserMatchesPage>(`/users/${encodeURIComponent(userId)}/matches${qs ? `?${qs}` : ""}`)
+  },
+
+  userProjects(userId: string) {
+    return request<Array<UserProjectRef>>(`/users/${encodeURIComponent(userId)}/projects`)
+  },
+
+  myWork(token: string) {
+    return request<MyWork>("/me/work", {}, token)
   },
 
   listChunks(slug: string) {
