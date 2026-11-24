@@ -4,7 +4,7 @@ Changes made because of the audit. Newest first. Finding ids refer to [audit-fin
 
 ## 2026-11-24 — Members, roles, and ownership transfer (A-011)
 
-Branch `audit/members`, off `main` at `500178c87`. Not committed yet. Run `npm run api:migrate` (migration 016).
+Commit `06435a565`, pushed to `main`. Run `npm run api:migrate` (migration 016).
 
 ### Rules
 
