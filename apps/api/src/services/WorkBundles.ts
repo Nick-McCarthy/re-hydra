@@ -212,7 +212,6 @@ export class WorkBundles extends Context.Service<
             ...(bestAttemptSource !== undefined ? { bestAttemptSource } : {}),
             ...(integrationNote !== undefined ? { integrationNote } : {}),
             agentInstructions: agentInstructions({
-              name: row.name,
               language,
               hasAttempt: bestAttemptSource !== undefined,
               hasIntegrationNote: integrationNote !== undefined

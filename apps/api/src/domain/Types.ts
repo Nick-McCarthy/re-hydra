@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { SymbolName } from "./Import.js"
 import { HttpApiSchema } from "effect/http-api"
 import { Uuid } from "./Uuid.js"
 
@@ -88,7 +89,7 @@ export const UnresolvedMarked = UnresolvedType.pipe(HttpApiSchema.status("Create
 
 export const FusePayload = Schema.Struct({
   chunkIds: Schema.Array(Uuid).check(Schema.isMinLength(2)),
-  name: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1)))
+  name: Schema.optionalKey(SymbolName)
 }).annotate({ identifier: "FusePayload" })
 
 export type FusePayload = typeof FusePayload.Type

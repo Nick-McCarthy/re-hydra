@@ -3,15 +3,27 @@ import { HttpApiError, HttpApiSchema } from "effect/http-api"
 import { Toolchain } from "./Project.js"
 import { Uuid } from "./Uuid.js"
 
+/**
+ * A symbol, type, or binary name from an import (audit A-036). Names reach
+ * other contributors' bundles and their agents, so they are one line, at most
+ * 256 characters, from the characters C and C++ symbols use: letters, digits,
+ * and _ : < > ~ , . * & ( ) [ ] + = ! - $ @ ? ` ' and space. No newline,
+ * slash, quote, semicolon, or braces.
+ */
+export const SymbolName = Schema.String.check(Schema.isMinLength(1))
+  .check(Schema.isMaxLength(256))
+  .check(Schema.isPattern(/^[A-Za-z0-9_:<>~,.*&()[\]+=!$@?`' -]+$/))
+  .annotate({ identifier: "SymbolName" })
+
 export const ImportFunction = Schema.Struct({
-  name: Schema.String.check(Schema.isMinLength(1)),
+  name: SymbolName,
   address: Schema.String.check(Schema.isMinLength(1)),
   size: Schema.Int.check(Schema.isGreaterThan(0)),
   bytesBase64: Schema.String.check(Schema.isMinLength(1)),
   pseudocode: Schema.String,
   disassembly: Schema.String,
   callees: Schema.optionalKey(Schema.Array(Schema.String)),
-  typesUsed: Schema.optionalKey(Schema.Array(Schema.String))
+  typesUsed: Schema.optionalKey(Schema.Array(SymbolName))
 }).annotate({ identifier: "ImportFunction" })
 
 export type ImportFunction = typeof ImportFunction.Type
@@ -21,7 +33,7 @@ export const GhidraExportPayload = Schema.Struct({
     Schema.isMaxLength(64)
   ),
   arch: Schema.String.check(Schema.isMinLength(1)),
-  name: Schema.optionalKey(Schema.String),
+  name: Schema.optionalKey(SymbolName),
   language: Schema.optionalKey(Schema.String),
   toolchain: Schema.optionalKey(Toolchain),
   types: Schema.String,

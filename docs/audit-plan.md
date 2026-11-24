@@ -14,15 +14,16 @@ Status: in progress. Written 2026-11-22 against `main` at `cd2a88feb` with uncom
 | A-027 sandbox seccomp profile | Done 2026-11-23, merged to `main` locally (`f5418cf9b`) | [audit-changelog.md](audit-changelog.md), [../docker-yml/matchd-seccomp.md](../docker-yml/matchd-seccomp.md) |
 | Phase 3 — Schema | Done 2026-11-23, merged to `main` locally (`d2d49ec21`) | [audit/phase-3.md](audit/phase-3.md) |
 | Phase 4 — Security review | Done 2026-11-23 (branch `audit/phase-4-security`) | [audit/phase-4.md](audit/phase-4.md) |
-| A-032 and A-041 inline assembly and reputation | Fixed 2026-11-23, not committed (same branch) | [audit-changelog.md](audit-changelog.md) |
-| A-034 and A-035 body size and rate limits | Fixed 2026-11-23, not committed (same branch) | [audit-changelog.md](audit-changelog.md) |
-| A-013 flag allow-list and memory cap | Fixed 2026-11-23, not committed (same branch) | [audit-changelog.md](audit-changelog.md) |
+| A-032 and A-041 inline assembly and reputation | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [audit-changelog.md](audit-changelog.md) |
+| A-034 and A-035 body size and rate limits | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [audit-changelog.md](audit-changelog.md) |
+| A-013 flag allow-list and memory cap | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [audit-changelog.md](audit-changelog.md) |
+| A-036 bundle text reaching the agent | Fixed 2026-11-23, not committed (branch `audit/a036-agent-input`) | [audit-changelog.md](audit-changelog.md) |
 | Phases 5–8 | Not started | — |
 
-Findings: [audit-findings.md](audit-findings.md). 41 logged, 25 fixed, 1 closed as not applicable (A-024), 15 open. The highest open ones:
+Findings: [audit-findings.md](audit-findings.md). 41 logged, 26 fixed, 1 closed as not applicable (A-024), 14 open. The highest open ones:
 
 - A-011 (High): no member management.
-- A-036 (Medium): bundle text and imported names reach the contributor's agent unmarked.
+- A-012 (Medium): any signed-in user can check out on any project, and nothing blocks an abusive user.
 
 Invariant status after the fixes:
 
