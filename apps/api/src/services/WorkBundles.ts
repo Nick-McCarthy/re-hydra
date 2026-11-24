@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Option } from "effect"
+import type { ProjectAccessDenied } from "../domain/Project.js"
 import { Conflict, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import { agentInstructions, integrationNoteFile } from "../domain/agentInstructions.js"
@@ -51,7 +52,7 @@ export class WorkBundles extends Context.Service<
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<LeaseWithBundle, NotFound | Conflict | CheckoutLimited>
+    ) => Effect.Effect<LeaseWithBundle, NotFound | Conflict | CheckoutLimited | ProjectAccessDenied>
   }
 >()("rehydra/services/WorkBundles") {
   static readonly layer = Layer.effect(

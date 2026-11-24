@@ -2,6 +2,7 @@ import * as React from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { AttemptHistoryDialog } from "@/components/attempt-history-dialog"
 import { ChunkWorkDialog } from "@/components/chunk-work-dialog"
+import { ProjectAccessCard } from "@/components/project-access-card"
 import { ActivityList } from "@/components/activity-list"
 import { FollowButton } from "@/components/follow-button"
 import { Badge } from "@/components/ui/badge"
@@ -776,6 +777,17 @@ export function ProjectPage() {
             {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
           </CardContent>
         </Card>
+      ) : null}
+
+      {roleReady && canMaintain && session ? (
+        <ProjectAccessCard
+          project={project}
+          token={session.token}
+          onProjectChanged={(updated) => {
+            setProject(updated)
+            void api.projectActivity(projectSlug).then(setEvents)
+          }}
+        />
       ) : null}
 
       {roleReady && canMaintain ? (

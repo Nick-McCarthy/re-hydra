@@ -24,6 +24,7 @@ type ProjectRow = {
   readonly max_hold_hours: number
   readonly max_concurrent_leases: number
   readonly max_held_chunks: number
+  readonly checkout_policy: "open" | "members"
   readonly follower_count: number
   readonly last_activity_at: Date | string
   readonly created_at: Date | string
@@ -48,6 +49,7 @@ const toSummary = (row: ProjectRow): ProjectSummary => ({
   maxHoldHours: row.max_hold_hours,
   maxConcurrentLeases: row.max_concurrent_leases,
   maxHeldChunks: row.max_held_chunks,
+  checkoutPolicy: row.checkout_policy,
   followerCount: row.follower_count,
   lastActivityAt: row.last_activity_at instanceof Date
     ? row.last_activity_at.toISOString()
@@ -130,6 +132,7 @@ export class ProjectsRepo extends Context.Service<
             p.max_hold_hours,
             p.max_concurrent_leases,
             p.max_held_chunks,
+            p.checkout_policy,
             p.created_at,
             COALESCE(
               (SELECT MAX(e.created_at) FROM project_events e WHERE e.project_id = p.id),
@@ -180,6 +183,7 @@ export class ProjectsRepo extends Context.Service<
             p.max_hold_hours,
             p.max_concurrent_leases,
             p.max_held_chunks,
+            p.checkout_policy,
             p.created_at,
             COALESCE(
               (SELECT MAX(e.created_at) FROM project_events e WHERE e.project_id = p.id),
@@ -299,7 +303,8 @@ export class ProjectsRepo extends Context.Service<
           payload.maxConcurrentLeases === undefined &&
           payload.maxHeldChunks === undefined &&
           payload.language === undefined &&
-          payload.flags === undefined
+          payload.flags === undefined &&
+          payload.checkoutPolicy === undefined
         ) {
           return yield* new BadRequest()
         }
@@ -311,8 +316,9 @@ export class ProjectsRepo extends Context.Service<
           readonly toolchain: ProjectSummary["toolchain"]
           readonly max_concurrent_leases: number
           readonly max_held_chunks: number
+          readonly checkout_policy: "open" | "members"
         }>`
-          SELECT p.id, pm.role, p.language, p.toolchain, p.max_concurrent_leases, p.max_held_chunks
+          SELECT p.id, pm.role, p.language, p.toolchain, p.max_concurrent_leases, p.max_held_chunks, p.checkout_policy
           FROM projects p
           LEFT JOIN project_members pm
             ON pm.project_id = p.id AND pm.user_id = ${userId}
@@ -354,7 +360,11 @@ export class ProjectsRepo extends Context.Service<
           }
         }
 
+        const nextPolicy = payload.checkoutPolicy ?? row.checkout_policy
         const notes: Array<string> = []
+        if (payload.checkoutPolicy !== undefined && payload.checkoutPolicy !== row.checkout_policy) {
+          notes.push(nextPolicy === "members" ? "work from members only" : "work open to everyone")
+        }
         if (payload.maxConcurrentLeases !== undefined) {
           notes.push(`competing leases ${nextLeases}`)
         }
@@ -372,6 +382,7 @@ export class ProjectsRepo extends Context.Service<
             SET
               max_concurrent_leases = ${nextLeases},
               max_held_chunks = ${nextHeld},
+              checkout_policy = ${nextPolicy},
               language = ${language},
               toolchain = ${pg.json(toolchain)},
               updated_at = now()

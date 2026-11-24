@@ -81,6 +81,8 @@ export type ProjectSummary = {
   maxHoldHours: number
   maxConcurrentLeases: number
   maxHeldChunks: number
+  /** Audit A-012: 'open' or 'members'. */
+  checkoutPolicy: "open" | "members"
   followerCount: number
   lastActivityAt: string
   stats: ProjectStats
@@ -235,6 +237,15 @@ export type ProjectEvent = {
 
 export type FollowState = {
   following: boolean
+}
+
+export type BlockedUser = {
+  userId: string
+  displayName: string
+  blockedBy: string
+  blockedByName: string
+  reason: string
+  createdAt: string
 }
 
 export type UserSearchHit = {
@@ -474,6 +485,26 @@ export const api = {
     return request<Array<ProjectSummary>>(`/projects${qs ? `?${qs}` : ""}`)
   },
 
+  listBlocks(slug: string, token: string) {
+    return request<Array<BlockedUser>>(`/projects/${encodeURIComponent(slug)}/blocks`, {}, token)
+  },
+
+  blockUser(slug: string, userId: string, reason: string, token: string) {
+    return request<Array<BlockedUser>>(
+      `/projects/${encodeURIComponent(slug)}/blocks`,
+      { method: "POST", body: JSON.stringify(reason ? { userId, reason } : { userId }) },
+      token
+    )
+  },
+
+  unblockUser(slug: string, userId: string, token: string) {
+    return request<Array<BlockedUser>>(
+      `/projects/${encodeURIComponent(slug)}/blocks/${encodeURIComponent(userId)}`,
+      { method: "DELETE" },
+      token
+    )
+  },
+
   searchUsers(q: string) {
     const params = new URLSearchParams()
     if (q) params.set("q", q)
@@ -544,6 +575,7 @@ export const api = {
       maxHeldChunks?: number
       language?: SourceLanguage
       flags?: Array<string>
+      checkoutPolicy?: "open" | "members"
     },
     token: string
   ) {

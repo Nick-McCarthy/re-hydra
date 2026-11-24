@@ -1,4 +1,5 @@
 import { PgClient } from "@effect/sql-pg"
+import type { ProjectAccessDenied } from "../domain/Project.js"
 import { Context, Effect, Layer, Option } from "effect"
 import { Conflict, Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
@@ -80,7 +81,7 @@ export class TypeProposalsRepo extends Context.Service<
       projectSlug: string,
       userId: Uuid,
       payload: CreateTypeProposalPayload
-    ) => Effect.Effect<TypeProposal, NotFound | Forbidden | Conflict>
+    ) => Effect.Effect<TypeProposal, NotFound | Forbidden | Conflict | ProjectAccessDenied>
     readonly startRevalidation: (
       projectSlug: string,
       proposalId: Uuid,
@@ -219,11 +220,9 @@ export class TypeProposalsRepo extends Context.Service<
         userId: Uuid,
         payload: CreateTypeProposalPayload
       ) {
-        const { projectId } = yield* auth.requireRole(projectSlug, userId, [
-          "owner",
-          "maintainer",
-          "contributor"
-        ])
+        // Audit A-012: anyone allowed to check out here may propose types.
+        // Starting the recheck and accepting still need a maintainer.
+        const { projectId } = yield* auth.requireContributor(projectSlug, userId)
 
         const revisions = yield* sql<{ readonly id: string }>`
           SELECT id FROM type_revisions

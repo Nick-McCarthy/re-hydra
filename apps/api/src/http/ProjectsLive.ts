@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import { ProjectModeration } from "../services/ProjectModeration.js"
 import { HttpApiBuilder } from "effect/http-api"
 import { Api } from "../Api.js"
 import { DirectoryRepo } from "../services/DirectoryRepo.js"
@@ -25,6 +26,27 @@ export const ProjectsLive = HttpApiBuilder.group(Api, "projects", (handlers) =>
         const user = yield* CurrentUser
         const repo = yield* ProjectsRepo
         return yield* repo.membership(request.params.projectSlug, user.id)
+      })
+    )
+    .handle("listBlocks", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const moderation = yield* ProjectModeration
+        return yield* moderation.listBlocks(request.params.projectSlug, user.id)
+      })
+    )
+    .handle("block", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const moderation = yield* ProjectModeration
+        return yield* moderation.block(request.params.projectSlug, user.id, request.payload)
+      })
+    )
+    .handle("unblock", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const moderation = yield* ProjectModeration
+        return yield* moderation.unblock(request.params.projectSlug, user.id, request.params.userId)
       })
     )
     .handle("create", (request) =>

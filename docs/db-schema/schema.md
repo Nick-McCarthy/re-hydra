@@ -851,6 +851,26 @@ CREATE INDEX chunks_address_trgm_idx ON chunks USING gin ((address::text) gin_tr
 CREATE INDEX chunks_hex_address_trgm_idx ON chunks USING gin (('0x' || to_hex(address)) gin_trgm_ops) WHERE fuse_parent_id IS NULL;
 ```
 
+## Project access — migration 015
+
+```sql
+-- A-012: who may check out, heartbeat, submit, and propose types.
+-- 'open' = any signed-in user. 'members' = contributor role or higher.
+ALTER TABLE projects ADD COLUMN checkout_policy text NOT NULL DEFAULT 'open'
+  CHECK (checkout_policy IN ('open', 'members'));
+
+-- A-012: users blocked from one project. Owners and maintainers cannot be blocked.
+-- Only owners and maintainers read this table; the activity feed does not name the user.
+CREATE TABLE project_blocks (
+  project_id  uuid NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  blocked_by  uuid NOT NULL REFERENCES users (id),
+  reason      text NOT NULL DEFAULT '' CHECK (length(reason) <= 200),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (project_id, user_id)
+);
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

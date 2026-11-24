@@ -7,6 +7,7 @@ import { likeContains } from "../domain/Directory.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { ProjectAuth } from "./ProjectAuth.js"
+import type { ProjectAccessDenied } from "../domain/Project.js"
 import { returnChunkToPool } from "./PoolReturn.js"
 import { ProjectChunkStats } from "./ProjectChunkStats.js"
 import { enqueueRecipeForChunk } from "./RecipeJobs.js"
@@ -102,7 +103,7 @@ export class ChunksRepo extends Context.Service<
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<LeaseResponse, NotFound | Conflict | CheckoutLimited>
+    ) => Effect.Effect<LeaseResponse, NotFound | Conflict | CheckoutLimited | ProjectAccessDenied>
     readonly release: (
       projectSlug: string,
       chunkId: Uuid,
@@ -114,7 +115,7 @@ export class ChunksRepo extends Context.Service<
       chunkId: Uuid,
       userId: Uuid,
       leaseToken: Uuid
-    ) => Effect.Effect<LeaseResponse, NotFound | Conflict>
+    ) => Effect.Effect<LeaseResponse, NotFound | Conflict | ProjectAccessDenied>
     readonly setInlineAsm: (
       projectSlug: string,
       chunkId: Uuid,
@@ -272,6 +273,8 @@ export class ChunksRepo extends Context.Service<
 
       const checkout = Effect.fn("ChunksRepo.checkout")(
         function*(projectSlug: string, chunkId: Uuid, userId: Uuid) {
+          // Audit A-012: blocked users, and non-members on members-only projects, stop here.
+          yield* auth.requireContributor(projectSlug, userId)
           const leaseToken = yield* Schema.decodeEffect(Uuid)(crypto.randomUUID()).pipe(
             Effect.orDie
           )
@@ -588,6 +591,7 @@ export class ChunksRepo extends Context.Service<
 
       const heartbeat = Effect.fn("ChunksRepo.heartbeat")(
         function*(projectSlug: string, chunkId: Uuid, userId: Uuid, leaseToken: Uuid) {
+          yield* auth.requireContributor(projectSlug, userId)
           const rows = yield* sql<{ readonly id: string }>`
             UPDATE chunks AS c
             SET

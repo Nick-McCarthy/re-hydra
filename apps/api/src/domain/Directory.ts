@@ -84,7 +84,9 @@ export const UpdateProjectSettings = Schema.Struct({
   language: Schema.optionalKey(SourceLanguage),
   flags: Schema.optionalKey(
     Schema.Array(CompilerFlag).check(Schema.isMinLength(1)).check(Schema.isMaxLength(16))
-  )
+  ),
+  /** Audit A-012: 'open' or 'members'. */
+  checkoutPolicy: Schema.optionalKey(Schema.Literals(["open", "members"]))
 }).annotate({ identifier: "UpdateProjectSettings" })
 
 export type UpdateProjectSettings = typeof UpdateProjectSettings.Type

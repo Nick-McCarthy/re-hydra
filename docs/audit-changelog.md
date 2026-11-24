@@ -2,6 +2,37 @@
 
 Changes made because of the audit. Newest first. Finding ids refer to [audit-findings.md](audit-findings.md). The plan is [audit-plan.md](audit-plan.md).
 
+## 2026-11-24 — Who may work on a project, and blocking (A-012)
+
+Branch `audit/hardening`, with the hardening work below. Not committed yet. Run `npm run api:migrate` (migration 015).
+
+### Decisions
+
+- Projects stay open by default. An owner or maintainer can switch a project to members only, which needs the contributor role or higher.
+- Owners and maintainers can block a user from a project. A blocked user cannot check out, heartbeat, submit, or propose types, even on an open project. Owners and maintainers cannot be blocked, and nobody can block themselves.
+- Anyone allowed to check out may propose types. Before, proposing needed the contributor role, which nobody outside the seed could get (A-011). Starting the recheck and accepting still need a maintainer.
+- Limits for new accounts were left out. The per-user hold limit from A-014 already caps hoarding.
+
+### API
+
+- `ProjectAuth.requireContributor` reads the policy, the caller's role, and any block in one query. Checkout, heartbeat, submit, and type proposals call it first. A refusal is `403` with the problem type `project-access-denied` and a plain message.
+- `PATCH /projects/:slug/settings` takes `checkoutPolicy` (`open` or `members`). The project summary returns it.
+- New `ProjectModeration` service and endpoints: `GET`, `POST /projects/:slug/blocks` and `DELETE /projects/:slug/blocks/:userId`, owners and maintainers only. Blocking runs in one transaction: it records the block, returns the user's held chunks to the pool, releases their competing leases, and refreshes the board counts.
+- The public activity feed says "A user was blocked from this project" or "A block on this project was lifted", without the name. The name and reason appear only in the block list.
+
+### Web
+
+- New "Who may work here" card on the project page for owners and maintainers: the open / members-only switch, a user search to block someone with an optional reason, and the block list with Unblock buttons.
+
+### Verification
+
+`apps/api/scripts/verify-access.mjs`, 14 checks on the audit database, all passing: open by default; an outsider can check out and propose on an open project; on members only, the outsider's heartbeat, submit, checkout, and proposal are refused and the owner still works; a non-maintainer cannot block or read the list; the owner cannot be blocked; blocking ends the user's leases and refuses their checkouts and proposals; the feed entry does not name them; unblocking restores access. The earlier suites (audit fixes, phase 3, inline asm, agent input, call targets, hardening) and the unit tests still pass.
+
+### Known limits
+
+- Members only is not useful yet for most projects, because nobody can add members until A-011.
+- A blocked user's past matches and attempts stay. The block only stops new work.
+
 ## 2026-11-24 — Security headers, pinned image sources, password cost (A-037, A-039, A-040)
 
 Branch `audit/hardening`, off `main` at `6ceea7694`. Not committed yet.

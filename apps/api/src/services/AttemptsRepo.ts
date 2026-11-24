@@ -6,6 +6,8 @@ import type { AttemptResult, AttemptSummary } from "../domain/Attempt.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Blobs } from "./Blobs.js"
 import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { ProjectAuth } from "./ProjectAuth.js"
+import type { ProjectAccessDenied } from "../domain/Project.js"
 
 const toIso = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString()
@@ -45,13 +47,14 @@ export class AttemptsRepo extends Context.Service<
       readonly userId: Uuid
       readonly leaseToken: Uuid
       readonly source: string
-    }) => Effect.Effect<AttemptResult, NotFound | Conflict>
+    }) => Effect.Effect<AttemptResult, NotFound | Conflict | ProjectAccessDenied>
   }
 >()("rehydra/services/AttemptsRepo") {
   static readonly layer = Layer.effect(
     AttemptsRepo,
     Effect.gen(function*() {
       const sql = yield* SqlClient.SqlClient
+      const auth = yield* ProjectAuth
       const pg = yield* PgClient.PgClient
       const blobs = yield* Blobs
       const stats = yield* ProjectChunkStats
@@ -155,6 +158,8 @@ export class AttemptsRepo extends Context.Service<
         readonly leaseToken: Uuid
         readonly source: string
       }) {
+        // Audit A-012: blocked users, and non-members on members-only projects.
+        yield* auth.requireContributor(options.projectSlug, options.userId)
         // Unlocked pre-check so someone without this lease cannot write blobs.
         const holders = yield* sql<{ readonly id: string }>`
           SELECT c.id

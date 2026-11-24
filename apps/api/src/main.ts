@@ -33,6 +33,7 @@ import { ProjectChunkStats } from "./services/ProjectChunkStats.js"
 import { RateLimits } from "./services/RateLimits.js"
 import { DirectoryRepo } from "./services/DirectoryRepo.js"
 import { ProjectsRepo } from "./services/ProjectsRepo.js"
+import { ProjectModeration } from "./services/ProjectModeration.js"
 import { TypeProposalsRepo } from "./services/TypeProposalsRepo.js"
 import { UnresolvedTypesRepo } from "./services/UnresolvedTypesRepo.js"
 import { UsersRepo } from "./services/UsersRepo.js"
@@ -59,6 +60,12 @@ const DataLive = Layer.mergeAll(
   DirectoryRepo.layer,
   AttemptsRepo.layer.pipe(
     Layer.provide(BlobsLive),
+    Layer.provide(StatsLive),
+    Layer.provide(Authz)
+  ),
+  ProjectModeration.layer.pipe(
+    Layer.provide(Authz),
+    Layer.provide(ActivityLive),
     Layer.provide(StatsLive)
   ),
   ImportsRepo.layer.pipe(

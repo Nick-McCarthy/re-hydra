@@ -29,6 +29,10 @@ export const ProjectStats = Schema.Struct({
 
 export type ProjectStats = typeof ProjectStats.Type
 
+/** Who may check out, submit, and propose types (audit A-012). */
+export const CheckoutPolicy = Schema.Literals(["open", "members"]).annotate({ identifier: "CheckoutPolicy" })
+export type CheckoutPolicy = typeof CheckoutPolicy.Type
+
 export const ProjectSummary = Schema.Struct({
   id: Uuid,
   slug: Schema.String,
@@ -41,6 +45,7 @@ export const ProjectSummary = Schema.Struct({
   maxHoldHours: Schema.Int,
   maxConcurrentLeases: Schema.Int,
   maxHeldChunks: Schema.Int,
+  checkoutPolicy: CheckoutPolicy,
   followerCount: Schema.Int,
   lastActivityAt: Schema.String,
   stats: ProjectStats,
@@ -73,3 +78,29 @@ export class FlagsRejected extends HttpApiError.Problem<FlagsRejected>()("FlagsR
   status: 400,
   title: "Compiler flag not allowed"
 }) {}
+
+/**
+ * The user may not work on this project (audit A-012): blocked by its owner
+ * or a maintainer, or the project takes work from members only.
+ */
+export class ProjectAccessDenied extends HttpApiError.Problem<ProjectAccessDenied>()("ProjectAccessDenied", {
+  type: "https://re-hydra.dev/problems/project-access-denied",
+  status: 403,
+  title: "Not allowed on this project"
+}) {}
+
+export const BlockedUser = Schema.Struct({
+  userId: Uuid,
+  displayName: Schema.String,
+  blockedBy: Uuid,
+  blockedByName: Schema.String,
+  reason: Schema.String,
+  createdAt: Schema.String
+}).annotate({ identifier: "BlockedUser" })
+export type BlockedUser = typeof BlockedUser.Type
+
+export const BlockUserPayload = Schema.Struct({
+  userId: Uuid,
+  reason: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200)))
+}).annotate({ identifier: "BlockUserPayload" })
+export type BlockUserPayload = typeof BlockUserPayload.Type

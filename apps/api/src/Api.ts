@@ -68,7 +68,10 @@ import {
 } from "./domain/Profile.js"
 import {
   CreateProjectPayload,
+  BlockedUser,
+  BlockUserPayload,
   FlagsRejected,
+  ProjectAccessDenied,
   ProjectCreated,
   ProjectSummary
 } from "./domain/Project.js"
@@ -239,6 +242,28 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
     }).middleware(Authorization)
   )
   .add(
+    HttpApiEndpoint.get("listBlocks", "/projects/:projectSlug/blocks", {
+      params: { projectSlug: ProjectSlug },
+      success: Schema.Array(BlockedUser),
+      error: [Unauthorized, Forbidden, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("block", "/projects/:projectSlug/blocks", {
+      params: { projectSlug: ProjectSlug },
+      payload: BlockUserPayload,
+      success: Schema.Array(BlockedUser),
+      error: [Unauthorized, Forbidden, NotFound, ProjectAccessDenied]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.delete("unblock", "/projects/:projectSlug/blocks/:userId", {
+      params: { projectSlug: ProjectSlug, userId: Uuid },
+      success: Schema.Array(BlockedUser),
+      error: [Unauthorized, Forbidden, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
     HttpApiEndpoint.post("create", "/projects", {
       payload: CreateProjectPayload,
       success: ProjectCreated,
@@ -352,7 +377,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
         chunkId: Uuid
       },
       success: LeaseCreatedWithBundle,
-      error: [Unauthorized, NotFound, Conflict, CheckoutLimited]
+      error: [Unauthorized, NotFound, Conflict, CheckoutLimited, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
@@ -374,7 +399,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       },
       payload: LeaseTokenPayload,
       success: LeaseResponse,
-      error: [Unauthorized, NotFound, Conflict]
+      error: [Unauthorized, NotFound, Conflict, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
@@ -385,7 +410,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       },
       payload: SubmitPayload,
       success: AttemptAccepted,
-      error: [Unauthorized, NotFound, Conflict]
+      error: [Unauthorized, NotFound, Conflict, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
@@ -467,7 +492,7 @@ export const TypesGroup = HttpApiGroup.make("types")
       params: { projectSlug: ProjectSlug },
       payload: CreateTypeProposalPayload,
       success: TypeProposalCreated,
-      error: [Unauthorized, Forbidden, NotFound, Conflict]
+      error: [Unauthorized, Forbidden, NotFound, Conflict, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
