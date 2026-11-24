@@ -52,6 +52,26 @@ export const ChangePasswordPayload = Schema.Struct({
 
 export type ChangePasswordPayload = typeof ChangePasswordPayload.Type
 
+export const PasswordResetRequestPayload = Schema.Struct({
+  email: AccountEmail
+}).annotate({ identifier: "PasswordResetRequestPayload" })
+
+export type PasswordResetRequestPayload = typeof PasswordResetRequestPayload.Type
+
+export const PasswordResetConfirmPayload = Schema.Struct({
+  token: Schema.String.check(Schema.isMinLength(20)).check(Schema.isMaxLength(200)),
+  newPassword: Password
+}).annotate({ identifier: "PasswordResetConfirmPayload" })
+
+export type PasswordResetConfirmPayload = typeof PasswordResetConfirmPayload.Type
+
+/** The reset link is unknown, used, or expired. */
+export class ResetRejected extends HttpApiError.Problem<ResetRejected>()("ResetRejected", {
+  type: "https://re-hydra.dev/problems/reset-rejected",
+  status: 400,
+  title: "Reset link not valid"
+}) {}
+
 export class AccountRejected extends HttpApiError.Problem<AccountRejected>()(
   "AccountRejected",
   {

@@ -249,6 +249,10 @@ export function ProjectPage() {
     setSearchParams(params)
   }
 
+  // Read by the loaders without making them rerun when the session changes.
+  const tokenRef = React.useRef<string | null>(null)
+  tokenRef.current = session?.token ?? null
+
   const reload = React.useCallback(async () => {
     const started = performance.now()
     console.log(`[project] reload ${projectSlug}`)
@@ -257,7 +261,7 @@ export function ProjectPage() {
       timed("listChunks", api.listChunks(projectSlug)),
       timed("typeEnvironment", api.typeEnvironment(projectSlug).catch(() => null)),
       timed("activity", api.projectActivity(projectSlug).catch(() => [])),
-      timed("integrations", api.listIntegrations(projectSlug).catch(() => []))
+      timed("integrations", api.listIntegrations(projectSlug, tokenRef.current).catch(() => []))
     ])
     console.log(`[project] reload fetched ${Math.round(performance.now() - started)}ms`)
     setProject(p)
@@ -282,7 +286,7 @@ export function ProjectPage() {
           timed("listChunks", api.listChunks(projectSlug)),
           timed("typeEnvironment", api.typeEnvironment(projectSlug).catch(() => null)),
           timed("activity", api.projectActivity(projectSlug).catch(() => [])),
-          timed("integrations", api.listIntegrations(projectSlug).catch(() => []))
+          timed("integrations", api.listIntegrations(projectSlug, tokenRef.current).catch(() => []))
         ])
         console.log(`[project] first load fetched ${Math.round(performance.now() - started)}ms`)
         if (!cancelled) {

@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
 import { ProjectJoinRequests } from "../services/ProjectJoinRequests.js"
 import { ProjectMembers } from "../services/ProjectMembers.js"
 import { ProjectModeration } from "../services/ProjectModeration.js"
@@ -8,6 +8,7 @@ import { DirectoryRepo } from "../services/DirectoryRepo.js"
 import { IntegrationsRepo } from "../services/IntegrationsRepo.js"
 import { ProjectsRepo } from "../services/ProjectsRepo.js"
 import { CurrentUser } from "./Authorization.js"
+import { optionalViewer } from "./viewer.js"
 
 export const ProjectsLive = HttpApiBuilder.group(Api, "projects", (handlers) =>
   handlers
@@ -210,15 +211,21 @@ export const ProjectsLive = HttpApiBuilder.group(Api, "projects", (handlers) =>
     .handle("listIntegrations", (request) =>
       Effect.gen(function*() {
         const repo = yield* IntegrationsRepo
-        return yield* repo.list(request.params.projectSlug)
+        const viewer = yield* optionalViewer
+        return yield* repo.list(
+          request.params.projectSlug,
+          Option.match(viewer, { onNone: () => null, onSome: (user) => user.id })
+        )
       })
     )
     .handle("getIntegration", (request) =>
       Effect.gen(function*() {
         const repo = yield* IntegrationsRepo
+        const viewer = yield* optionalViewer
         return yield* repo.get(
           request.params.projectSlug,
-          request.params.integrationId
+          request.params.integrationId,
+          Option.match(viewer, { onNone: () => null, onSome: (user) => user.id })
         )
       })
     )

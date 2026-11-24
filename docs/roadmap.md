@@ -21,6 +21,12 @@ The project page has tabs, chosen with `?tab=`: Chunks (the default: the board, 
 
 Discussion is threads with flat replies. Anyone reads; anyone who may work on the project (not blocked, and a member when it is members-only) starts threads and replies. A thread may point at a chunk, and the chunk dialog links to its threads. Authors edit and remove their own posts and may rename or remove their thread; owners and maintainers remove any post and pin, lock, or remove threads. A removed post keeps its place. Posts are plain text with `inline code`, fenced blocks, and links. Only "X started a thread" reaches the feed. Thread starts are limited to 10 an hour and replies to 30 per 10 minutes per address. Not yet: unread tracking, mentions, notifications. Checked by `apps/api/scripts/verify-discussion.mjs`.
 
+Forgot password: the sign-in page links to a form that emails a reset link. The link carries a one-hour, single-use token in the URL fragment; only its hash is stored. The request answers the same whether or not the email has an account, and is limited per client and to 3 emails an hour per address. Setting the new password ends every session. Accounts that never had a password can set one this way. Mail goes through `MAIL_DRIVER`: `log` and `file` for local use, `ses` (Amazon SES v2) for production, which has not yet been tried against SES. Checked by `apps/api/scripts/verify-password-reset.mjs`.
+
+The whole contributor loop (import, checkout, heartbeat, miss, match, profile, call-target refusal, integration build, release, sweeper expiry) runs against a real matchd in `apps/api/scripts/verify-checkout-loop.mjs`.
+
+Attempt and integration lists are public, but the byte comparison inside a diagnostic is not. A missed attempt shows its original-versus-candidate dump to the submitter, the chunk's current holder, and project owners and maintainers; an integration's mismatch hex goes to owners and maintainers. Everyone else gets the same text with the byte lines removed and a note saying who can see them. These endpoints read an optional bearer token; a bad token counts as signed out.
+
 Seed fixtures:
 
 | Slug | What it is |
@@ -117,13 +123,14 @@ Around the process:
 - The API and matchd in that same region. `BLOB_STORE=s3`, region `us-east-1`, and an access key that can only put and get objects in that bucket. `MATCHD_TOKEN` has to be a real secret, set on both the API and every matchd process. Neither starts without it, and the images no longer carry a default. `dev-matchd-token` still starts but logs a warning.
 - HTTPS on the public API URL. The web app talks to `/v1` on the same origin.
 - `API_HSTS=on` once the API is served over HTTPS. The host that serves the web build should also send `X-Frame-Options: DENY` (or `frame-ancestors 'none'`), which a `<meta>` CSP cannot set.
+- `MAIL_DRIVER=ses`, `MAIL_FROM` a sender verified in SES (and the account out of the SES sandbox), `SES_ACCESS_KEY` / `SES_SECRET_KEY` allowed only `ses:SendEmail`, and `APP_URL` the public web origin.
 - `TRUSTED_PROXIES` set to the load balancer's network, so rate limits see client addresses. Keep `RATE_LIMITS=on`. Rate limits are per API process and in memory, so with several API processes each one counts separately.
 
 `blob_objects` can remain for that first deploy. With `BLOB_STORE=s3` the API does not write it. Drop the table after one checkout and one match have both read from the bucket.
 
 The local copy (`npm run api:blobs`) fills this machine only. Production starts empty.
 
-A microVM sandbox, Xbox 360, PlayStation 5, fuse-split, and another region wait. A public site also needs the written policy for copyrighted software and malware.
+A microVM sandbox, Xbox 360, PlayStation 5, fuse-split, and another region wait. A public site also needs the policy for copyrighted software and malware. The draft is [content-policy.md](content-policy.md); its last section lists what the product must do before it is published.
 
 ## Second region
 
@@ -155,7 +162,8 @@ A project whose writer lives in Europe is a further change. The API would send t
 - Xbox 360 and PlayStation 5, until a public compiler emits the retail object format.
 - Retail SDK compilers. They stay unregistered.
 - What happens to member matches if a fused chunk is later split. Split is not implemented.
-- No automated test of the full checkout loop.
+- The content policy is a draft ([content-policy.md](content-policy.md)). It needs legal review, and its checklist (terms, import confirmation, report button, admin tools, a DMCA agent) is not built.
+- `fixtures/link/dogfood.mjs` expects decoy to match in isolation. Since the call-target check it does not, so the script stops at decoy.
 - The object signer still uses path-style URLs. The first-deployment section is the us-east-1 cutover. `blob_objects` stays until a checkout and a match have both read from the bucket.
 - Ghidra import is a JSON upload on the project page (web) or a POST to the API. The CLI cannot import.
 - The CLI does not follow, search, change the lease cap, pin a language, or start an integration build.

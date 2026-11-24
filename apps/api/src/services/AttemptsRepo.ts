@@ -3,6 +3,7 @@ import { Context, Effect, Layer } from "effect"
 import { Conflict, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import type { AttemptResult, AttemptSummary } from "../domain/Attempt.js"
+import { hideBytes } from "../domain/diagnostics.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Blobs } from "./Blobs.js"
 import { ProjectChunkStats } from "./ProjectChunkStats.js"
@@ -37,9 +38,15 @@ type AttemptRow = {
 export class AttemptsRepo extends Context.Service<
   AttemptsRepo,
   {
+    /**
+     * Diagnostics of a missed attempt quote the original bytes. The viewer sees
+     * them on their own attempts, and on all attempts if they hold the chunk
+     * now or maintain the project; other rows get them stripped.
+     */
     readonly listByChunk: (
       projectSlug: string,
-      chunkId: Uuid
+      chunkId: Uuid,
+      viewerId: Uuid | null
     ) => Effect.Effect<ReadonlyArray<AttemptSummary>, NotFound>
     readonly submit: (options: {
       readonly projectSlug: string
@@ -61,13 +68,35 @@ export class AttemptsRepo extends Context.Service<
 
       const listByChunk = Effect.fn("AttemptsRepo.listByChunk")(function*(
         projectSlug: string,
-        chunkId: Uuid
+        chunkId: Uuid,
+        viewerId: Uuid | null
       ) {
         const chunks = yield* sql<{
           readonly id: string
           readonly best_attempt_id: string | null
+          readonly sees_all: boolean
         }>`
-          SELECT c.id, c.best_attempt_id
+          SELECT
+            c.id,
+            c.best_attempt_id,
+            (
+              ${viewerId}::uuid IS NOT NULL
+              AND (
+                c.lease_user_id = ${viewerId}::uuid
+                OR EXISTS (
+                  SELECT 1 FROM chunk_leases cl
+                  WHERE cl.chunk_id = c.id
+                    AND cl.user_id = ${viewerId}::uuid
+                    AND cl.released_at IS NULL
+                )
+                OR EXISTS (
+                  SELECT 1 FROM project_members pm
+                  WHERE pm.project_id = p.id
+                    AND pm.user_id = ${viewerId}::uuid
+                    AND pm.role IN ('owner', 'maintainer')
+                )
+              )
+            ) AS sees_all
           FROM chunks c
           INNER JOIN projects p ON p.id = c.project_id
           WHERE p.slug = ${projectSlug}
@@ -119,7 +148,7 @@ export class AttemptsRepo extends Context.Service<
           score: row.score === null ? null : Number(row.score),
           matched: row.matched,
           compilerOk: row.compiler_ok,
-          diagnostics: row.diagnostics,
+          diagnostics: chunk.sees_all || row.user_id === viewerId ? row.diagnostics : hideBytes(row.diagnostics),
           best: chunk.best_attempt_id === row.id,
           createdAt: toIso(row.created_at),
           finishedAt: row.finished_at === null ? null : toIso(row.finished_at)

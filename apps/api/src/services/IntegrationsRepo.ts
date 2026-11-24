@@ -5,6 +5,7 @@ import { BadRequest, Conflict, Forbidden, NotFound } from "effect/http-api/HttpA
 import { SqlClient } from "effect/sql"
 import type { Integration, IntegrationUnit, StartIntegration } from "../domain/Integration.js"
 import type { SourceLanguage, Toolchain } from "../domain/Project.js"
+import { hideBytes } from "../domain/diagnostics.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { ProjectAuth } from "./ProjectAuth.js"
@@ -38,22 +39,30 @@ const toIso = (value: Date | string): string =>
 
 const asLanguage = (value: string): SourceLanguage => (value === "cpp" ? "cpp" : "c")
 
-const toUnit = (row: UnitRow): IntegrationUnit => ({
+const toUnit = (row: UnitRow, full: boolean): IntegrationUnit => ({
   chunkId: row.chunk_id,
   name: row.name,
   address: String(row.address),
   size: row.size,
   passed: row.passed,
-  detail: row.detail
+  detail: full ? row.detail : (hideBytes(row.detail) ?? "")
 })
 
 export class IntegrationsRepo extends Context.Service<
   IntegrationsRepo,
   {
-    readonly list: (slug: string) => Effect.Effect<ReadonlyArray<Integration>, NotFound>
+    /**
+     * Link mismatches quote original bytes. Owners and maintainers see them;
+     * everyone else gets the diagnostics with the hex lines removed.
+     */
+    readonly list: (
+      slug: string,
+      viewerId: Uuid | null
+    ) => Effect.Effect<ReadonlyArray<Integration>, NotFound>
     readonly get: (
       slug: string,
-      integrationId: Uuid
+      integrationId: Uuid,
+      viewerId: Uuid | null
     ) => Effect.Effect<Integration, NotFound>
     readonly start: (
       slug: string,
@@ -84,7 +93,8 @@ export class IntegrationsRepo extends Context.Service<
 
       const toIntegration = (
         row: IntegrationRow,
-        units: ReadonlyArray<UnitRow>
+        units: ReadonlyArray<UnitRow>,
+        full: boolean
       ): Integration => ({
         id: row.id,
         projectId: row.project_id,
@@ -94,27 +104,36 @@ export class IntegrationsRepo extends Context.Service<
         toolchain: row.toolchain,
         toolchainDigest: row.toolchain_digest,
         summary: row.summary,
-        diagnostics: row.diagnostics,
-        units: units.filter((unit) => unit.integration_id === row.id).map(toUnit),
+        diagnostics: full ? row.diagnostics : hideBytes(row.diagnostics),
+        units: units.filter((unit) => unit.integration_id === row.id).map((unit) => toUnit(unit, full)),
         createdAt: toIso(row.created_at),
         finishedAt: row.finished_at === null ? null : toIso(row.finished_at)
       })
 
       const requireProject = Effect.fn("IntegrationsRepo.requireProject")(function*(
-        slug: string
+        slug: string,
+        viewerId: Uuid | null
       ) {
-        const rows = yield* sql<{ readonly id: string }>`
-          SELECT id FROM projects
-          WHERE slug = ${slug} AND archived_at IS NULL
+        const rows = yield* sql<{ readonly id: string; readonly maintains: boolean }>`
+          SELECT
+            p.id,
+            EXISTS (
+              SELECT 1 FROM project_members pm
+              WHERE pm.project_id = p.id
+                AND pm.user_id = ${viewerId}::uuid
+                AND pm.role IN ('owner', 'maintainer')
+            ) AS maintains
+          FROM projects p
+          WHERE p.slug = ${slug} AND p.archived_at IS NULL
           LIMIT 1
         `.pipe(Effect.orDie)
         const row = rows[0]
         if (row === undefined) return yield* new NotFound()
-        return row.id
+        return { projectId: row.id, full: row.maintains }
       })
 
-      const list = Effect.fn("IntegrationsRepo.list")(function*(slug: string) {
-        const projectId = yield* requireProject(slug)
+      const list = Effect.fn("IntegrationsRepo.list")(function*(slug: string, viewerId: Uuid | null) {
+        const { projectId, full } = yield* requireProject(slug, viewerId)
         const rows = yield* sql<IntegrationRow>`
           SELECT
             id, project_id, binary_id, status, language, toolchain,
@@ -125,14 +144,15 @@ export class IntegrationsRepo extends Context.Service<
           LIMIT 20
         `.pipe(Effect.orDie)
         const units = yield* loadUnits(rows.map((row) => row.id))
-        return rows.map((row) => toIntegration(row, units))
+        return rows.map((row) => toIntegration(row, units, full))
       })
 
       const get = Effect.fn("IntegrationsRepo.get")(function*(
         slug: string,
-        integrationId: Uuid
+        integrationId: Uuid,
+        viewerId: Uuid | null
       ) {
-        const projectId = yield* requireProject(slug)
+        const { projectId, full } = yield* requireProject(slug, viewerId)
         const rows = yield* sql<IntegrationRow>`
           SELECT
             id, project_id, binary_id, status, language, toolchain,
@@ -144,7 +164,7 @@ export class IntegrationsRepo extends Context.Service<
         const row = rows[0]
         if (row === undefined) return yield* new NotFound()
         const units = yield* loadUnits([row.id])
-        return toIntegration(row, units)
+        return toIntegration(row, units, full)
       })
 
       const start = Effect.fn("IntegrationsRepo.start")(function*(
@@ -275,7 +295,7 @@ export class IntegrationsRepo extends Context.Service<
             summary
           })
 
-          return yield* get(slug, integrationId)
+          return yield* get(slug, integrationId, userId)
         })).pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)))
       })
 

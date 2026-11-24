@@ -971,6 +971,23 @@ CREATE TABLE project_posts (
 CREATE INDEX project_posts_by_thread ON project_posts (thread_id, created_at);
 ```
 
+## Password reset — migration 019
+
+```sql
+-- Only the SHA-256 of the emailed token is stored. A token is good for one
+-- hour and one use. Asking again marks any unused token used.
+CREATE TABLE password_resets (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  token_hash  bytea NOT NULL UNIQUE,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  expires_at  timestamptz NOT NULL,
+  used_at     timestamptz
+);
+CREATE INDEX password_resets_open_by_user
+  ON password_resets (user_id) WHERE used_at IS NULL;
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

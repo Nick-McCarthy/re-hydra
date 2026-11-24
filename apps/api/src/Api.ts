@@ -27,6 +27,9 @@ import {
   InvalidCredentials,
   SignInLimited,
   PasswordRejected,
+  PasswordResetConfirmPayload,
+  PasswordResetRequestPayload,
+  ResetRejected,
   SessionCreated,
   SessionResponse,
   SignInPayload,
@@ -148,6 +151,19 @@ export const AuthGroup = HttpApiGroup.make("auth")
       success: SessionResponse,
       error: [Unauthorized, PasswordRejected]
     }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("requestPasswordReset", "/auth/password-reset", {
+      payload: PasswordResetRequestPayload,
+      success: HttpApiSchema.NoContent
+    })
+  )
+  .add(
+    HttpApiEndpoint.post("confirmPasswordReset", "/auth/password-reset/confirm", {
+      payload: PasswordResetConfirmPayload,
+      success: HttpApiSchema.NoContent,
+      error: [ResetRejected]
+    })
   )
   .add(
     HttpApiEndpoint.get("me", "/auth/me", {

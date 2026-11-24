@@ -248,7 +248,7 @@ export function ChunkWorkDialog({
       for (let i = 0; i < 30; i++) {
         await new Promise((resolve) => window.setTimeout(resolve, 1000))
         if (!alive.current) return
-        const list = await api.listAttempts(projectSlug, chunkId)
+        const list = await api.listAttempts(projectSlug, chunkId, session.token)
         if (!alive.current) return
         const row = list.find((item) => item.id === res.attemptId)
         if (!row?.finishedAt) continue

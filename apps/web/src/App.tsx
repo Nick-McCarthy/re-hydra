@@ -6,6 +6,8 @@ import { ChunkPage } from "@/pages/chunk"
 import { FaqPage } from "@/pages/faq"
 import { HomePage } from "@/pages/home"
 import { LoginPage } from "@/pages/login"
+import { ForgotPasswordPage } from "./pages/forgot-password"
+import { ResetPasswordPage } from "./pages/reset-password"
 import { PasswordPage } from "@/pages/password"
 import { SignupPage } from "@/pages/signup"
 import { NewProjectPage } from "@/pages/new-project"
@@ -26,6 +28,8 @@ export default function App() {
               <Route index element={<HomePage />} />
               <Route path="login" element={<LoginPage />} />
               <Route path="signup" element={<SignupPage />} />
+              <Route path="forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="reset-password" element={<ResetPasswordPage />} />
               <Route path="account/password" element={<PasswordPage />} />
               <Route path="faq" element={<FaqPage />} />
               <Route path="people" element={<PeoplePage />} />

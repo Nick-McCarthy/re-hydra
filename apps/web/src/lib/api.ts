@@ -539,6 +539,20 @@ export const api = {
     })
   },
 
+  requestPasswordReset(email: string) {
+    return request<void>("/auth/password-reset", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    })
+  },
+
+  confirmPasswordReset(token: string, newPassword: string) {
+    return request<void>("/auth/password-reset/confirm", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword })
+    })
+  },
+
   changePassword(token: string, currentPassword: string, newPassword: string) {
     return request<Session>("/auth/password", {
       method: "POST",
@@ -866,8 +880,13 @@ export const api = {
     )
   },
 
-  listIntegrations(slug: string) {
-    return request<Array<Integration>>(`/projects/${encodeURIComponent(slug)}/integrations`)
+  /** Signed in as an owner or maintainer, link mismatches include the bytes. */
+  listIntegrations(slug: string, token?: string | null) {
+    return request<Array<Integration>>(
+      `/projects/${encodeURIComponent(slug)}/integrations`,
+      {},
+      token
+    )
   },
 
   startIntegration(
@@ -991,9 +1010,15 @@ export const api = {
     )
   },
 
-  listAttempts(slug: string, chunkId: string) {
+  /**
+   * Byte comparisons in diagnostics come back only on the caller's own attempts,
+   * or on all of them for the chunk's holder and project maintainers.
+   */
+  listAttempts(slug: string, chunkId: string, token?: string | null) {
     return request<Array<AttemptSummary>>(
-      `/projects/${encodeURIComponent(slug)}/chunks/${encodeURIComponent(chunkId)}/attempts`
+      `/projects/${encodeURIComponent(slug)}/chunks/${encodeURIComponent(chunkId)}/attempts`,
+      {},
+      token
     )
   },
 

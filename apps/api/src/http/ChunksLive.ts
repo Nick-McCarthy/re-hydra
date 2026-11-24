@@ -1,10 +1,11 @@
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
 import { HttpApiBuilder } from "effect/http-api"
 import { Api } from "../Api.js"
 import { AttemptsRepo } from "../services/AttemptsRepo.js"
 import { ChunksRepo } from "../services/ChunksRepo.js"
 import { WorkBundles } from "../services/WorkBundles.js"
 import { CurrentUser } from "./Authorization.js"
+import { optionalViewer } from "./viewer.js"
 
 export const ChunksLive = HttpApiBuilder.group(Api, "chunks", (handlers) =>
   handlers
@@ -85,9 +86,11 @@ export const ChunksLive = HttpApiBuilder.group(Api, "chunks", (handlers) =>
     .handle("listAttempts", (request) =>
       Effect.gen(function*() {
         const repo = yield* AttemptsRepo
+        const viewer = yield* optionalViewer
         return yield* repo.listByChunk(
           request.params.projectSlug,
-          request.params.chunkId
+          request.params.chunkId,
+          Option.match(viewer, { onNone: () => null, onSome: (user) => user.id })
         )
       })
     )

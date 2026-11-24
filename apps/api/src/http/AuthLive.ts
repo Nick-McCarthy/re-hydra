@@ -5,6 +5,7 @@ import { Unauthorized } from "effect/http-api/HttpApiError"
 import { Api } from "../Api.js"
 import { TokenRejected } from "../domain/Auth.js"
 import { AuthRepo } from "../services/AuthRepo.js"
+import { PasswordResets } from "../services/PasswordResets.js"
 import { CurrentUser } from "./Authorization.js"
 
 const bearerFromRequest = Effect.gen(function*() {
@@ -26,6 +27,18 @@ export const AuthLive = HttpApiBuilder.group(Api, "auth", (handlers) =>
       Effect.gen(function*() {
         const auth = yield* AuthRepo
         return yield* auth.signUp(request.payload)
+      })
+    )
+    .handle("requestPasswordReset", (request) =>
+      Effect.gen(function*() {
+        const resets = yield* PasswordResets
+        yield* resets.request(request.payload.email)
+      })
+    )
+    .handle("confirmPasswordReset", (request) =>
+      Effect.gen(function*() {
+        const resets = yield* PasswordResets
+        yield* resets.confirm(request.payload.token, request.payload.newPassword)
       })
     )
     .handle("signIn", (request) =>

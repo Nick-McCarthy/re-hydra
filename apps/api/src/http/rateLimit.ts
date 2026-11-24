@@ -63,6 +63,8 @@ export const routeRules: ReadonlyArray<RouteRule> = [
   { name: "sign-in", method: "POST", path: /^\/v1\/auth\/sign-in$/, limit: 10, windowMs: minute },
   { name: "sign-up", method: "POST", path: /^\/v1\/auth\/sign-up$/, limit: 5, windowMs: hour },
   { name: "password", method: "POST", path: /^\/v1\/auth\/password$/, limit: 5, windowMs: 15 * minute },
+  { name: "password-reset", method: "POST", path: /^\/v1\/auth\/password-reset$/, limit: 5, windowMs: hour },
+  { name: "password-reset-confirm", method: "POST", path: /^\/v1\/auth\/password-reset\/confirm$/, limit: 10, windowMs: 15 * minute },
   { name: "tokens", method: "POST", path: /^\/v1\/auth\/tokens$/, limit: 10, windowMs: hour },
   { name: "create-project", method: "POST", path: /^\/v1\/projects$/, limit: 10, windowMs: hour },
   { name: "import", method: "POST", path: /^\/v1\/projects\/[^/]+\/imports$/, limit: 20, windowMs: hour },
@@ -77,6 +79,9 @@ export const globalRule: RouteRule = { name: "all", method: "*", path: /.*/, lim
 
 /** Per email address for sign-in, checked once the body is parsed. */
 export const signInEmailRule = { limit: 10, windowMs: 15 * minute }
+
+/** Per email address for reset emails, so one inbox cannot be flooded. */
+export const passwordResetEmailRule = { limit: 3, windowMs: hour }
 
 export const matchingRules = (method: string, path: string): ReadonlyArray<RouteRule> =>
   routeRules.filter((rule) => rule.method === method && rule.path.test(path))

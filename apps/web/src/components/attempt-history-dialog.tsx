@@ -4,6 +4,7 @@ import { Diagnostics } from "@/components/diagnostics"
 import { Dialog } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { api, type AttemptSummary } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 
 export function AttemptHistoryDialog({
   open,
@@ -18,6 +19,8 @@ export function AttemptHistoryDialog({
   chunkName: string
   onClose: () => void
 }) {
+  const { session } = useAuth()
+  const token = session?.token ?? null
   const [attempts, setAttempts] = React.useState<Array<AttemptSummary>>([])
   const [openAttemptId, setOpenAttemptId] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
@@ -28,7 +31,7 @@ export function AttemptHistoryDialog({
     setError(null)
     const started = performance.now()
     console.log(`[attempts] open ${projectSlug}/${chunkName}`)
-    void api.listAttempts(projectSlug, chunkId).then(
+    void api.listAttempts(projectSlug, chunkId, token).then(
       (list) => {
         console.log(`[attempts] list ${Math.round(performance.now() - started)}ms count=${list.length}`)
         if (!cancelled) setAttempts(list)
@@ -41,7 +44,7 @@ export function AttemptHistoryDialog({
     return () => {
       cancelled = true
     }
-  }, [open, projectSlug, chunkId])
+  }, [open, projectSlug, chunkId, token])
 
   return (
     <Dialog open={open} title={`Attempts · ${chunkName}`} onClose={onClose}>

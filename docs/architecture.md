@@ -192,4 +192,4 @@ A paused writer does not hand the lease to a second writer. Promoting a replica 
 - Treating a linked whole-image match as the checkout success state.
 - Per-city matchd. Sandboxes stay in the few sites that can host them.
 
-The owner who imports an export affirms they have the right to share that binary. A public launch still needs a written policy for copyrighted software and for malware.
+The owner who imports an export affirms they have the right to share that binary. The draft policy for copyrighted software and malware is [content-policy.md](content-policy.md). It is not published, and the import screen does not ask for that affirmation yet.

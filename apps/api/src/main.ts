@@ -32,6 +32,8 @@ import { MatchWorkerLive } from "./services/MatchWorker.js"
 import { ProjectAuth } from "./services/ProjectAuth.js"
 import { ProjectChunkStats } from "./services/ProjectChunkStats.js"
 import { RateLimits } from "./services/RateLimits.js"
+import { Mailer } from "./services/Mailer.js"
+import { PasswordResets } from "./services/PasswordResets.js"
 import { DirectoryRepo } from "./services/DirectoryRepo.js"
 import { ProjectsRepo } from "./services/ProjectsRepo.js"
 import { ProjectModeration } from "./services/ProjectModeration.js"
@@ -117,6 +119,7 @@ const DataLive = Layer.mergeAll(
   BlobsLive,
   RateLimits.layer,
   AuthRepo.layer.pipe(Layer.provide(RateLimits.layer)),
+  PasswordResets.layer.pipe(Layer.provide(RateLimits.layer), Layer.provide(Mailer.layer)),
   Layer.provideMerge(MatchdClient.layer, MatchdPool.layer)
 ).pipe(Layer.provide(SqlLive))
 
