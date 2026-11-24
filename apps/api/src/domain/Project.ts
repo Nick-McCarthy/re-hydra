@@ -151,3 +151,40 @@ export const OwnershipOfferState = Schema.Struct({
   offer: Schema.NullOr(OwnershipOffer)
 }).annotate({ identifier: "OwnershipOfferState" })
 export type OwnershipOfferState = typeof OwnershipOfferState.Type
+
+/** Join requests: a refusal the user can act on (already asked, wait, not members-only). */
+export class JoinRequestRefused extends HttpApiError.Problem<JoinRequestRefused>()("JoinRequestRefused", {
+  type: "https://re-hydra.dev/problems/join-request-refused",
+  status: 409,
+  title: "Join request not possible"
+}) {}
+
+export const JoinRequest = Schema.Struct({
+  id: Uuid,
+  projectSlug: Schema.String,
+  projectName: Schema.String,
+  userId: Uuid,
+  displayName: Schema.String,
+  message: Schema.String,
+  createdAt: Schema.String
+}).annotate({ identifier: "JoinRequest" })
+export type JoinRequest = typeof JoinRequest.Type
+
+export const JoinRequestPayload = Schema.Struct({
+  message: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200)))
+}).annotate({ identifier: "JoinRequestPayload" })
+export type JoinRequestPayload = typeof JoinRequestPayload.Type
+
+/** The caller's own request on one project, and when they may ask again after a decline. */
+export const MyJoinRequestState = Schema.Struct({
+  request: Schema.NullOr(JoinRequest),
+  retryAfter: Schema.NullOr(Schema.String)
+}).annotate({ identifier: "MyJoinRequestState" })
+export type MyJoinRequestState = typeof MyJoinRequestState.Type
+
+/** For My work: requests waiting on you as an approver, and your own open ones. */
+export const MyJoinRequests = Schema.Struct({
+  waitingOnYou: Schema.Array(JoinRequest),
+  yours: Schema.Array(JoinRequest)
+}).annotate({ identifier: "MyJoinRequests" })
+export type MyJoinRequests = typeof MyJoinRequests.Type

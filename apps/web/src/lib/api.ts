@@ -336,6 +336,27 @@ export type OwnershipOffer = {
   expiresAt: string
 }
 
+export type JoinRequest = {
+  id: string
+  projectSlug: string
+  projectName: string
+  userId: string
+  displayName: string
+  message: string
+  createdAt: string
+}
+
+export type MyJoinRequestState = {
+  request: JoinRequest | null
+  /** Set for a week after a decline: when the user may ask again. */
+  retryAfter: string | null
+}
+
+export type MyJoinRequests = {
+  waitingOnYou: Array<JoinRequest>
+  yours: Array<JoinRequest>
+}
+
 export type ProjectMembership = {
   projectSlug: string
   role: "owner" | "maintainer" | "contributor"
@@ -558,6 +579,46 @@ export const api = {
 
   listBlocks(slug: string, token: string) {
     return request<Array<BlockedUser>>(`/projects/${encodeURIComponent(slug)}/blocks`, {}, token)
+  },
+
+  myJoinRequest(slug: string, token: string) {
+    return request<MyJoinRequestState>(`/projects/${encodeURIComponent(slug)}/join-request`, {}, token)
+  },
+
+  requestToJoin(slug: string, message: string, token: string) {
+    return request<MyJoinRequestState>(
+      `/projects/${encodeURIComponent(slug)}/join-request`,
+      { method: "POST", body: JSON.stringify(message ? { message } : {}) },
+      token
+    )
+  },
+
+  cancelJoinRequest(slug: string, token: string) {
+    return request<MyJoinRequestState>(`/projects/${encodeURIComponent(slug)}/join-request`, { method: "DELETE" }, token)
+  },
+
+  listJoinRequests(slug: string, token: string) {
+    return request<Array<JoinRequest>>(`/projects/${encodeURIComponent(slug)}/join-requests`, {}, token)
+  },
+
+  approveJoinRequest(slug: string, requestId: string, token: string) {
+    return request<Array<JoinRequest>>(
+      `/projects/${encodeURIComponent(slug)}/join-requests/${encodeURIComponent(requestId)}/approve`,
+      { method: "POST" },
+      token
+    )
+  },
+
+  declineJoinRequest(slug: string, requestId: string, token: string) {
+    return request<Array<JoinRequest>>(
+      `/projects/${encodeURIComponent(slug)}/join-requests/${encodeURIComponent(requestId)}/decline`,
+      { method: "POST" },
+      token
+    )
+  },
+
+  myJoinRequests(token: string) {
+    return request<MyJoinRequests>("/me/join-requests", {}, token)
   },
 
   listMembers(slug: string) {

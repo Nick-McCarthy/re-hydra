@@ -13,7 +13,9 @@ Milestones 1–4 are done. Compiler images through Genesis are registered. Match
 
 The CLI covers milestone 1. Follow, search, the lease cap, language, and integration builds are API and web.
 
-Profiles have tabs. Everyone sees Overview, Matches (paged, filtered by project and status, sorted), and Projects (memberships, including contributor, and projects with surviving matches). Your own profile adds My work: every lease you hold across projects, with a countdown, Extend, and Release, plus submissions still being checked and your last ten results. Following (also yours only) lists the people and projects you follow, with Unfollow; the old `/following/...` pages redirect there. Pending ownership offers show above the tabs. API: `GET /me/work`, `GET /users/:id/matches`, `GET /users/:id/projects`. Checked by `apps/api/scripts/verify-profile.mjs`.
+Profiles have tabs. Everyone sees Overview, Matches (paged, filtered by project and status, sorted), and Projects (memberships, including contributor, and projects with surviving matches). Your own profile adds My work: every lease you hold across projects, with a countdown, Extend, and Release, plus submissions still being checked and your last ten results. Following (also yours only) lists the people and projects you follow, with Unfollow. Pending ownership offers show above the tabs. API: `GET /me/work`, `GET /users/:id/matches`, `GET /users/:id/projects`. Checked by `apps/api/scripts/verify-profile.mjs`.
+
+On a members-only project, a signed-in non-member can ask to join, with an optional message of up to 200 characters. One open request per user per project; after a decline they may ask again 7 days later. Owners and maintainers answer in the project's Members card and in "Waiting on you" on their My work tab. Approving adds a contributor. Requesters see their state on the project page and in My work. Only approvals reach the feed. There is no nav badge or email. Checked by `apps/api/scripts/verify-join.mjs`.
 
 Seed fixtures:
 

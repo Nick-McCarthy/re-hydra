@@ -71,6 +71,11 @@ import {
 } from "./domain/Profile.js"
 import {
   AddMemberPayload,
+  JoinRequest,
+  JoinRequestPayload,
+  JoinRequestRefused,
+  MyJoinRequests,
+  MyJoinRequestState,
   ChangeRolePayload,
   CreateProjectPayload,
   OfferOwnershipPayload,
@@ -346,6 +351,55 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
   .add(
     HttpApiEndpoint.get("myOwnershipOffers", "/ownership-offers", {
       success: Schema.Array(OwnershipOffer),
+      error: [Unauthorized]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("myJoinRequest", "/projects/:projectSlug/join-request", {
+      params: { projectSlug: ProjectSlug },
+      success: MyJoinRequestState,
+      error: [Unauthorized, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("requestToJoin", "/projects/:projectSlug/join-request", {
+      params: { projectSlug: ProjectSlug },
+      payload: JoinRequestPayload,
+      success: MyJoinRequestState,
+      error: [Unauthorized, NotFound, JoinRequestRefused, ProjectAccessDenied]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.delete("cancelJoinRequest", "/projects/:projectSlug/join-request", {
+      params: { projectSlug: ProjectSlug },
+      success: MyJoinRequestState,
+      error: [Unauthorized, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("listJoinRequests", "/projects/:projectSlug/join-requests", {
+      params: { projectSlug: ProjectSlug },
+      success: Schema.Array(JoinRequest),
+      error: [Unauthorized, Forbidden, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("approveJoinRequest", "/projects/:projectSlug/join-requests/:requestId/approve", {
+      params: { projectSlug: ProjectSlug, requestId: Uuid },
+      success: Schema.Array(JoinRequest),
+      error: [Unauthorized, Forbidden, NotFound, ProjectAccessDenied]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("declineJoinRequest", "/projects/:projectSlug/join-requests/:requestId/decline", {
+      params: { projectSlug: ProjectSlug, requestId: Uuid },
+      success: Schema.Array(JoinRequest),
+      error: [Unauthorized, Forbidden, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("myJoinRequests", "/me/join-requests", {
+      success: MyJoinRequests,
       error: [Unauthorized]
     }).middleware(Authorization)
   )

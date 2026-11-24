@@ -1,5 +1,6 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
+import { JoinRequestsWork } from "@/components/join-requests"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -93,6 +94,7 @@ export function ProfileWork(props: { readonly token: string }) {
 
   return (
     <div className="space-y-6">
+      <JoinRequestsWork token={token} />
       <Card>
         <CardHeader>
           <CardTitle>Leases you hold</CardTitle>

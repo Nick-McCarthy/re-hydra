@@ -215,6 +215,10 @@ export class ProjectMembers extends Context.Service<
           RETURNING user_id
         `.pipe(Effect.orDie)
         if (inserted[0] === undefined) return yield* new Conflict()
+        yield* sql`
+          UPDATE join_requests SET state = 'approved', resolved_at = now(), resolved_by = ${actorId}
+          WHERE project_id = ${projectId} AND user_id = ${payload.userId} AND state = 'open'
+        `.pipe(Effect.orDie)
         yield* record(projectId, actorId, payload.userId, `${target.display_name} joined as ${payload.role}`)
         return yield* loadMembers(projectId)
       })

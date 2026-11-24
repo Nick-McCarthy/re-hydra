@@ -788,6 +788,7 @@ export function ProjectPage() {
           projectSlug={projectSlug}
           session={session && user ? { token: session.token, userId: user.id } : null}
           myRole={myRole}
+          checkoutPolicy={project.checkoutPolicy}
           onChanged={() => {
             reloadMembership()
             void api.projectActivity(projectSlug).then(setEvents)

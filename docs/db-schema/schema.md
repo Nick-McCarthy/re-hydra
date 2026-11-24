@@ -900,6 +900,35 @@ CREATE INDEX ownership_transfers_offered_to_idx
   ON ownership_transfers (offered_to) WHERE state = 'open';
 ```
 
+## Join requests — migration 017
+
+```sql
+-- A signed-in non-member asks to join a members-only project; an owner or
+-- maintainer approves (the user becomes a contributor) or declines.
+-- After a decline the user may ask again 7 days after resolved_at (checked
+-- in code). Blocking cancels an open request; adding the user directly
+-- marks it approved. Only approvals reach the activity feed.
+CREATE TABLE join_requests (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id   uuid NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+  user_id      uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  message      text NOT NULL DEFAULT '' CHECK (length(message) <= 200),
+  state        text NOT NULL DEFAULT 'open'
+    CHECK (state IN ('open', 'approved', 'declined', 'cancelled')),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  resolved_at  timestamptz,
+  resolved_by  uuid REFERENCES users (id) ON DELETE SET NULL
+);
+
+-- One open request per user per project.
+CREATE UNIQUE INDEX join_requests_one_open
+  ON join_requests (project_id, user_id) WHERE state = 'open';
+CREATE INDEX join_requests_open_by_project
+  ON join_requests (project_id, created_at) WHERE state = 'open';
+CREATE INDEX join_requests_by_user
+  ON join_requests (user_id, created_at DESC);
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

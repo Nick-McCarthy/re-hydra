@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import { ProjectJoinRequests } from "../services/ProjectJoinRequests.js"
 import { ProjectMembers } from "../services/ProjectMembers.js"
 import { ProjectModeration } from "../services/ProjectModeration.js"
 import { HttpApiBuilder } from "effect/http-api"
@@ -89,6 +90,55 @@ export const ProjectsLive = HttpApiBuilder.group(Api, "projects", (handlers) =>
         const user = yield* CurrentUser
         const members = yield* ProjectMembers
         return yield* members.myOffers(user.id)
+      })
+    )
+    .handle("myJoinRequest", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const joins = yield* ProjectJoinRequests
+        return yield* joins.mine(request.params.projectSlug, user.id)
+      })
+    )
+    .handle("requestToJoin", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const joins = yield* ProjectJoinRequests
+        return yield* joins.create(request.params.projectSlug, user.id, request.payload)
+      })
+    )
+    .handle("cancelJoinRequest", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const joins = yield* ProjectJoinRequests
+        return yield* joins.cancel(request.params.projectSlug, user.id)
+      })
+    )
+    .handle("listJoinRequests", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const joins = yield* ProjectJoinRequests
+        return yield* joins.listForProject(request.params.projectSlug, user.id)
+      })
+    )
+    .handle("approveJoinRequest", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const joins = yield* ProjectJoinRequests
+        return yield* joins.approve(request.params.projectSlug, user.id, request.params.requestId)
+      })
+    )
+    .handle("declineJoinRequest", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const joins = yield* ProjectJoinRequests
+        return yield* joins.decline(request.params.projectSlug, user.id, request.params.requestId)
+      })
+    )
+    .handle("myJoinRequests", () =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const joins = yield* ProjectJoinRequests
+        return yield* joins.forMe(user.id)
       })
     )
     .handle("listBlocks", (request) =>

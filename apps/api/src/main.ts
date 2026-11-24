@@ -35,6 +35,7 @@ import { DirectoryRepo } from "./services/DirectoryRepo.js"
 import { ProjectsRepo } from "./services/ProjectsRepo.js"
 import { ProjectModeration } from "./services/ProjectModeration.js"
 import { ProjectMembers } from "./services/ProjectMembers.js"
+import { ProjectJoinRequests } from "./services/ProjectJoinRequests.js"
 import { TypeProposalsRepo } from "./services/TypeProposalsRepo.js"
 import { UnresolvedTypesRepo } from "./services/UnresolvedTypesRepo.js"
 import { UsersRepo } from "./services/UsersRepo.js"
@@ -73,6 +74,10 @@ const DataLive = Layer.mergeAll(
     Layer.provide(Authz),
     Layer.provide(ActivityLive),
     Layer.provide(StatsLive)
+  ),
+  ProjectJoinRequests.layer.pipe(
+    Layer.provide(Authz),
+    Layer.provide(ActivityLive)
   ),
   ImportsRepo.layer.pipe(
     Layer.provide(BlobsLive),

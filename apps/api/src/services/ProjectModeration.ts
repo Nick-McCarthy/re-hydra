@@ -128,6 +128,11 @@ export class ProjectModeration extends Context.Service<
             SET state = 'cancelled', resolved_at = now()
             WHERE project_id = ${projectId} AND offered_to = ${payload.userId} AND state = 'open'
           `
+          yield* sql`
+            UPDATE join_requests
+            SET state = 'cancelled', resolved_at = now(), resolved_by = ${userId}
+            WHERE project_id = ${projectId} AND user_id = ${payload.userId} AND state = 'open'
+          `
           if (inserted[0] !== undefined) {
             yield* activity.record({
               projectId,

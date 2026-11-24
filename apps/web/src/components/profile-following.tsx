@@ -8,7 +8,6 @@ import { ApiError, api, type FollowedProject, type UserSearchHit } from "@/lib/a
 /**
  * The people and projects the signed-in user follows, with Unfollow. Shown
  * only on your own profile: the API serves follow lists to their owner only.
- * Replaces the old /following/users and /following/projects pages.
  */
 export function ProfileFollowing(props: { readonly token: string; readonly onChanged: () => void }) {
   const { token, onChanged } = props

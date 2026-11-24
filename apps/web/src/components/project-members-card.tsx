@@ -1,5 +1,6 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
+import { JoinRequestBox, JoinRequestsReview } from "@/components/join-requests"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,15 +21,18 @@ type Role = ProjectMembership["role"]
  * Audit A-011. Everyone sees who the members are. The owner adds, promotes,
  * demotes, and removes anyone and can offer ownership; maintainers add and
  * remove contributors; any member but the owner can leave. An ownership offer
- * shows here for the owner and for the person it was made to.
+ * shows here for the owner and for the person it was made to. On a
+ * members-only project, non-members can ask to join here, and owners and
+ * maintainers answer those requests here.
  */
 export function ProjectMembersCard(props: {
   readonly projectSlug: string
   readonly session: { readonly token: string; readonly userId: string } | null
   readonly myRole: Role | null
+  readonly checkoutPolicy: "open" | "members"
   readonly onChanged: () => void
 }) {
-  const { projectSlug, session, myRole, onChanged } = props
+  const { projectSlug, session, myRole, checkoutPolicy, onChanged } = props
   const [members, setMembers] = React.useState<ReadonlyArray<ProjectMember> | null>(null)
   const [offer, setOffer] = React.useState<OwnershipOffer | null>(null)
   const [query, setQuery] = React.useState("")
@@ -207,6 +211,20 @@ export function ProjectMembersCard(props: {
               Withdraw
             </Button>
           </div>
+        ) : null}
+
+        {canManage && token ? (
+          <JoinRequestsReview
+            projectSlug={projectSlug}
+            token={token}
+            onApproved={() => {
+              void api.listMembers(projectSlug).then(setMembers)
+              onChanged()
+            }}
+          />
+        ) : null}
+        {token && myRole === null && checkoutPolicy === "members" ? (
+          <JoinRequestBox projectSlug={projectSlug} token={token} />
         ) : null}
 
         <ul className="space-y-1 text-sm">
