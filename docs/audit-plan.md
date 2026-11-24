@@ -20,8 +20,8 @@ Status: in progress. Written 2026-11-22 against `main` at `cd2a88feb` with uncom
 | A-036 bundle text reaching the agent | Fixed 2026-11-23, pushed to `main` (`0b5b55142`) | [audit-changelog.md](audit-changelog.md) |
 | Small fixes A-010, A-014, A-015, A-018, A-026, A-028, A-033, A-038 | Fixed 2026-11-23, pushed to `main` (`6ceea7694`) | [audit-changelog.md](audit-changelog.md) |
 | A-007 call targets | Fixed 2026-11-24, pushed to `main` (`6ceea7694`) | [audit-changelog.md](audit-changelog.md) |
-| A-037, A-039, A-040 headers, pinned sources, password cost | Fixed 2026-11-24, not committed (branch `audit/hardening`) | [audit-changelog.md](audit-changelog.md) |
-| A-012 open vs members-only projects, block list | Fixed 2026-11-24, not committed (branch `audit/hardening`) | [audit-changelog.md](audit-changelog.md) |
+| A-037, A-039, A-040 headers, pinned sources, password cost | Fixed 2026-11-24, pushed to `main` (`1ed2ec9bf`) | [audit-changelog.md](audit-changelog.md) |
+| A-012 open vs members-only projects, block list | Fixed 2026-11-24, pushed to `main` (`bdeee5e42`) | [audit-changelog.md](audit-changelog.md) |
 | Phases 5–8 | Not started | — |
 
 Findings: [audit-findings.md](audit-findings.md). 41 logged, 39 fixed, 1 closed as not applicable (A-024), 1 open:

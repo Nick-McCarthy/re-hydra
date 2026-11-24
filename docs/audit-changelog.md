@@ -4,7 +4,7 @@ Changes made because of the audit. Newest first. Finding ids refer to [audit-fin
 
 ## 2026-11-24 — Who may work on a project, and blocking (A-012)
 
-Branch `audit/hardening`, with the hardening work below. Not committed yet. Run `npm run api:migrate` (migration 015).
+Commit `bdeee5e42`, pushed to `main`. Run `npm run api:migrate` (migration 015).
 
 ### Decisions
 
@@ -35,7 +35,7 @@ Branch `audit/hardening`, with the hardening work below. Not committed yet. Run 
 
 ## 2026-11-24 — Security headers, pinned image sources, password cost (A-037, A-039, A-040)
 
-Branch `audit/hardening`, off `main` at `6ceea7694`. Not committed yet.
+Commit `1ed2ec9bf`, pushed to `main`.
 
 ### A-040: password hashing cost
 
