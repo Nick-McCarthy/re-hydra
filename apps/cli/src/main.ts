@@ -8,10 +8,8 @@ import { writeWorkBundle } from "./bundle.js"
 import { describeByteDiff, parseByteDiff } from "./byteDiff.js"
 import { ApiClient, ApiClientLive } from "./client.js"
 import {
-  defaultBaseUrl,
   loadConfig,
   readLeaseIndex,
-  readLeaseNear,
   saveConfig,
   saveLeaseIndex,
   writeLease
@@ -27,52 +25,9 @@ import {
   resolveChunkId,
   untilText
 } from "./work.js"
+import { importExport, integrate, types } from "./projectCommands.js"
+import { currentLease, currentUrl, ensureUrl, hydra, say } from "./root.js"
 
-/** The lease in this directory or a parent; exit code 5 when there is none. */
-const currentLease = readLeaseNear(process.cwd()).pipe(
-  Effect.mapError((error) => new HydraExit({ code: ExitCode.noLease, message: error.message }))
-)
-
-const hydra = Command.make("hydra").pipe(
-  Command.withSharedFlags({
-    url: Flag.String("url").pipe(
-      Flag.withDescription(`API base URL. Saved for later commands. Default ${defaultBaseUrl}`),
-      Flag.optional
-    ),
-    json: Flag.Boolean("json").pipe(
-      Flag.withDescription("Print API JSON"),
-      Flag.withDefault(false)
-    )
-  }),
-  Command.withDescription("re-hydra contributor CLI")
-)
-
-const say = (value: unknown, lines: ReadonlyArray<string>) =>
-  Effect.gen(function*() {
-    const root = yield* hydra
-    if (root.json) {
-      yield* Console.log(JSON.stringify(value))
-      return
-    }
-    for (const line of lines) {
-      yield* Console.log(line)
-    }
-  })
-
-/**
- * Save --url when it is given. Without it, commands use the saved URL; a
- * default here used to overwrite the URL a login had saved.
- */
-const ensureUrl = Effect.gen(function*() {
-  const root = yield* hydra
-  if (Option.isNone(root.url)) return
-  const config = yield* loadConfig
-  if (config.baseUrl !== root.url.value) {
-    yield* saveConfig({ ...config, baseUrl: root.url.value })
-  }
-})
-
-const currentUrl = Effect.map(loadConfig, (config) => config.baseUrl)
 
 const login = Command.make(
   "login",
@@ -149,10 +104,11 @@ const me = Command.make(
   Effect.fn(function*() {
     yield* ensureUrl
     const client = yield* ApiClient
+    const site = yield* currentUrl
     const user = yield* client.auth.me({})
-    yield* say(user, [`${user.displayName} <${user.email}> (${user.id})`])
+    yield* say({ ...user, site }, [`${user.displayName} <${user.email}> (${user.id})`, `  site: ${site}`])
   })
-).pipe(Command.withDescription("Show the current user"))
+).pipe(Command.withDescription("Show the current user and the site the CLI talks to"))
 
 const list = Command.make(
   "list",
@@ -672,7 +628,10 @@ hydra.pipe(
     next,
     status,
     show,
-    refresh
+    refresh,
+    types,
+    importExport,
+    integrate
   ]),
   Command.run({ version: "0.0.0" }),
   // One plain line on stderr and a meaningful exit code, instead of a stack.

@@ -198,7 +198,7 @@ export const explainFailure = (error: unknown, baseUrl: string): HydraExit => {
     case "NotFound":
       return new HydraExit({ code: 1, message: detail ?? "Not found. Check the project slug and the chunk." })
     case "Conflict":
-      return new HydraExit({ code: 1, message: detail ?? "Not possible in the chunk's current state." })
+      return new HydraExit({ code: 1, message: detail ?? "Not possible in the current state (the server gave no reason)." })
     case "HttpClientError":
     case "RequestError":
     case "TransportError":

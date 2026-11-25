@@ -530,6 +530,14 @@ export function FaqPage() {
             changed, and keeps your <Code>candidate.c</Code>.
           </li>
           <li>
+            <Code>hydra types propose</Code> sends your edited <Code>types.h</Code> as a type
+            proposal, and <Code>hydra types unresolved</Code> marks a type the headers lack.
+          </li>
+          <li>
+            <Code>hydra import</Code> uploads a Ghidra export, and{" "}
+            <Code>hydra integrate</Code> runs an integration build and waits for it.
+          </li>
+          <li>
             <Code>hydra watch</Code> renews the lease right away and then every five
             minutes until you stop it.
           </li>

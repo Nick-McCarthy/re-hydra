@@ -44,6 +44,7 @@ npx hydra --help
 - `hydra login` — prompts for email and password and saves a session
 - `hydra login --email <email> --password <password>` — sign in without prompts
 - `hydra login --token <token>` — save a profile token created on your profile page
+- `hydra me` — who you are and which site the CLI talks to
 - `hydra logout` — a session is revoked. A profile token is forgotten on this machine and stays valid until you revoke it
 ### Work
 
@@ -55,10 +56,27 @@ npx hydra --help
 - `hydra refresh` — download the work bundle again inside a checkout (types, neighbors, best attempt); `candidate.c` is kept
 - `hydra submit [file] [--wait <seconds>]` — submit `candidate.c` (or the file) and wait up to 60 seconds for the result. A miss prints the first differing byte and the bytes around it; `--json` adds `byteDiff`
 - `hydra attempts [slug] [chunk]` — attempt history. Inside a checkout, the slug and chunk come from `.lease.json`
+
+### Types
+
+Inside a checkout the project comes from `.lease.json`; elsewhere pass `--project <slug>`.
+
+- `hydra types show [--out <file>]` — the current type revision, open proposals, and unresolved types; `--out` writes the headers
+- `hydra types propose [file] --title <text> [--description <text>] [--affects a,b]` — propose the whole headers file (default: `types.h` in the checkout, edited) as the next revision. `--affects` limits which matched chunks are rechecked
+- `hydra types proposals [id] [--out <file>]` — list proposals, or show one with its recheck progress
+- `hydra types unresolved [type] [--reason <text>]` — list unresolved types, or mark one the headers get wrong or lack
+- Maintainers: `hydra types recheck <id>`, `hydra types accept <id>`, `hydra types unresolved <type> --clear`
+
+### Project
+
+- `hydra import <slug> <export.json> --confirm-rights` — import a Ghidra export (owners and maintainers). Without `--confirm-rights` it prints the three statements of content policy 2.3 and stops
+- `hydra integrate [slug] [--wait <seconds>] [--binary <id>]` — link every matched function at its original address and wait for the result (exit 0 passed, 2 failed, 3 still running). `--last` shows the latest build instead of starting one
 - `hydra watch --interval <seconds>` — heartbeat the checkout in the current directory until Ctrl+C. Default interval is 300 seconds, and the first beat is immediate
 - `--json` — print the API JSON instead of sentences
 - Config: `%APPDATA%/re-hydra/config.json` (Windows) or `~/.config/re-hydra/config.json`
 - API URL: `hydra --url http://localhost:3000 …` saves it for later commands; without `--url`, the saved one is used
+
+> **Note (fixed in eaf79d89b).** Before that commit, `--url` had a default, so any command run without it saved `http://localhost:3000` over the URL you had logged in with. If you used a CLI from before then against another site, your saved URL may now be `localhost:3000`. Check with `hydra me`, and set it back once with `hydra --url <your site> me`. The token was kept, so you do not need to log in again unless that site refuses it.
 
 ### Exit codes
 
@@ -68,8 +86,8 @@ For scripts and agents:
 | --- | --- |
 | 0 | Done; for `submit`, the attempt matched |
 | 1 | Any other failure (the message says why) |
-| 2 | `submit`: the attempt finished and did not match (a miss or a compile error) |
-| 3 | `submit`: still being checked when `--wait` ran out |
+| 2 | `submit`: the attempt did not match (a miss or a compile error). `integrate`: the build failed |
+| 3 | `submit` or `integrate`: still running when `--wait` ran out |
 | 4 | Not signed in, or the session or token was refused |
 | 5 | No `.lease.json` here, or the server no longer has the lease (expired, released) |
 | 6 | `next`: no open chunk to take |
