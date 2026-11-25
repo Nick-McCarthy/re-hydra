@@ -53,6 +53,32 @@ The import is refused until all three are ticked. re-hydra records who confirmed
 
 Your submissions are stored and shown to later contributors on that chunk, so they can build on the best attempt. By submitting, you agree that your source is available under `[decision: CC0 1.0, or MIT, or a license each project owner picks]`. You confirm it is your own work and was not copied from leaked or proprietary source.
 
+### 2.5 What counts as infringement here
+
+`[Lawyer to review this section. It explains how re-hydra applies copyright to what people do on the site; it is not a statement of the law.]`
+
+Copyright law differs by country, and rebuilding source that matches a program's bytes has seen little testing in court. This is how re-hydra treats the things people upload and do.
+
+**Infringing.** We remove these when we find them, with or without a complaint:
+
+- Copies of the program, in whole or in large part: ROMs, disc images, executables, or links to them. No reverse-engineering defence covers handing out the work itself.
+- Leaked or proprietary source code, pasted into a submission or a post, or used as the basis of a submission even after rewriting.
+- Game assets: art, audio, video, script and text dumps, level data.
+- Files from licensed developer kits: retail compilers, libraries, and headers.
+
+**Handled the same way.** Encryption or signing keys, and tools or instructions for getting around copy protection. In the US these fall under anti-circumvention law (17 U.S.C. § 1201), which applies even when nothing is copied.
+
+**What re-hydra itself relies on.** Matching needs some copying: an import stores each function's bytes, disassembly, and Ghidra's pseudocode, and shows them to the contributor working on that function. US courts have found that copying a program to study how it works can be fair use when it is needed to understand it, for example to make compatible software (Sega v. Accolade, 1992; Sony v. Connectix, 2000). Those cases involved private study, not a shared site, which is why re-hydra keeps that copying small: function bytes only, never the whole program; byte comparisons shown only to the people working on a function; and an importer who confirms they own a copy. A rights holder may still object to a project, and source that compiles to the same bytes may be argued to derive from the original. Those disputes go through section 3, and we act on complete notices.
+
+**Generally fine.** Function, symbol, and type names; addresses and sizes; and discussion of how a program works.
+
+**Strikes.** For the repeat-infringer rule in section 3, a strike is one of:
+
+1. A complete notice under section 3 that we act on, which is not reversed by a counter-notice or on review.
+2. Our own finding that an account posted something in the infringing list above, such as a link to a ROM or pasted leaked source.
+
+Matching work of the kind described under "What re-hydra itself relies on" does not count as a strike unless a rights holder sends a notice and it stands.
+
 ## 3. Copyright complaints (notice and takedown)
 
 If you hold rights in software and believe something on re-hydra infringes them, send a notice to our designated agent:
@@ -75,7 +101,7 @@ For a notice under the US Digital Millennium Copyright Act (17 U.S.C. § 512(c)(
 - We act on a complete notice within `[2 business days]`. We usually archive the whole project: it disappears from listings and its pages stop loading, and checkouts end. We may instead remove specific material.
 - We tell the project owner, and forward the notice with your personal contact details removed `[or: as required by law]`.
 - **Counter-notice.** If the owner believes the removal was a mistake or the use is lawful, they can send a counter-notice with the elements in 17 U.S.C. § 512(g)(3). We forward it to you. Unless you tell us within 10 to 14 business days that you have filed a court action, we may restore the material.
-- **Repeat infringers.** We close the accounts of people who repeatedly upload infringing material. `[decision: e.g. two upheld notices in 12 months]`.
+- **Repeat infringers.** We close the accounts of people who repeatedly upload infringing material. Section 2.5 says what counts as a strike. `[decision: e.g. two strikes in 12 months]`.
 
 Rights holders outside the US can use the same address. We handle notices under other laws (for example the EU Digital Services Act) through the same process, adapted as those laws require. `[Lawyer to confirm.]`
 
