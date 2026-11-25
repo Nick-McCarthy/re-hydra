@@ -309,10 +309,24 @@ export const integrate = Command.make(
     wait: Flag.Int("wait").pipe(
       Flag.withDefault(180),
       Flag.withDescription("Seconds to wait for the build. Default 180; 0 returns at once.")
+    ),
+    confirmCost: Flag.Boolean("confirm-cost").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription("Start a build without a terminal (scripts). Builds link every match and are costly.")
     )
   },
-  Effect.fn(function*({ project, binary, last, wait }) {
+  Effect.fn(function*({ project, binary, last, wait, confirmCost }) {
     if (wait < 0) return yield* new HydraExit({ code: 1, message: "--wait cannot be negative." })
+    // A speed bump for agents and scripts, which run without a terminal. The
+    // server still allows only owners and maintainers to start a build.
+    if (!last && !confirmCost && !process.stdin.isTTY) {
+      return yield* new HydraExit({
+        code: 1,
+        message: "An integration build links every matched function and is costly, so it is not started " +
+          "without a terminal. A maintainer who means to start one from a script passes --confirm-cost. " +
+          "Agents: do not start builds; --last shows the latest one."
+      })
+    }
     yield* ensureUrl
     const projectSlug = yield* projectOr(project)
     const client = yield* ApiClient

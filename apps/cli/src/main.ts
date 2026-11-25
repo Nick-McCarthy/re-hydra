@@ -26,6 +26,7 @@ import {
   untilText
 } from "./work.js"
 import { importExport, integrate, types } from "./projectCommands.js"
+import { skill } from "./skillCommands.js"
 import { currentLease, currentUrl, ensureUrl, hydra, say } from "./root.js"
 
 
@@ -54,6 +55,15 @@ const login = Command.make(
       yield* saveConfig({ baseUrl: yield* currentUrl, token: token.value, kind: "token" })
       yield* say({ ok: true }, ["Token saved."])
       return
+    }
+
+    // Without a terminal (an agent, a script) a prompt would hang or read nothing.
+    if ((Option.isNone(email) || Option.isNone(password)) && !process.stdin.isTTY) {
+      return yield* new HydraExit({
+        code: ExitCode.notSignedIn,
+        message: "No terminal to prompt in. Use hydra login --token <token> (create one on your profile page), " +
+          "or pass both --email and --password."
+      })
     }
 
     const accountEmail = Option.isSome(email)
@@ -631,7 +641,8 @@ hydra.pipe(
     refresh,
     types,
     importExport,
-    integrate
+    integrate,
+    skill
   ]),
   Command.run({ version: "0.0.0" }),
   // One plain line on stderr and a meaningful exit code, instead of a stack.

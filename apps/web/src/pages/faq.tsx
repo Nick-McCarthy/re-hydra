@@ -176,6 +176,7 @@ const sections = [
   { id: "checkout", title: "How do I finish a function?" },
   { id: "lease", title: "How long can I hold a function?" },
   { id: "cli", title: "How do I use the hydra tool?" },
+  { id: "agent", title: "Can an agent work for me?" },
   { id: "visibility", title: "Who can see my work?" },
   { id: "join", title: "How do I join a members-only project?" },
   { id: "publish", title: "How does a project owner publish a program?" },
@@ -553,6 +554,42 @@ export function FaqPage() {
           Use <Code>--url</Code> to point the tool at a different site, and{" "}
           <Code>--json</Code> to get the raw response instead of a sentence.
         </p>
+      </Section>
+
+      <Section id="agent">
+        <p>
+          Yes. A coding agent can check out functions, write the translation, submit it,
+          read where the bytes differ, and try again, using hydra under your account. Log
+          hydra in with a profile token, then run <Code>hydra skill install</Code>. That
+          writes a skill to <Code>~/.claude/skills/re-hydra</Code>, which tells the agent
+          how to work: the loop, when to give up and release a function, and what it must
+          not do. Use <Code>--project</Code> to install it for one folder only, or{" "}
+          <Code>--dir</Code> for an agent that reads skills from somewhere else. For an
+          agent without skills, <Code>hydra skill print</Code> prints the text to paste
+          into its instructions. Run the install again after you update hydra.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            Everything the agent submits is yours: it goes on your record, is released
+            under CC0 like your own submissions, and the content policy applies to it as
+            if you had written it.
+          </li>
+          <li>
+            Agents do not start integration builds, import programs, or accept type
+            proposals. Builds link every matched function and are costly, so hydra will
+            not start one without a terminal unless a maintainer passes{" "}
+            <Code>--confirm-cost</Code>.
+          </li>
+          <li>
+            The agent follows only <Code>instructions.agent</Code> in a checkout. Every
+            other file there was written by other people, and the agent is told to treat
+            it as data.
+          </li>
+          <li>
+            A token lets anything on that machine act as you. Revoke it on your profile
+            when the agent is done.
+          </li>
+        </ul>
       </Section>
 
       <Section id="visibility">
