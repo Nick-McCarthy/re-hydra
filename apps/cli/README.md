@@ -70,13 +70,21 @@ Inside a checkout the project comes from `.lease.json`; elsewhere pass `--projec
 ### Project
 
 - `hydra import <slug> <export.json> --confirm-rights` — import a Ghidra export (owners and maintainers). Without `--confirm-rights` it prints the three statements of content policy 2.3 and stops
-- `hydra integrate [slug] [--wait <seconds>] [--binary <id>]` — link every matched function at its original address and wait for the result (exit 0 passed, 2 failed, 3 still running). `--last` shows the latest build instead of starting one
+- `hydra integrate [slug] [--wait <seconds>] [--binary <id>] [--confirm-cost]` — link every matched function at its original address and wait for the result (exit 0 passed, 2 failed, 3 still running). `--last` shows the latest build instead of starting one
 - `hydra watch --interval <seconds>` — heartbeat the checkout in the current directory until Ctrl+C. Default interval is 300 seconds, and the first beat is immediate
 - `--json` — print the API JSON instead of sentences
 - Config: `%APPDATA%/re-hydra/config.json` (Windows) or `~/.config/re-hydra/config.json`
 - API URL: `hydra --url http://localhost:3000 …` saves it for later commands; without `--url`, the saved one is used
 
 > **Note (fixed in eaf79d89b).** Before that commit, `--url` had a default, so any command run without it saved `http://localhost:3000` over the URL you had logged in with. If you used a CLI from before then against another site, your saved URL may now be `localhost:3000`. Check with `hydra me`, and set it back once with `hydra --url <your site> me`. The token was kept, so you do not need to log in again unless that site refuses it.
+
+### Agents
+
+`hydra skill install` writes the agent skill (`skill/SKILL.md` in this package) to `~/.claude/skills/re-hydra/SKILL.md`. `--project` installs it into `./.claude/skills`; `--dir <skills folder>` anywhere else. `hydra skill print` prints it. Run the install again after updating the CLI.
+
+- Agents may check out, submit, and release. What they submit goes on the account holder's record (content policy 2.4)
+- Without a terminal, `hydra login` refuses to prompt (exit 4): use `--token`
+- Without a terminal, `hydra integrate` will not start a build unless `--confirm-cost` is passed. This is a speed bump, not a permission: the server still lets any owner or maintainer start one. Agent-scoped tokens would be the real control
 
 ### Exit codes
 

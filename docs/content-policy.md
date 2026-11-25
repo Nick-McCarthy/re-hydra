@@ -53,6 +53,8 @@ The import is refused until all three are ticked. re-hydra records who confirmed
 
 Your submissions are stored and shown to later contributors on that chunk, so they can build on the best attempt. By submitting, you release your source under the Creative Commons CC0 1.0 Universal public domain dedication: anyone may use, change, and share it, with no conditions and no credit required. This lets later contributors build on an attempt without tracking who wrote which line. You confirm it is your own work and was not copied from leaked or proprietary source, or from code under another license.
 
+If you let an agent or a script submit under your account, what it submits counts as yours: this section, and the rest of this policy, apply to it as if you had written it.
+
 ### 2.5 What counts as infringement here
 
 `[Lawyer to review this section. It explains how re-hydra applies copyright to what people do on the site; it is not a statement of the law.]`

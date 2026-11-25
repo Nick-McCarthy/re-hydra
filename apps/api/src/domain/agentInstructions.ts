@@ -46,6 +46,6 @@ Read these files before writing:
 ${attempt}${integration}
 candidate.c contains only the translation of that function, in ${language}. Write it yourself from the files in this directory. Do not copy source from anywhere else (leaked or proprietary code, or code under another license): the person who submits it releases it under CC0 1.0. Do not use inline assembly; the server rejects it unless the project owner has allowed it for this function. The server compiles that file alone, with types.h included for you, using the recipe in chunk.json. A match means the compiled bytes equal original.bin after the server masks relocations.
 ${integrationClose}
-When candidate.c is saved, stop. The person who checked out this chunk submits that file.
+When candidate.c is saved, stop. The person who checked out this chunk submits that file, unless they told you to submit it. In that case run \`hydra submit\` in this directory: it compiles candidate.c on the server and, when the bytes differ, names the first byte that differs. Change candidate.c and submit again while you are getting closer, and stop when you are not. Whatever you submit goes on that person's record. Do not run hydra commands that change the project: importing, integration builds, or accepting type proposals.
 `
 }
