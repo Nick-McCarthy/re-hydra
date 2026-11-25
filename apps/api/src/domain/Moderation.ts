@@ -133,7 +133,9 @@ export const ModerationActionKind = Schema.Literals([
   "grant_admin",
   "revoke_admin",
   "add_strike",
-  "reverse_strike"
+  "reverse_strike",
+  "allow_malware_hash",
+  "confirm_malware_hit"
 ])
 
 export const ModerationAction = Schema.Struct({
@@ -148,3 +150,55 @@ export const ModerationAction = Schema.Struct({
   createdAt: Schema.String
 }).annotate({ identifier: "ModerationAction" })
 export type ModerationAction = typeof ModerationAction.Type
+
+/**
+ * Content policy 4.3: a program whose SHA-256 is on the known-malware list.
+ * `import`: an import was refused. `existing`: a program already on the site
+ * turned up on a later list.
+ */
+export const MalwareHitKind = Schema.Literals(["import", "existing"])
+export const MalwareResolution = Schema.Literals(["allowed", "confirmed"])
+
+export const MalwareHit = Schema.Struct({
+  id: Uuid,
+  kind: MalwareHitKind,
+  sha256: Schema.String,
+  programName: Schema.NullOr(Schema.String),
+  user: Schema.NullOr(PersonRef),
+  project: Schema.NullOr(Schema.Struct({
+    id: Uuid,
+    slug: Schema.String,
+    name: Schema.String,
+    archivedAt: Schema.NullOr(Schema.String)
+  })),
+  createdAt: Schema.String,
+  resolvedAt: Schema.NullOr(Schema.String),
+  resolvedBy: Schema.NullOr(PersonRef),
+  resolution: Schema.NullOr(MalwareResolution),
+  resolutionNote: Schema.NullOr(Schema.String)
+}).annotate({ identifier: "MalwareHit" })
+export type MalwareHit = typeof MalwareHit.Type
+
+export const MalwareListStatus = Schema.Struct({
+  /** A list URL is configured (MALWARE_HASHLIST_URL); without one, nothing new is downloaded. */
+  configured: Schema.Boolean,
+  hashCount: Schema.Int,
+  allowedCount: Schema.Int,
+  refreshedAt: Schema.NullOr(Schema.String),
+  lastAttemptAt: Schema.NullOr(Schema.String),
+  lastError: Schema.NullOr(Schema.String)
+}).annotate({ identifier: "MalwareListStatus" })
+export type MalwareListStatus = typeof MalwareListStatus.Type
+
+export const MalwareOverview = Schema.Struct({
+  list: MalwareListStatus,
+  hits: Schema.Array(MalwareHit)
+}).annotate({ identifier: "MalwareOverview" })
+export type MalwareOverview = typeof MalwareOverview.Type
+
+export const ResolveMalwareHitPayload = Schema.Struct({
+  /** allowed: a false positive, the hash is never matched again. confirmed: it is malware. */
+  resolution: MalwareResolution,
+  note: ModerationText
+}).annotate({ identifier: "ResolveMalwareHitPayload" })
+export type ResolveMalwareHitPayload = typeof ResolveMalwareHitPayload.Type

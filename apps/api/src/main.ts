@@ -37,6 +37,7 @@ import { RateLimits } from "./services/RateLimits.js"
 import { Mailer } from "./services/Mailer.js"
 import { PasswordResets } from "./services/PasswordResets.js"
 import { ReportNotifierLive } from "./services/ReportNotifier.js"
+import { MalwareHashes, MalwareListLive } from "./services/MalwareHashes.js"
 import { DirectoryRepo } from "./services/DirectoryRepo.js"
 import { ProjectsRepo } from "./services/ProjectsRepo.js"
 import { ProjectModeration } from "./services/ProjectModeration.js"
@@ -53,6 +54,7 @@ const Authz = ProjectAuth.layer
 
 const StatsLive = ProjectChunkStats.layer
 const ActivityLive = Activity.layer
+const MalwareLive = MalwareHashes.layer
 const ChunksLiveLayer = ChunksRepo.layer.pipe(
   Layer.provide(StatsLive),
   Layer.provide(Authz),
@@ -90,7 +92,9 @@ const DataLive = Layer.mergeAll(
     Layer.provide(Authz),
     Layer.provide(ActivityLive)
   ),
+  MalwareLive,
   ImportsRepo.layer.pipe(
+    Layer.provide(MalwareLive),
     Layer.provide(BlobsLive),
     Layer.provide(StatsLive),
     Layer.provide(ActivityLive)
@@ -149,7 +153,8 @@ const WorkersLive = Layer.mergeAll(
   IntegrationWorkerLive,
   LeaseSweeperLive,
   MatchdScalerLive,
-  ReportNotifierLive.pipe(Layer.provide(Mailer.layer))
+  ReportNotifierLive.pipe(Layer.provide(Mailer.layer)),
+  MalwareListLive.pipe(Layer.provide(Mailer.layer))
 ).pipe(
   Layer.provide(DataLive),
   Layer.provide(SqlLive)

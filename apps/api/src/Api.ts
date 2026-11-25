@@ -116,11 +116,14 @@ import {
   AdminReport,
   AdminUser,
   CreateReportPayload,
+  MalwareHit,
+  MalwareOverview,
   ModerationAction,
   ModerationNote,
   ModerationRefused,
   ReportCreated,
   ReportRefused,
+  ResolveMalwareHitPayload,
   ResolveReportPayload,
   Strike
 } from "./domain/Moderation.js"
@@ -938,6 +941,20 @@ export const AdminGroup = HttpApiGroup.make("admin")
       params: { strikeId: Uuid },
       payload: ModerationNote,
       success: Strike,
+      error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("malwareOverview", "/admin/malware", {
+      success: MalwareOverview,
+      error: [Unauthorized, Forbidden]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("resolveMalwareHit", "/admin/malware/hits/:hitId/resolve", {
+      params: { hitId: Uuid },
+      payload: ResolveMalwareHitPayload,
+      success: MalwareHit,
       error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
     }).middleware(Authorization)
   )

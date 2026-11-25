@@ -597,6 +597,36 @@ export type ModerationActionKind =
   | "revoke_admin"
   | "add_strike"
   | "reverse_strike"
+  | "allow_malware_hash"
+  | "confirm_malware_hit"
+
+/** Content policy 4.3: a program whose SHA-256 is on the known-malware list. */
+export type MalwareHit = {
+  id: string
+  /** import: the import was refused. existing: a program already on the site is now listed. */
+  kind: "import" | "existing"
+  sha256: string
+  programName: string | null
+  user: PersonRef | null
+  project: { id: string; slug: string; name: string; archivedAt: string | null } | null
+  createdAt: string
+  resolvedAt: string | null
+  resolvedBy: PersonRef | null
+  resolution: "allowed" | "confirmed" | null
+  resolutionNote: string | null
+}
+
+export type MalwareOverview = {
+  list: {
+    configured: boolean
+    hashCount: number
+    allowedCount: number
+    refreshedAt: string | null
+    lastAttemptAt: string | null
+    lastError: string | null
+  }
+  hits: Array<MalwareHit>
+}
 
 export type ModerationAction = {
   id: string
@@ -1276,6 +1306,18 @@ export const api = {
     return request<Strike>(
       `/admin/strikes/${encodeURIComponent(strikeId)}/reverse`,
       { method: "POST", body: JSON.stringify({ note }) },
+      token
+    )
+  },
+
+  adminMalware(token: string) {
+    return request<MalwareOverview>("/admin/malware", {}, token)
+  },
+
+  adminResolveMalwareHit(hitId: string, resolution: "allowed" | "confirmed", note: string, token: string) {
+    return request<MalwareHit>(
+      `/admin/malware/hits/${encodeURIComponent(hitId)}/resolve`,
+      { method: "POST", body: JSON.stringify({ resolution, note }) },
       token
     )
   },

@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/http-api"
 import { Forbidden } from "effect/http-api/HttpApiError"
 import { Api } from "../Api.js"
+import { MalwareHashes } from "../services/MalwareHashes.js"
 import { Moderation } from "../services/Moderation.js"
 import { CurrentUser } from "./Authorization.js"
 
@@ -97,6 +98,18 @@ export const AdminLive = HttpApiBuilder.group(Api, "admin", (handlers) =>
       Effect.gen(function*() {
         const admin = yield* requireAdmin
         return yield* (yield* Moderation).reverseStrike(admin.id, request.params.strikeId, request.payload.note)
+      })
+    )
+    .handle("malwareOverview", () =>
+      Effect.gen(function*() {
+        yield* requireAdmin
+        return yield* (yield* MalwareHashes).overview
+      })
+    )
+    .handle("resolveMalwareHit", (request) =>
+      Effect.gen(function*() {
+        const admin = yield* requireAdmin
+        return yield* (yield* MalwareHashes).resolveHit(admin.id, request.params.hitId, request.payload)
       })
     )
     .handle("listActions", (request) =>

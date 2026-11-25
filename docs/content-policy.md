@@ -125,7 +125,8 @@ Use the Report button on the project, the function, or the post, and choose Malw
 
 - The compile server runs in a sandbox: no network, a read-only toolchain, a private temporary directory, a 30-second limit, a 1 GB data cap, and a list of allowed compiler flags. It compiles and links; it never runs the output.
 - Work bundles are downloads of bytes and text, not programs. Contributors should still open them only in their own analysis tools.
-- `[Not built yet: hash new imports against a known-malware list (for example via a malware hash service) and hold matches for review.]`
+- Each import's program hash (SHA-256) is checked against a public list of known malware ([MalwareBazaar](https://bazaar.abuse.ch/)), refreshed daily. A listed program cannot be imported, and the site admins are told. A program already on the site that turns up on a later list is flagged for the admins, who decide whether to archive its project. An admin can clear a false positive after a look.
+- The check sees only the hash the export reports, so it catches mistakes, not someone set on hiding what they upload. Reports (4.2) cover the rest.
 
 ## 5. Enforcement
 
@@ -153,6 +154,6 @@ The policy promises things the product does not do yet:
 | Admin tools: archive a project, remove material, suspend an account, keep a record of notices | Acting on a takedown within the stated time | Done: `/admin` (reports queue, archive and restore projects, remove posts, suspend and restore accounts, the record). Every action needs a note. Admins are granted with `npm run api:admin -- grant <email>`. Notices that arrive by email are logged by putting their details in the action's note. Admins are emailed about new reports within a minute |
 | A registered DMCA designated agent | Safe-harbour protection in the US needs a registered agent with the Copyright Office | Not done |
 | Contact addresses: copyright, security, appeals | Named in sections 3, 4, and 5 | Not set up |
-| Known-malware hash check on import | Section 4.3 | Not built |
+| Known-malware hash check on import | Section 4.3 | Done: MalwareBazaar SHA-256 list, refreshed daily. Listed imports are refused; programs already on the site are re-checked after each refresh; admins are emailed and review hits on `/admin`. Needs a free abuse.ch Auth-Key in production |
 | Limit who reads byte comparisons in diagnostics | A missed attempt's diagnostics print the original bytes (masked) next to the candidate's, and the attempts list needs no sign-in | Done: the byte lines are removed except for the submitter, the chunk's holder, and maintainers (integrations: maintainers only) |
 | A public page for this policy, linked from the footer, sign-up, and import | Users must be able to find it | Done: `/policy` shows sections 1–5 of this file |

@@ -10,6 +10,7 @@ import { ImportRejected, type GhidraExportPayload, type ImportResult } from "../
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { Blobs } from "./Blobs.js"
+import { MalwareHashes } from "./MalwareHashes.js"
 import { ProjectChunkStats } from "./ProjectChunkStats.js"
 
 const reject = (detail: string) => new ImportRejected({ detail })
@@ -111,6 +112,7 @@ export class ImportsRepo extends Context.Service<
       const stats = yield* ProjectChunkStats
       const blobs = yield* Blobs
       const activity = yield* Activity
+      const malware = yield* MalwareHashes
 
       const importExport = Effect.fn("ImportsRepo.importExport")(
         function*(
@@ -164,6 +166,17 @@ export class ImportsRepo extends Context.Service<
           }
 
           const binarySha = yield* parseHexSha256(payload.binarySha256)
+
+          // Content policy 4.3: a program on the known-malware list is refused
+          // before anything is stored. The attempt is recorded for the admins.
+          const programName = payload.name?.trim() || null
+          if (yield* malware.checkImport(binarySha, { userId, projectId: project.id, programName })) {
+            return yield* reject(
+              "This program's SHA-256 is on a public list of known malware (MalwareBazaar), and the content policy " +
+                "(4.3) does not allow malware on re-hydra. The site admins have been told. If you think this is a " +
+                "mistake, they can clear it after a look; nothing from this export was stored."
+            )
+          }
           const exportJson = Buffer.from(JSON.stringify(payload), "utf8")
           const exportSha = yield* blobs.put(exportJson, "application/json")
 

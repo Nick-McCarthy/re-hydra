@@ -1100,6 +1100,65 @@ CREATE INDEX strikes_by_user ON strikes (user_id, created_at DESC);
 -- moderation_actions.kind also allows 'add_strike' and 'reverse_strike'.
 ```
 
+## Known-malware hashes — migration 025
+
+```sql
+-- Content policy 4.3. The downloaded list (MalwareBazaar SHA-256 by default).
+-- A refresh upserts every hash it sees; a refresh never deletes.
+CREATE TABLE malware_hashes (
+  sha256         bytea PRIMARY KEY CHECK (length(sha256) = 32),
+  first_seen_at  timestamptz NOT NULL DEFAULT now(),
+  last_seen_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- One row per list URL (without the Auth-Key). The refresher claims a refresh
+-- by moving last_attempt_at, so one API process downloads at a time.
+CREATE TABLE malware_list_state (
+  source           text PRIMARY KEY,
+  last_attempt_at  timestamptz,
+  refreshed_at     timestamptz,
+  hash_count       integer,
+  last_error       text
+);
+
+-- Hashes an admin judged a false positive; never matched again.
+CREATE TABLE malware_allowed (
+  sha256      bytea PRIMARY KEY CHECK (length(sha256) = 32),
+  admin_id    uuid REFERENCES users (id) ON DELETE SET NULL,
+  note        text NOT NULL CHECK (length(note) BETWEEN 1 AND 2000),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- A match. 'import': an import was refused (nothing from it is stored).
+-- 'existing': a program already on the site turned up on a later list, at most
+-- one per binary. Admins are emailed (notified_at) and resolve each as
+-- 'allowed' or 'confirmed'.
+CREATE TABLE malware_hits (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind             text NOT NULL CHECK (kind IN ('import', 'existing')),
+  sha256           bytea NOT NULL CHECK (length(sha256) = 32),
+  program_name     text,
+  user_id          uuid REFERENCES users (id) ON DELETE SET NULL,
+  project_id       uuid REFERENCES projects (id) ON DELETE CASCADE,
+  binary_id        uuid REFERENCES binaries (id) ON DELETE CASCADE,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  notified_at      timestamptz,
+  resolved_at      timestamptz,
+  resolved_by      uuid REFERENCES users (id) ON DELETE SET NULL,
+  resolution       text CHECK (resolution IS NULL OR resolution IN ('allowed', 'confirmed')),
+  resolution_note  text CHECK (resolution_note IS NULL OR length(resolution_note) BETWEEN 1 AND 2000),
+  CHECK ((resolved_at IS NULL) = (resolution IS NULL)),
+  CHECK ((resolved_at IS NULL) = (resolution_note IS NULL))
+);
+CREATE UNIQUE INDEX malware_hits_one_per_binary ON malware_hits (binary_id) WHERE kind = 'existing';
+CREATE INDEX malware_hits_open ON malware_hits (created_at DESC) WHERE resolved_at IS NULL;
+CREATE INDEX malware_hits_unnotified ON malware_hits (created_at) WHERE notified_at IS NULL;
+
+-- moderation_actions gains malware_hit_id, and kind also allows
+-- 'allow_malware_hash' and 'confirm_malware_hit'.
+ALTER TABLE moderation_actions ADD COLUMN malware_hit_id uuid REFERENCES malware_hits (id) ON DELETE SET NULL;
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

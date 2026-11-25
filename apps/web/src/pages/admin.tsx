@@ -13,13 +13,14 @@ import {
   type AdminProject,
   type AdminReport,
   type AdminUser,
+  type MalwareOverview,
   type ModerationAction,
   type ModerationActionKind,
   type Strike
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 
-type Tab = "reports" | "projects" | "users" | "log"
+type Tab = "reports" | "malware" | "projects" | "users" | "log"
 
 const when = (iso: string) => new Date(iso).toLocaleString()
 const errorText = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback)
@@ -34,7 +35,9 @@ const actionLabels: Record<ModerationActionKind, string> = {
   grant_admin: "Granted admin",
   revoke_admin: "Revoked admin",
   add_strike: "Gave a strike",
-  reverse_strike: "Reversed a strike"
+  reverse_strike: "Reversed a strike",
+  allow_malware_hash: "Allowed a program hash",
+  confirm_malware_hit: "Confirmed known malware"
 }
 
 /**
@@ -208,6 +211,135 @@ function ReportsTab({ token }: { token: string }) {
                     title="Resolve this report"
                     noteLabel="What was done (kept in the record)"
                     run={(note) => api.adminResolveReport(report.id, note, token).then(load)}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ))
+      )}
+    </div>
+  )
+}
+
+function MalwareTab({ token }: { token: string }) {
+  const [data, setData] = React.useState<MalwareOverview | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+  const load = React.useCallback(() => {
+    api.adminMalware(token).then(
+      (overview) => {
+        setData(overview)
+        setError(null)
+      },
+      (err: unknown) => setError(errorText(err, "Could not load the known-malware list"))
+    )
+  }, [token])
+  React.useEffect(load, [load])
+  if (error) return <p className="text-sm text-destructive">{error}</p>
+  if (data === null) return <p className="text-sm text-muted-foreground">Loading…</p>
+  const { list, hits } = data
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="space-y-1 pt-4 text-sm">
+          <p>
+            {list.hashCount.toLocaleString()} known-malware hashes
+            {list.allowedCount > 0 ? (
+              <>, {list.allowedCount} allowed as {list.allowedCount === 1 ? "a false positive" : "false positives"}</>
+            ) : null}.{" "}
+            {list.configured ? (
+              list.refreshedAt ? (
+                <>List last refreshed {when(list.refreshedAt)}.</>
+              ) : list.hashCount === 0 ? (
+                <>The list has not been downloaded yet.</>
+              ) : null
+            ) : (
+              <>No list is configured (MALWARE_HASHLIST_URL), so it is not refreshed.</>
+            )}
+          </p>
+          {list.lastError ? (
+            <p className="text-destructive">
+              Last refresh failed{list.lastAttemptAt ? <> ({when(list.lastAttemptAt)})</> : null}: {list.lastError}
+            </p>
+          ) : null}
+          <p className="text-muted-foreground">
+            An import of a listed program is refused. A program already on the site that turns up on a later list
+            stays up until you decide. Allowing a hash clears every hit on it and stops it matching again.
+          </p>
+        </CardContent>
+      </Card>
+      {hits.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No program has matched the list.</p>
+      ) : (
+        hits.map((hit) => (
+          <Card key={hit.id}>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                <Badge variant={hit.resolution === "allowed" ? "secondary" : "warning"}>
+                  {hit.kind === "import" ? "import refused" : "on the site"}
+                </Badge>
+                <span>{hit.programName ?? "unnamed program"}</span>
+                {hit.project ? (
+                  hit.project.archivedAt ? (
+                    <span className="text-muted-foreground">
+                      · {hit.project.name} <Badge variant="outline">archived</Badge>
+                    </span>
+                  ) : (
+                    <Link to={`/projects/${hit.project.slug}`} className="underline underline-offset-2">
+                      · {hit.project.name}
+                    </Link>
+                  )
+                ) : null}
+              </CardTitle>
+              <CardDescription>
+                {hit.user ? (
+                  <Link to={`/users/${hit.user.id}`} className="underline underline-offset-2">
+                    {hit.user.displayName}
+                  </Link>
+                ) : (
+                  "unknown user"
+                )}{" "}
+                · {when(hit.createdAt)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="break-all font-mono text-xs">
+                SHA-256{" "}
+                <a
+                  href={`https://bazaar.abuse.ch/sample/${hit.sha256}/`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  {hit.sha256}
+                </a>
+              </p>
+              {hit.resolvedAt ? (
+                <p className="text-muted-foreground">
+                  {hit.resolution === "allowed" ? "Allowed" : "Confirmed"} by{" "}
+                  {hit.resolvedBy?.displayName ?? "a removed user"} · {when(hit.resolvedAt)}: {hit.resolutionNote}
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {hit.kind === "existing" && hit.project && !hit.project.archivedAt ? (
+                    <NoteAction
+                      label="Archive project"
+                      title={`Archive ${hit.project.name}`}
+                      destructive
+                      run={(note) => api.adminSetProjectArchived(hit.project!.slug, true, note, token).then(load)}
+                    />
+                  ) : null}
+                  <NoteAction
+                    label="Confirm malware"
+                    title="Confirm this is malware"
+                    noteLabel="What you found (kept in the record)"
+                    run={(note) => api.adminResolveMalwareHit(hit.id, "confirmed", note, token).then(load)}
+                  />
+                  <NoteAction
+                    label="Allow (false positive)"
+                    title="Allow this program"
+                    noteLabel="Why this is not malware (kept in the record)"
+                    run={(note) => api.adminResolveMalwareHit(hit.id, "allowed", note, token).then(load)}
                   />
                 </div>
               )}
@@ -534,6 +666,7 @@ export function AdminPage() {
   }
   const tabs: ReadonlyArray<{ id: Tab; label: string }> = [
     { id: "reports", label: "Reports" },
+    { id: "malware", label: "Known malware" },
     { id: "projects", label: "Projects" },
     { id: "users", label: "Users" },
     { id: "log", label: "Record" }
@@ -558,6 +691,7 @@ export function AdminPage() {
         ))}
       </div>
       {tab === "reports" ? <ReportsTab token={session.token} /> : null}
+      {tab === "malware" ? <MalwareTab token={session.token} /> : null}
       {tab === "projects" ? <ProjectsTab token={session.token} /> : null}
       {tab === "users" ? <UsersTab token={session.token} selfId={user.id} /> : null}
       {tab === "log" ? <LogTab token={session.token} /> : null}
