@@ -89,9 +89,39 @@ export const requireToken: Effect.Effect<CliConfig, Error> = Effect.gen(function
   return config
 })
 
-export const writeLease = (lease: LeaseState): Effect.Effect<void> =>
+const leaseIndexPath = (): string => path.join(configDir(), "leases.json")
+
+/**
+ * Every lease this machine checked out, so `hydra status` can say which
+ * folder holds each one. The server is the record of which leases are live;
+ * status prunes entries it no longer lists.
+ */
+export const readLeaseIndex: Effect.Effect<ReadonlyArray<LeaseState>> = Effect.sync(() => {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(leaseIndexPath(), "utf8"))
+    const decoded = Schema.decodeUnknownOption(Schema.Array(LeaseState))(parsed)
+    return Option.isSome(decoded) ? decoded.value : []
+  } catch {
+    return []
+  }
+})
+
+export const saveLeaseIndex = (leases: ReadonlyArray<LeaseState>): Effect.Effect<void> =>
   Effect.sync(() => {
-    writePrivate(path.join(lease.workDir, ".lease.json"), `${JSON.stringify(lease, null, 2)}\n`)
+    mkdirSync(configDir(), { recursive: true, mode: 0o700 })
+    writePrivate(leaseIndexPath(), `${JSON.stringify(leases, null, 2)}\n`)
+  })
+
+export const writeLease = (lease: LeaseState): Effect.Effect<void> =>
+  Effect.gen(function*() {
+    yield* Effect.sync(() => {
+      writePrivate(path.join(lease.workDir, ".lease.json"), `${JSON.stringify(lease, null, 2)}\n`)
+    })
+    const index = yield* readLeaseIndex
+    yield* saveLeaseIndex([
+      ...index.filter((entry) => !(entry.projectSlug === lease.projectSlug && entry.chunkId === lease.chunkId)),
+      lease
+    ])
   })
 
 export const readLeaseNear = (

@@ -1,11 +1,12 @@
-import { mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import * as path from "node:path"
 import type { WorkBundle } from "@re-hydra/api/domain/Bundle"
 import { Effect } from "effect"
 
 export const writeWorkBundle = (
   workDir: string,
-  bundle: WorkBundle
+  bundle: WorkBundle,
+  options: { readonly keepCandidate?: boolean } = {}
 ): Effect.Effect<void> =>
   Effect.sync(() => {
     mkdirSync(workDir, { recursive: true })
@@ -25,6 +26,8 @@ export const writeWorkBundle = (
     if (bundle.bestAttemptSource !== undefined) {
       write("attempt.c", bundle.bestAttemptSource)
     }
+    // A refresh keeps the work in progress.
+    if (options.keepCandidate === true && existsSync(path.join(workDir, "candidate.c"))) return
     write(
       "candidate.c",
       bundle.bestAttemptSource ??

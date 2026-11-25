@@ -3,22 +3,41 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { readFileSync } from "node:fs"
 import * as path from "node:path"
 import { Console, Effect, Layer, Option, Redacted } from "effect"
-import { Argument, Command, Flag, Prompt } from "effect/cli"
-import { writeWorkBundle, workDirFor } from "./bundle.js"
+import { Argument, CliError, Command, Flag, Prompt } from "effect/cli"
+import { writeWorkBundle } from "./bundle.js"
+import { describeByteDiff, parseByteDiff } from "./byteDiff.js"
 import { ApiClient, ApiClientLive } from "./client.js"
 import {
   defaultBaseUrl,
   loadConfig,
+  readLeaseIndex,
   readLeaseNear,
   saveConfig,
+  saveLeaseIndex,
   writeLease
 } from "./config.js"
+import {
+  checkoutChunk,
+  checkoutLines,
+  ExitCode,
+  explainFailure,
+  hexAddress,
+  HydraExit,
+  leaseGone,
+  resolveChunkId,
+  untilText
+} from "./work.js"
+
+/** The lease in this directory or a parent; exit code 5 when there is none. */
+const currentLease = readLeaseNear(process.cwd()).pipe(
+  Effect.mapError((error) => new HydraExit({ code: ExitCode.noLease, message: error.message }))
+)
 
 const hydra = Command.make("hydra").pipe(
   Command.withSharedFlags({
     url: Flag.String("url").pipe(
-      Flag.withDescription("API base URL"),
-      Flag.withDefault(defaultBaseUrl)
+      Flag.withDescription(`API base URL. Saved for later commands. Default ${defaultBaseUrl}`),
+      Flag.optional
     ),
     json: Flag.Boolean("json").pipe(
       Flag.withDescription("Print API JSON"),
@@ -40,16 +59,20 @@ const say = (value: unknown, lines: ReadonlyArray<string>) =>
     }
   })
 
+/**
+ * Save --url when it is given. Without it, commands use the saved URL; a
+ * default here used to overwrite the URL a login had saved.
+ */
 const ensureUrl = Effect.gen(function*() {
   const root = yield* hydra
+  if (Option.isNone(root.url)) return
   const config = yield* loadConfig
-  if (config.baseUrl !== root.url) {
-    yield* saveConfig({
-      ...config,
-      baseUrl: root.url
-    })
+  if (config.baseUrl !== root.url.value) {
+    yield* saveConfig({ ...config, baseUrl: root.url.value })
   }
 })
+
+const currentUrl = Effect.map(loadConfig, (config) => config.baseUrl)
 
 const login = Command.make(
   "login",
@@ -73,7 +96,7 @@ const login = Command.make(
     const root = yield* hydra
 
     if (Option.isSome(token)) {
-      yield* saveConfig({ baseUrl: root.url, token: token.value, kind: "token" })
+      yield* saveConfig({ baseUrl: yield* currentUrl, token: token.value, kind: "token" })
       yield* say({ ok: true }, ["Token saved."])
       return
     }
@@ -88,7 +111,7 @@ const login = Command.make(
     const session = yield* client.auth.signIn({
       payload: { email: accountEmail.trim(), password: accountPassword }
     })
-    yield* saveConfig({ baseUrl: root.url, token: session.token, kind: "session" })
+    yield* saveConfig({ baseUrl: yield* currentUrl, token: session.token, kind: "session" })
     yield* say(session, [`Logged in as ${session.user.email}`])
   })
 ).pipe(Command.withDescription("Sign in with email and password"))
@@ -191,7 +214,7 @@ const list = Command.make(
     }
     for (const chunk of chunks) {
       yield* Console.log(
-        `${chunk.id}  ${chunk.state.padEnd(10)}  ${chunk.address}  ${chunk.name}`
+        `${chunk.id}  ${chunk.state.padEnd(10)}  ${hexAddress(chunk.address).padEnd(10)}  ${chunk.name}`
       )
     }
     const more = chunks.length === limit ? ` More: --page ${page + 1}` : ""
@@ -206,7 +229,7 @@ const checkout = Command.make(
       Argument.withDescription("Project slug")
     ),
     chunk: Argument.String("chunk").pipe(
-      Argument.withDescription("Chunk UUID")
+      Argument.withDescription("Chunk id, exact name, or address (0x401000)")
     ),
     out: Flag.String("out").pipe(
       Flag.withDescription("Work directory (default: ./chunks/<project>/<name>)"),
@@ -215,39 +238,60 @@ const checkout = Command.make(
   },
   Effect.fn(function*({ project, chunk, out }) {
     yield* ensureUrl
-    const client = yield* ApiClient
-    const lease = yield* client.chunks.checkout({
-      params: { projectSlug: project, chunkId: chunk }
-    })
-
-    const dir = Option.isSome(out)
-      ? path.resolve(out.value)
-      : workDirFor(project, lease.chunk.name)
-
-    yield* writeWorkBundle(dir, lease.bundle)
-    yield* writeLease({
-      projectSlug: project,
-      chunkId: lease.chunk.id,
-      chunkName: lease.chunk.name,
-      leaseToken: lease.leaseToken,
-      leaseExpiresAt: lease.leaseExpiresAt,
-      workDir: dir
-    })
-
-    yield* say(lease, [
-      `Checked out ${lease.chunk.name}`,
-      `  workdir:  ${dir}`,
-      `  lease:    ${lease.leaseToken}`,
-      `  expires:  ${lease.leaseExpiresAt}`,
-      `  agent:    ${path.join(dir, "instructions.agent")}`,
-      ...(lease.bundle.integrationNote !== undefined
-        ? [`  link:     ${path.join(dir, "integration.txt")}`]
-        : []),
-      `  edit:     ${path.join(dir, "candidate.c")}`,
-      "  submit:   hydra submit"
-    ])
+    const chunkId = yield* resolveChunkId(project, chunk)
+    const { lease, dir } = yield* checkoutChunk(project, chunkId, out)
+    yield* say({ ...lease, workDir: dir }, checkoutLines(lease, dir))
   })
 ).pipe(Command.withDescription("Claim a chunk and write a work bundle"))
+
+const next = Command.make(
+  "next",
+  {
+    project: Argument.String("project").pipe(
+      Argument.withDescription("Project slug")
+    ),
+    query: Flag.String("query").pipe(
+      Flag.optional,
+      Flag.withDescription("Only chunks whose name or address matches")
+    ),
+    smallest: Flag.Boolean("smallest").pipe(
+      Flag.withDescription("Take the smallest open chunk (of the first 500) instead of the first"),
+      Flag.withDefault(false)
+    ),
+    out: Flag.String("out").pipe(
+      Flag.withDescription("Work directory (default: ./chunks/<project>/<name>)"),
+      Flag.optional
+    )
+  },
+  Effect.fn(function*({ project, query, smallest, out }) {
+    yield* ensureUrl
+    const client = yield* ApiClient
+    const q = Option.isSome(query) ? query.value.trim() : ""
+    const open = yield* client.chunks.list({
+      params: { projectSlug: project },
+      query: { state: "open", limit: smallest ? 500 : 20, ...(q.length > 0 ? { q } : {}) }
+    })
+    const order = smallest ? [...open].sort((a, b) => a.size - b.size) : open
+    // Someone else may take a chunk between the list and the checkout; try a few.
+    for (const candidate of order.slice(0, 5)) {
+      const taken = yield* checkoutChunk(project, candidate.id, out).pipe(
+        Effect.map(Option.some),
+        Effect.catchTag("Conflict", () => Effect.succeedNone)
+      )
+      if (Option.isSome(taken)) {
+        const { lease, dir } = taken.value
+        yield* say({ ...lease, workDir: dir }, checkoutLines(lease, dir))
+        return
+      }
+    }
+    return yield* new HydraExit({
+      code: ExitCode.nothingOpen,
+      message: order.length === 0
+        ? `No open chunks in ${project}${q.length > 0 ? ` matching "${q}"` : ""}.`
+        : `The open chunks tried in ${project} were taken first. Run hydra next again.`
+    })
+  })
+).pipe(Command.withDescription("Check out the next open chunk"))
 
 const submit = Command.make(
   "submit",
@@ -257,11 +301,18 @@ const submit = Command.make(
         "Source file (default: candidate.c near .lease.json)"
       ),
       Argument.optional
+    ),
+    wait: Flag.Int("wait").pipe(
+      Flag.withDescription("Seconds to wait for the result. Default 60; 0 returns at once."),
+      Flag.withDefault(60)
     )
   },
-  Effect.fn(function*({ source }) {
+  Effect.fn(function*({ source, wait }) {
+    if (wait < 0) {
+      return yield* Effect.fail(new Error("--wait cannot be negative."))
+    }
     yield* ensureUrl
-    const lease = yield* readLeaseNear(process.cwd())
+    const lease = yield* currentLease
     const sourcePath = Option.isSome(source)
       ? path.resolve(source.value)
       : path.join(lease.workDir, "candidate.c")
@@ -277,7 +328,7 @@ const submit = Command.make(
       yield* Console.log("Submitted source is released under CC0 1.0 (content policy 2.4).")
     }
     const client = yield* ApiClient
-    const result = yield* client.chunks.submit({
+    const result = yield* leaseGone(client.chunks.submit({
       params: {
         projectSlug: lease.projectSlug,
         chunkId: lease.chunkId
@@ -286,14 +337,14 @@ const submit = Command.make(
         leaseToken: lease.leaseToken,
         source: text
       }
-    })
+    }))
 
     let current = result
-    if (current.state !== "finished") {
+    if (current.state !== "finished" && wait > 0) {
       if (!root.json) {
         yield* Console.log("Matching…")
       }
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < wait; i++) {
         yield* Effect.sleep("1 second")
         const attempts = yield* client.chunks.listAttempts({
           params: {
@@ -323,29 +374,43 @@ const submit = Command.make(
     ]
     if (current.score !== null) lines.push(`  score:    ${current.score}`)
     if (current.matched !== null) lines.push(`  matched:  ${current.matched}`)
-    if (current.diagnostics !== null && current.diagnostics.length > 0) {
+    const diff = current.matched === false ? parseByteDiff(current.diagnostics) : undefined
+    if (diff !== undefined) {
+      // The summary first; the full dump stays in hydra attempts and --json.
+      lines.push(...describeByteDiff(diff))
+      // The bytes can agree and the attempt still miss: a call to the wrong function.
+      const reason = current.diagnostics?.split("\n").find((line) => line.startsWith("not a match:"))
+      if (reason !== undefined) lines.push(`  ${reason}`)
+    } else if (current.diagnostics !== null && current.diagnostics.length > 0) {
       lines.push("--- diagnostics ---", current.diagnostics)
-    } else if (current.state !== "finished") {
-      lines.push("Match is still running. Check the chunk page for the result.")
     }
-    yield* say(current, lines)
+    if (current.state !== "finished") {
+      lines.push("Still checking. See the result with: hydra attempts")
+    }
+    yield* say(diff === undefined ? current : { ...current, byteDiff: diff }, lines)
+    if (current.state !== "finished") {
+      return yield* new HydraExit({ code: ExitCode.stillChecking, message: "" })
+    }
+    if (current.matched !== true) {
+      return yield* new HydraExit({ code: ExitCode.notMatched, message: "" })
+    }
   })
-).pipe(Command.withDescription("Submit source for the current lease"))
+).pipe(Command.withDescription("Submit source for the current lease and wait for the result"))
 
 const release = Command.make(
   "release",
   {},
   Effect.fn(function*() {
     yield* ensureUrl
-    const lease = yield* readLeaseNear(process.cwd())
+    const lease = yield* currentLease
     const client = yield* ApiClient
-    const chunk = yield* client.chunks.release({
+    const chunk = yield* leaseGone(client.chunks.release({
       params: {
         projectSlug: lease.projectSlug,
         chunkId: lease.chunkId
       },
       payload: { leaseToken: lease.leaseToken }
-    })
+    }))
     yield* say(chunk, [`Released ${chunk.name} (${chunk.state})`])
   })
 ).pipe(Command.withDescription("Release the current lease"))
@@ -355,15 +420,15 @@ const heartbeat = Command.make(
   {},
   Effect.fn(function*() {
     yield* ensureUrl
-    const lease = yield* readLeaseNear(process.cwd())
+    const lease = yield* currentLease
     const client = yield* ApiClient
-    const next = yield* client.chunks.heartbeat({
+    const next = yield* leaseGone(client.chunks.heartbeat({
       params: {
         projectSlug: lease.projectSlug,
         chunkId: lease.chunkId
       },
       payload: { leaseToken: lease.leaseToken }
-    })
+    }))
     yield* writeLease({
       ...lease,
       leaseExpiresAt: next.leaseExpiresAt
@@ -381,15 +446,15 @@ const attempts = Command.make(
     ),
     chunk: Argument.String("chunk").pipe(
       Argument.optional,
-      Argument.withDescription("Chunk id. Omitted inside a checkout.")
+      Argument.withDescription("Chunk id, name, or address. Omitted inside a checkout.")
     )
   },
   Effect.fn(function*({ project, chunk }) {
     yield* ensureUrl
     const located = Option.isSome(project) && Option.isSome(chunk)
-      ? { projectSlug: project.value, chunkId: chunk.value }
+      ? { projectSlug: project.value, chunkId: yield* resolveChunkId(project.value, chunk.value) }
       : Option.isNone(project) && Option.isNone(chunk)
-        ? yield* readLeaseNear(process.cwd())
+        ? yield* currentLease
         : yield* Effect.fail(
             new Error("Pass both the project slug and the chunk id, or run this inside a checkout.")
           )
@@ -437,15 +502,15 @@ const watch = Command.make(
     }
     yield* ensureUrl
     const beat = Effect.gen(function*() {
-      const lease = yield* readLeaseNear(process.cwd())
+      const lease = yield* currentLease
       const client = yield* ApiClient
-      const next = yield* client.chunks.heartbeat({
+      const next = yield* leaseGone(client.chunks.heartbeat({
         params: {
           projectSlug: lease.projectSlug,
           chunkId: lease.chunkId
         },
         payload: { leaseToken: lease.leaseToken }
-      })
+      }))
       yield* writeLease({
         ...lease,
         leaseExpiresAt: next.leaseExpiresAt
@@ -480,6 +545,115 @@ const members = Command.make(
   })
 ).pipe(Command.withDescription("List a project's members and their roles"))
 
+const status = Command.make(
+  "status",
+  {},
+  Effect.fn(function*() {
+    yield* ensureUrl
+    const client = yield* ApiClient
+    const work = yield* client.users.myWork({})
+    const index = yield* readLeaseIndex
+    // Keep only the folders of leases the server still lists.
+    const live = new Set(work.leases.map((lease) => lease.leaseToken))
+    const kept = index.filter((entry) => live.has(entry.leaseToken))
+    if (kept.length !== index.length) yield* saveLeaseIndex(kept)
+    const dirOf = (token: string) => kept.find((entry) => entry.leaseToken === token)?.workDir ?? null
+
+    const leases = work.leases.map((lease) => ({ ...lease, workDir: dirOf(lease.leaseToken) }))
+    const lines: Array<string> = []
+    if (leases.length === 0) {
+      lines.push("No chunks checked out. Take one with: hydra next <project>")
+    } else {
+      lines.push(`Checked out (${leases.length}):`)
+      for (const lease of leases) {
+        const competing = lease.kind === "competing" ? "  (competing)" : ""
+        lines.push(
+          `  ${lease.projectSlug}  ${hexAddress(lease.address)}  ${lease.chunkName}  expires ${untilText(lease.leaseExpiresAt)}${competing}`,
+          `    ${lease.workDir ?? "folder unknown: checked out on another machine or before this version"}`
+        )
+      }
+    }
+    if (work.checking.length > 0) {
+      lines.push(`Being checked (${work.checking.length}):`)
+      for (const attempt of work.checking) lines.push(`  ${attempt.projectSlug}  ${attempt.chunkName}`)
+    }
+    const recent = work.recent.slice(0, 5)
+    if (recent.length > 0) {
+      lines.push("Recent attempts:")
+      for (const attempt of recent) {
+        const score = attempt.score === null ? "" : `  ${attempt.score}`
+        lines.push(`  ${attempt.result.padEnd(13)}  ${attempt.projectSlug}  ${attempt.chunkName}${score}`)
+      }
+    }
+    yield* say({ ...work, leases }, lines)
+  })
+).pipe(Command.withDescription("Your checked-out chunks, with folders and expiry, and recent attempts"))
+
+const show = Command.make(
+  "show",
+  {
+    project: Argument.String("project").pipe(
+      Argument.optional,
+      Argument.withDescription("Project slug. Omitted inside a checkout.")
+    ),
+    chunk: Argument.String("chunk").pipe(
+      Argument.optional,
+      Argument.withDescription("Chunk id, name, or address. Omitted inside a checkout.")
+    )
+  },
+  Effect.fn(function*({ project, chunk }) {
+    yield* ensureUrl
+    const located = Option.isSome(project) && Option.isSome(chunk)
+      ? { projectSlug: project.value, chunkId: yield* resolveChunkId(project.value, chunk.value) }
+      : Option.isNone(project) && Option.isNone(chunk)
+        ? yield* currentLease
+        : yield* Effect.fail(
+            new Error("Pass both the project slug and the chunk, or run this inside a checkout.")
+          )
+    const client = yield* ApiClient
+    const params = { projectSlug: located.projectSlug, chunkId: located.chunkId }
+    const summary = yield* client.chunks.get({ params })
+    const attemptRows = yield* client.chunks.listAttempts({ params })
+    const best = attemptRows.find((row) => row.best)
+    const matched = attemptRows.filter((row) => row.matched === true).length
+
+    const lines = [
+      `${summary.name}  ${hexAddress(summary.address)}  ${summary.size} bytes`,
+      `  state:     ${summary.state}`
+    ]
+    if (summary.leaseExpiresAt !== undefined) {
+      lines.push(`  lease:     held, expires ${untilText(summary.leaseExpiresAt)}`)
+    }
+    if (summary.languageOverride !== undefined) lines.push(`  language:  ${summary.languageOverride}`)
+    if (summary.allowInlineAsm) lines.push("  inline asm allowed")
+    lines.push(`  attempts:  ${attemptRows.length}${matched > 0 ? ` (${matched} matched)` : ""}`)
+    if (best !== undefined) {
+      const result = best.matched === true ? "matched" : best.score === null ? "pending" : `score ${best.score}`
+      lines.push(`  best:      ${result} by ${best.displayName}`)
+    }
+    lines.push(`  id:        ${summary.id}`)
+    yield* say({ ...summary, attempts: attemptRows.length, matchedAttempts: matched, best: best ?? null }, lines)
+  })
+).pipe(Command.withDescription("Show one chunk's state, holder, and best attempt"))
+
+const refresh = Command.make(
+  "refresh",
+  {},
+  Effect.fn(function*() {
+    yield* ensureUrl
+    const lease = yield* currentLease
+    const client = yield* ApiClient
+    const bundle = yield* leaseGone(client.chunks.bundle({
+      params: { projectSlug: lease.projectSlug, chunkId: lease.chunkId }
+    }))
+    yield* writeWorkBundle(lease.workDir, bundle, { keepCandidate: true })
+    yield* say(bundle.meta, [
+      `Refreshed the work bundle for ${lease.chunkName} in ${lease.workDir}`,
+      "  candidate.c was kept. types.h, neighbors.json, and attempt.c are current."
+    ])
+  })
+).pipe(Command.withDescription("Download the work bundle again (new types, neighbors, best attempt); keeps candidate.c"))
+
 const MainLive = Layer.mergeAll(ApiClientLive, NodeServices.layer)
 
 hydra.pipe(
@@ -494,9 +668,28 @@ hydra.pipe(
     heartbeat,
     attempts,
     members,
-    watch
+    watch,
+    next,
+    status,
+    show,
+    refresh
   ]),
   Command.run({ version: "0.0.0" }),
+  // One plain line on stderr and a meaningful exit code, instead of a stack.
+  // Usage errors stay with the CLI library, which prints help.
+  // The code is set on process.exitCode rather than failing: runMain calls
+  // process.exit for a failure, which on Windows can abort Node while piped
+  // output (hydra --json submit | jq) is still being written.
+  Effect.catch((error): Effect.Effect<void, CliError.CliError> =>
+    CliError.isCliError(error)
+      ? Effect.fail(error)
+      : Effect.gen(function*() {
+        const config = yield* loadConfig
+        const explained = explainFailure(error, config.baseUrl)
+        if (explained.message.length > 0) yield* Console.error(explained.message)
+        process.exitCode = explained.code
+      })
+  ),
   Effect.provide(MainLive),
   NodeRuntime.runMain
 )

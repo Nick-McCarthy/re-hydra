@@ -512,12 +512,22 @@ export function FaqPage() {
             <Code>--state</Code> and <Code>--query</Code>.
           </li>
           <li>
-            <Code>hydra checkout</Code> writes the same files as the zip, plus{" "}
-            <Code>.lease.json</Code>, which holds the lease.
+            <Code>hydra next</Code> checks out the next open function, and{" "}
+            <Code>hydra checkout</Code> takes one by name, address, or id. Both write the
+            same files as the zip, plus <Code>.lease.json</Code>, which holds the lease.
+          </li>
+          <li>
+            <Code>hydra status</Code> lists what you hold, the folder each is in, and when
+            each lease runs out. <Code>hydra show</Code> prints one function&apos;s state and
+            best attempt.
           </li>
           <li>
             <Code>hydra submit</Code> sends <Code>candidate.c</Code> and waits for the
-            result.
+            result. On a miss it shows the first byte that differs and the bytes around it.
+          </li>
+          <li>
+            <Code>hydra refresh</Code> downloads the bundle again when types or neighbors
+            changed, and keeps your <Code>candidate.c</Code>.
           </li>
           <li>
             <Code>hydra watch</Code> renews the lease right away and then every five
