@@ -29,11 +29,6 @@ export function AppShell() {
             <Link to="/faq" className="text-muted-foreground hover:text-foreground">
               FAQ
             </Link>
-            {user?.isAdmin ? (
-              <Link to="/admin" className="text-muted-foreground hover:text-foreground">
-                Admin
-              </Link>
-            ) : null}
             <button
               type="button"
               role="switch"
@@ -81,6 +76,19 @@ export function AppShell() {
           <Link to="/faq" className="hover:text-foreground">
             FAQ
           </Link>
+          <a
+            href="https://github.com/Nick-McCarthy/re-hydra"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-foreground"
+          >
+            GitHub
+          </a>
+          {user?.isAdmin ? (
+            <Link to="/admin" className="hover:text-foreground">
+              Admin
+            </Link>
+          ) : null}
         </div>
       </footer>
     </div>
