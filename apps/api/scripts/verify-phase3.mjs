@@ -58,7 +58,7 @@ const until = async (what, fn, ms = 60_000) => {
 const signUp = async (label) => {
   const email = `audit-${label}-${randomBytes(4).toString("hex")}@example.test`
   const res = await call("POST", "/auth/sign-up", undefined, {
-    email, displayName: `Audit ${label}`, password: randomBytes(18).toString("base64url")
+    email, displayName: `Audit ${label}`, password: randomBytes(18).toString("base64url"), acceptPolicy: true
   })
   if (!ok(res.status)) throw new Error(`sign-up failed: ${res.status} ${JSON.stringify(res.body)}`)
   return res.body.token

@@ -63,7 +63,7 @@ const tokenOf = (mail) => /#token=([A-Za-z0-9_-]+)/.exec(mail?.text ?? "")?.[1] 
 const email = `audit-reset-${randomBytes(3).toString("hex")}@example.test`
 const oldPassword = randomBytes(18).toString("base64url")
 const newPassword = randomBytes(18).toString("base64url")
-const up = await call("POST", "/auth/sign-up", undefined, { email, displayName: "Reset tester", password: oldPassword })
+const up = await call("POST", "/auth/sign-up", undefined, { email, displayName: "Reset tester", password: oldPassword, acceptPolicy: true })
 const oldSession = up.body.token
 
 // --- Asking.

@@ -7,6 +7,7 @@ import { ProjectDiscussion } from "@/components/project-discussion"
 import { ProjectMembersCard } from "@/components/project-members-card"
 import { ActivityList } from "@/components/activity-list"
 import { FollowButton } from "@/components/follow-button"
+import { ReportButton } from "@/components/report-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -202,6 +203,9 @@ export function ProjectPage() {
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [importBusy, setImportBusy] = React.useState(false)
+  // Content policy 2.3: all three, every import.
+  const [importRights, setImportRights] = React.useState([false, false, false])
+  const rightsConfirmed = importRights.every(Boolean)
   const [importNote, setImportNote] = React.useState<string | null>(null)
   const [importError, setImportError] = React.useState<string | null>(null)
   const [importOver, setImportOver] = React.useState(false)
@@ -331,7 +335,7 @@ export function ProjectPage() {
   }, [project, chunks, events.length])
 
   async function importFile(file: File) {
-    if (!session) return
+    if (!session || !rightsConfirmed) return
     setImportBusy(true)
     setImportError(null)
     setImportNote(`Reading ${file.name}…`)
@@ -707,6 +711,7 @@ export function ProjectPage() {
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
           <FollowButton kind="project" id={project.slug} />
+          <ReportButton target={{ projectSlug: project.slug }} what="this project" />
         </div>
         <p className="max-w-2xl text-sm text-muted-foreground">{project.description}</p>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -1051,6 +1056,32 @@ export function ProjectPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            <fieldset className="space-y-2 text-sm">
+              <legend className="mb-1 font-medium">
+                Before importing, confirm (
+                <Link to="/policy#2" target="_blank" className="underline underline-offset-2">
+                  content policy
+                </Link>
+                ):
+              </legend>
+              {[
+                "I legitimately own a copy of this program.",
+                "The export contains only what the policy allows: no full program to download, leaked material, keys, or game assets.",
+                "I understand that function bytes and disassembly will be shown to contributors, and names to everyone."
+              ].map((text, index) => (
+                <label key={index} className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={importRights[index] ?? false}
+                    onChange={(event) =>
+                      setImportRights((prev) => prev.map((v, i) => (i === index ? event.target.checked : v)))
+                    }
+                  />
+                  <span>{text}</span>
+                </label>
+              ))}
+            </fieldset>
             <input
               ref={importInput}
               type="file"
@@ -1063,7 +1094,7 @@ export function ProjectPage() {
             />
             <button
               type="button"
-              disabled={importBusy}
+              disabled={importBusy || !rightsConfirmed}
               onClick={() => importInput.current?.click()}
               onDragOver={(e) => {
                 e.preventDefault()
@@ -1074,13 +1105,17 @@ export function ProjectPage() {
                 e.preventDefault()
                 setImportOver(false)
                 const file = e.dataTransfer.files[0]
-                if (file) void importFile(file)
+                if (file && rightsConfirmed) void importFile(file)
               }}
               className={`flex min-h-28 w-full items-center justify-center rounded-md border border-dashed px-4 py-6 text-sm text-muted-foreground ${
                 importOver ? "border-primary bg-primary/5" : "border-input bg-muted/30"
               }`}
             >
-              {importBusy ? "Importing…" : "Drop the JSON here, or click to choose it."}
+              {importBusy
+                ? "Importing…"
+                : rightsConfirmed
+                  ? "Drop the JSON here, or click to choose it."
+                  : "Tick the three confirmations above first."}
             </button>
             {importNote ? <p className="text-sm">{importNote}</p> : null}
             {importError ? (

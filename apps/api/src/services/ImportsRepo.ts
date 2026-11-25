@@ -99,7 +99,8 @@ export class ImportsRepo extends Context.Service<
     readonly importExport: (
       projectSlug: string,
       userId: Uuid,
-      payload: GhidraExportPayload
+      payload: GhidraExportPayload,
+      rightsConfirmed: boolean
     ) => Effect.Effect<ImportResult, NotFound | Forbidden | ImportRejected | Conflict>
   }
 >()("rehydra/services/ImportsRepo") {
@@ -115,7 +116,8 @@ export class ImportsRepo extends Context.Service<
         function*(
           projectSlug: string,
           userId: Uuid,
-          payload: GhidraExportPayload
+          payload: GhidraExportPayload,
+          rightsConfirmed: boolean
         ) {
           const projects = yield* sql<{
             readonly id: string
@@ -142,6 +144,14 @@ export class ImportsRepo extends Context.Service<
           const role = members[0]?.role
           if (role !== "owner" && role !== "maintainer") {
             return yield* new Forbidden()
+          }
+          // Content policy 2.3: every import carries the importer's confirmation.
+          if (!rightsConfirmed) {
+            return yield* reject(
+              "Confirm that you own a copy of this program, that the export follows the content policy, " +
+                "and that function bytes and disassembly will be shown to contributors and names to everyone " +
+                "(rightsConfirmed=true)."
+            )
           }
 
           const binarySha = yield* parseHexSha256(payload.binarySha256)
@@ -170,9 +180,9 @@ export class ImportsRepo extends Context.Service<
             const importId = randomUUID()
             yield* sql`
               INSERT INTO imports (
-                id, project_id, export_sha256, state, created_by
+                id, project_id, export_sha256, state, created_by, rights_confirmed_at, rights_confirmed_by
               ) VALUES (
-                ${importId}, ${project.id}, ${exportSha}, ${"parsing"}, ${userId}
+                ${importId}, ${project.id}, ${exportSha}, ${"parsing"}, ${userId}, now(), ${userId}
               )
             `
 

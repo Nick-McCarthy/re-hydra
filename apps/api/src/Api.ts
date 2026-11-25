@@ -21,6 +21,7 @@ import {
   AccessTokenCreated,
   AccessTokenSummary,
   AccountRejected,
+  AccountSuspended,
   ChangePasswordPayload,
   CreateAccessTokenPayload,
   EmailTaken,
@@ -110,6 +111,18 @@ import {
   UnresolvedMarked,
   UnresolvedType
 } from "./domain/Types.js"
+import {
+  AdminProject,
+  AdminReport,
+  AdminUser,
+  CreateReportPayload,
+  ModerationAction,
+  ModerationNote,
+  ModerationRefused,
+  ReportCreated,
+  ReportRefused,
+  ResolveReportPayload
+} from "./domain/Moderation.js"
 import { Uuid } from "./domain/Uuid.js"
 import { Authorization } from "./http/Authorization.js"
 
@@ -142,7 +155,7 @@ export const AuthGroup = HttpApiGroup.make("auth")
     HttpApiEndpoint.post("signIn", "/auth/sign-in", {
       payload: SignInPayload,
       success: SessionCreated,
-      error: [InvalidCredentials, SignInLimited]
+      error: [InvalidCredentials, SignInLimited, AccountSuspended]
     })
   )
   .add(
@@ -645,6 +658,12 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
 export const ImportsGroup = HttpApiGroup.make("imports").add(
   HttpApiEndpoint.post("create", "/projects/:projectSlug/imports", {
     params: { projectSlug: ProjectSlug },
+    /**
+     * Must be "true": the importer confirms they own a copy of the program,
+     * the export follows the content policy, and they understand that bytes
+     * and disassembly are shown to contributors and names to everyone.
+     */
+    query: { rightsConfirmed: Schema.optional(Schema.String.check(Schema.isMaxLength(10))) },
     payload: GhidraExportPayload,
     success: ImportAccepted,
     error: [Unauthorized, Forbidden, NotFound, BadRequest, ImportRejected, Conflict]
@@ -817,6 +836,101 @@ export const DiscussionGroup = HttpApiGroup.make("discussion")
     }).middleware(Authorization)
   )
 
+export const ReportsGroup = HttpApiGroup.make("reports").add(
+  HttpApiEndpoint.post("create", "/reports", {
+    payload: CreateReportPayload,
+    success: ReportCreated.pipe(HttpApiSchema.status("Created")),
+    error: [Unauthorized, NotFound, ReportRefused]
+  }).middleware(Authorization)
+)
+
+const AdminSearch = { q: Schema.optional(Schema.String.check(Schema.isMaxLength(200))) }
+
+/** Site admins only: every endpoint answers 403 to anyone else. */
+export const AdminGroup = HttpApiGroup.make("admin")
+  .add(
+    HttpApiEndpoint.get("listReports", "/admin/reports", {
+      query: { status: Schema.optional(Schema.Literals(["open", "resolved"])) },
+      success: Schema.Array(AdminReport),
+      error: [Unauthorized, Forbidden]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("resolveReport", "/admin/reports/:reportId/resolve", {
+      params: { reportId: Uuid },
+      payload: ResolveReportPayload,
+      success: AdminReport,
+      error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("searchProjects", "/admin/projects", {
+      query: AdminSearch,
+      success: Schema.Array(AdminProject),
+      error: [Unauthorized, Forbidden]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("archiveProject", "/admin/projects/:projectSlug/archive", {
+      params: { projectSlug: ProjectSlug },
+      payload: ModerationNote,
+      success: AdminProject,
+      error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("restoreProject", "/admin/projects/:projectSlug/restore", {
+      params: { projectSlug: ProjectSlug },
+      payload: ModerationNote,
+      success: AdminProject,
+      error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("removePost", "/admin/posts/:postId/remove", {
+      params: { postId: Uuid },
+      payload: ModerationNote,
+      success: HttpApiSchema.NoContent,
+      error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("searchUsers", "/admin/users", {
+      query: AdminSearch,
+      success: Schema.Array(AdminUser),
+      error: [Unauthorized, Forbidden]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("suspendUser", "/admin/users/:userId/suspend", {
+      params: { userId: Uuid },
+      payload: ModerationNote,
+      success: AdminUser,
+      error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("restoreUser", "/admin/users/:userId/restore", {
+      params: { userId: Uuid },
+      payload: ModerationNote,
+      success: AdminUser,
+      error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("listActions", "/admin/actions", {
+      query: {
+        limit: Schema.optional(
+          Schema.NumberFromString.check(Schema.isInt())
+            .check(Schema.isGreaterThanOrEqualTo(1))
+            .check(Schema.isLessThanOrEqualTo(500))
+        )
+      },
+      success: Schema.Array(ModerationAction),
+      error: [Unauthorized, Forbidden]
+    }).middleware(Authorization)
+  )
+
 export const Api = HttpApi.make("re-hydra-api")
   .add(HealthGroup)
   .add(AuthGroup)
@@ -827,4 +941,6 @@ export const Api = HttpApi.make("re-hydra-api")
   .add(ImportsGroup)
   .add(TypesGroup)
   .add(DiscussionGroup)
+  .add(ReportsGroup)
+  .add(AdminGroup)
   .prefix("/v1")

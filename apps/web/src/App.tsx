@@ -11,7 +11,9 @@ import { ResetPasswordPage } from "./pages/reset-password"
 import { PasswordPage } from "@/pages/password"
 import { SignupPage } from "@/pages/signup"
 import { NewProjectPage } from "@/pages/new-project"
+import { AdminPage } from "@/pages/admin"
 import { PeoplePage } from "@/pages/people"
+import { PolicyPage } from "@/pages/policy"
 import { ProfilePage } from "@/pages/profile"
 import { ProjectPage } from "@/pages/project"
 import { ProjectsPage } from "@/pages/projects"
@@ -32,6 +34,8 @@ export default function App() {
               <Route path="reset-password" element={<ResetPasswordPage />} />
               <Route path="account/password" element={<PasswordPage />} />
               <Route path="faq" element={<FaqPage />} />
+              <Route path="policy" element={<PolicyPage />} />
+              <Route path="admin" element={<AdminPage />} />
               <Route path="people" element={<PeoplePage />} />
               <Route path="users/:userId" element={<ProfilePage />} />
               <Route path="projects" element={<ProjectsPage />} />

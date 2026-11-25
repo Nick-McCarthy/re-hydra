@@ -64,6 +64,7 @@ docker compose up -d          # requires Docker Desktop running
 npm install
 npm run api:migrate
 npm run api:seed
+npm run api:admin -- grant you@example.com   # site admin (/admin); also revoke, list
 npm run matchd                # or: docker compose up -d matchd
 npm run api
 npm run web

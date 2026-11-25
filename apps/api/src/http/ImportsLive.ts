@@ -12,7 +12,8 @@ export const ImportsLive = HttpApiBuilder.group(Api, "imports", (handlers) =>
       return yield* repo.importExport(
         request.params.projectSlug,
         user.id,
-        request.payload
+        request.payload,
+        request.query.rightsConfirmed === "true"
       )
     })
   )

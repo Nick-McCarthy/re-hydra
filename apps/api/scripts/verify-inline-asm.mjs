@@ -153,7 +153,7 @@ await reset()
     String(a1.diagnostics).split("\n")[0])
 
   const outsider = await call("POST", "/auth/sign-up", undefined, {
-    email: `audit-asm-${randomBytes(3).toString("hex")}@example.test`, displayName: "Audit asm", password: randomBytes(18).toString("base64url")
+    email: `audit-asm-${randomBytes(3).toString("hex")}@example.test`, displayName: "Audit asm", password: randomBytes(18).toString("base64url"), acceptPolicy: true
   })
   const denied = await call("PUT", `/projects/demo/chunks/${demo.id}/inline-asm`, outsider.body.token, { allow: true })
   check("API: a non-member cannot allow inline assembly", denied.status === 403, `status ${denied.status}`)

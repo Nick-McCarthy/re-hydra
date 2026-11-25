@@ -192,4 +192,4 @@ A paused writer does not hand the lease to a second writer. Promoting a replica 
 - Treating a linked whole-image match as the checkout success state.
 - Per-city matchd. Sandboxes stay in the few sites that can host them.
 
-The owner who imports an export affirms they have the right to share that binary. The draft policy for copyrighted software and malware is [content-policy.md](content-policy.md). It is not published, and the import screen does not ask for that affirmation yet.
+The owner who imports an export affirms they have the right to share that binary: the import form asks for three confirmations, and the API refuses an import without them and records who confirmed. The draft policy for copyrighted software and malware is [content-policy.md](content-policy.md); the site shows it at `/policy`, and sign-up requires agreeing to it. Reports go to a queue that site admins work from `/admin`. Admin is a flag on the user, read from the database on every request, and set only from the command line. Archiving, post removal, and suspension each write a row to `moderation_actions` in the same transaction.

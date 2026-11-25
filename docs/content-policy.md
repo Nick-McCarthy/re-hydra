@@ -1,6 +1,6 @@
 # Content policy: copyrighted software and malware
 
-**Status: draft.** This is a working draft for re-hydra's first public launch, not legal advice. Have a lawyer who practises copyright and internet law in your jurisdiction review it before publishing. Items in `[brackets]` are decisions or details still to fill in. The last section lists what the product has to do to back this policy up; several of those are not built yet.
+**Status: draft.** This is a working draft for re-hydra's first public launch, not legal advice. Have a lawyer who practises copyright and internet law in your jurisdiction review it before publishing. Items in `[brackets]` are decisions or details still to fill in. Section 6 (not shown on the site's policy page) lists what the product has to do to back this policy up.
 
 ---
 
@@ -48,7 +48,7 @@ The import screen asks you to confirm that:
 2. The export contains only what this policy allows.
 3. You understand that function bytes and disassembly will be shown to contributors, and names to everyone.
 
-`[Not built yet: see section 6.]`
+The import is refused until all three are ticked. re-hydra records who confirmed and when.
 
 ### 2.4 Source code you submit
 
@@ -94,7 +94,7 @@ re-hydra stores uploaded function bytes and serves them to contributors. It does
 
 ### 4.2 If you find malware
 
-Report the project to `[security@re-hydra.dev or an in-app report button]`. Do not try to run it to check. We archive suspected malware projects first and review them afterwards.
+Use the Report button on the project, the function, or the post, and choose Malware. You can also write to `[security@re-hydra.dev]`. Do not try to run it to check. We archive suspected malware projects first and review them afterwards.
 
 ### 4.3 What re-hydra does
 
@@ -119,14 +119,14 @@ The policy promises things the product does not do yet:
 
 | Needed | Why | State |
 | --- | --- | --- |
-| Terms of use, and agreeing to them at sign-up | Makes the policy binding on users | Not built |
-| A rights confirmation on import (section 2.3) | Today it is only described in `architecture.md` | Not built |
+| Terms of use, and agreeing to them at sign-up | Makes the policy binding on users | Sign-up requires agreeing to this policy and stores the version (`content-policy-draft-2026-11`) and time. Separate terms of use are not written |
+| A rights confirmation on import (section 2.3) | The importer takes responsibility for what they upload | Done: three checkboxes on the import form; the API refuses an import without `rightsConfirmed=true` and records who confirmed |
 | A decision on full-binary upload (`binaryBase64`) | Matching does not need it. Dropping it removes the riskiest thing stored | Optional in the import today, stored, not served |
 | A license for submitted source (section 2.4), shown on the submit screen | Later contributors see and reuse submissions | Not decided |
-| A report button on projects, chunks, and posts | The malware and abuse path in sections 4.2 and 5 | Not built |
-| Admin tools: archive a project, remove material, suspend an account, keep a record of notices | Acting on a takedown within the stated time | Projects have `archived_at`, but no admin interface or role |
+| A report button on projects, chunks, and posts | The malware and abuse path in sections 4.2 and 5 | Done: signed-in users, 10 reports an hour |
+| Admin tools: archive a project, remove material, suspend an account, keep a record of notices | Acting on a takedown within the stated time | Done: `/admin` (reports queue, archive and restore projects, remove posts, suspend and restore accounts, the record). Every action needs a note. Admins are granted with `npm run api:admin -- grant <email>`. Notices that arrive by email are logged by putting their details in the action's note |
 | A registered DMCA designated agent | Safe-harbour protection in the US needs a registered agent with the Copyright Office | Not done |
 | Contact addresses: copyright, security, appeals | Named in sections 3, 4, and 5 | Not set up |
 | Known-malware hash check on import | Section 4.3 | Not built |
 | Limit who reads byte comparisons in diagnostics | A missed attempt's diagnostics print the original bytes (masked) next to the candidate's, and the attempts list needs no sign-in | Done: the byte lines are removed except for the submitter, the chunk's holder, and maintainers (integrations: maintainers only) |
-| A public page for this policy, linked from the footer, sign-up, and import | Users must be able to find it | Not built |
+| A public page for this policy, linked from the footer, sign-up, and import | Users must be able to find it | Done: `/policy` shows sections 1–5 of this file |

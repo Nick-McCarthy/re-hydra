@@ -43,7 +43,7 @@ const detail = (r) => `${r.status}${r.body?.detail ? `: ${r.body.detail}` : ""}`
 const signUp = await call("POST", "/auth/sign-up", undefined, {
   email: `audit-symbols-${randomBytes(3).toString("hex")}@example.test`,
   displayName: `Symbols ${randomBytes(2).toString("hex")}`,
-  password: randomBytes(18).toString("base64url")
+  password: randomBytes(18).toString("base64url"), acceptPolicy: true
 })
 const token = signUp.body.token
 const slug = `symbols-${randomBytes(3).toString("hex")}`
@@ -55,7 +55,7 @@ await call("POST", "/projects", token, {
 const stored = async (binaryId) =>
   (await db.query(`SELECT name, address::text AS address, kind FROM binary_symbols WHERE binary_id = $1 ORDER BY name`, [binaryId])).rows
 
-const first = await call("POST", `${P}/imports`, token, {
+const first = await call("POST", `${P}/imports?rightsConfirmed=true`, token, {
   ...fixture,
   symbols: [
     { name: "counter", address: "0x402000", kind: "data" },
@@ -74,18 +74,18 @@ check("each symbol is stored once with its address and kind",
     { name: "printf", address: String(0x401200), kind: "function" }
   ]), JSON.stringify(afterFirst))
 
-const plain = await call("POST", `${P}/imports`, token, fixture)
+const plain = await call("POST", `${P}/imports?rightsConfirmed=true`, token, fixture)
 check("re-importing an export without a symbol list keeps the stored one",
   ok(plain.status) && (await stored(binaryId)).length === 3, detail(plain))
 
-const replaced = await call("POST", `${P}/imports`, token, { ...fixture, symbols: [{ name: "counter", address: "0x402004", kind: "data" }] })
+const replaced = await call("POST", `${P}/imports?rightsConfirmed=true`, token, { ...fixture, symbols: [{ name: "counter", address: "0x402004", kind: "data" }] })
 const afterReplace = await stored(binaryId)
 check("a new symbol list replaces the old one",
   ok(replaced.status) && afterReplace.length === 1 && afterReplace[0].address === String(0x402004), JSON.stringify(afterReplace))
 
-const badName = await call("POST", `${P}/imports`, token, { ...fixture, symbols: [{ name: "bad;name", address: "0x1", kind: "data" }] })
+const badName = await call("POST", `${P}/imports?rightsConfirmed=true`, token, { ...fixture, symbols: [{ name: "bad;name", address: "0x1", kind: "data" }] })
 check("a symbol name outside the allowed characters is refused", badName.status === 400, detail(badName))
-const badAddress = await call("POST", `${P}/imports`, token, { ...fixture, symbols: [{ name: "x", address: "zz", kind: "data" }] })
+const badAddress = await call("POST", `${P}/imports?rightsConfirmed=true`, token, { ...fixture, symbols: [{ name: "x", address: "zz", kind: "data" }] })
 check("a symbol address that is not a number is refused with the symbol's name",
   badAddress.status === 400 && /Symbol x/.test(badAddress.body?.detail ?? ""), detail(badAddress))
 

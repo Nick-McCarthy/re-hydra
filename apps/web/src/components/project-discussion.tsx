@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { ReportButton } from "@/components/report-button"
 import { ApiError, api, type DiscussionPost, type ThreadDetail, type ThreadPage } from "@/lib/api"
 
 const PAGE_SIZE = 30
@@ -452,6 +453,7 @@ function ThreadView(props: {
           {posts.map((post) => (
             <PostItem
               key={post.id}
+              projectSlug={projectSlug}
               post={post}
               viewer={viewer}
               canModerate={canModerate}
@@ -516,6 +518,7 @@ function ThreadView(props: {
 }
 
 function PostItem(props: {
+  readonly projectSlug: string
   readonly post: DiscussionPost
   readonly viewer: Viewer | null
   readonly canModerate: boolean
@@ -544,16 +547,21 @@ function PostItem(props: {
           · {when(post.createdAt)}
           {post.editedAt && !post.deleted ? <span title={when(post.editedAt)}> · edited</span> : null}
         </p>
-        {!post.deleted && props.editing === null && (mine || props.canModerate) ? (
+        {!post.deleted && props.editing === null && viewer !== null ? (
           <div className="flex gap-2">
             {mine && !props.locked ? (
               <button type="button" className="text-xs underline underline-offset-2" disabled={busy} onClick={props.onStartEdit}>
                 Edit
               </button>
             ) : null}
-            <button type="button" className="text-xs underline underline-offset-2" disabled={busy} onClick={props.onRemove}>
-              Remove
-            </button>
+            {mine || props.canModerate ? (
+              <button type="button" className="text-xs underline underline-offset-2" disabled={busy} onClick={props.onRemove}>
+                Remove
+              </button>
+            ) : null}
+            {!mine ? (
+              <ReportButton target={{ projectSlug: props.projectSlug, postId: post.id }} what="this post" variant="text" />
+            ) : null}
           </div>
         ) : null}
       </div>

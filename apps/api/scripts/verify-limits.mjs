@@ -66,9 +66,9 @@ const bigJson = (megabytes) => `{"email":"a@b.test","displayName":"x","password"
 const signIn = await post(`${API}/auth/sign-in`, { email: "dev@re-hydra.local", password: "rehydra-dev" }, { client: newClient() })
 const devToken = signIn.body.token
 {
-  const sixOnImport = await post(`${API}/projects/demo/imports`, null, { client: newClient(), token: devToken, raw: `{"junk":"${"A".repeat(6 * 1024 * 1024)}"}` })
+  const sixOnImport = await post(`${API}/projects/demo/imports?rightsConfirmed=true`, null, { client: newClient(), token: devToken, raw: `{"junk":"${"A".repeat(6 * 1024 * 1024)}"}` })
   check("API: the import route accepts more than 4 MB (rejected by schema, not size)", sixOnImport.status === 400, `status ${sixOnImport.status}`)
-  const seventy = await post(`${API}/projects/demo/imports`, null, { client: newClient(), token: devToken, raw: `{"junk":"${"A".repeat(70 * 1024 * 1024)}"}` })
+  const seventy = await post(`${API}/projects/demo/imports?rightsConfirmed=true`, null, { client: newClient(), token: devToken, raw: `{"junk":"${"A".repeat(70 * 1024 * 1024)}"}` })
   check("API: the import route still stops at 64 MB", seventy.status === 413, `status ${seventy.status}`)
 }
 {
@@ -112,7 +112,7 @@ const devToken = signIn.body.token
     const res = await post(`${API}/auth/sign-up`, {
       email: `audit-limit-${randomBytes(4).toString("hex")}@example.test`,
       displayName: "Audit limit",
-      password: randomBytes(18).toString("base64url")
+      password: randomBytes(18).toString("base64url"), acceptPolicy: true
     }, { client })
     codes.push(res.status)
   }

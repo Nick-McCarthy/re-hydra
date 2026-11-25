@@ -5,12 +5,15 @@ export function Dialog({
   open,
   title,
   onClose,
-  children
+  children,
+  size = "lg"
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: React.ReactNode
+  /** md for short forms, lg (default) for work views. */
+  size?: "md" | "lg"
 }) {
   React.useEffect(() => {
     if (!open) return
@@ -32,7 +35,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="my-4 w-full max-w-5xl rounded-lg border bg-background p-6 shadow-lg"
+        className={`my-4 w-full ${size === "md" ? "max-w-lg" : "max-w-5xl"} rounded-lg border bg-background p-6 shadow-lg`}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-4">

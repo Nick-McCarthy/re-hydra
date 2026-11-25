@@ -78,7 +78,7 @@ const signUp = async (label) => {
   const res = await call("POST", "/auth/sign-up", undefined, {
     email: `audit-claim-${label}-${randomBytes(3).toString("hex")}@example.test`,
     displayName: `Claim ${label} ${randomBytes(2).toString("hex")}`,
-    password: randomBytes(18).toString("base64url")
+    password: randomBytes(18).toString("base64url"), acceptPolicy: true
   })
   if (res.status >= 300) throw new Error(`sign-up failed: ${res.status} ${JSON.stringify(res.body)}`)
   return { token: res.body.token }
@@ -101,7 +101,7 @@ try {
   await call("POST", "/projects", owner.token, {
     slug, name: "Integration claim", homeRegion: "us-east-1", language: fixture.language, toolchain: fixture.toolchain
   })
-  const imported = await call("POST", `${P}/imports`, owner.token, fixture)
+  const imported = await call("POST", `${P}/imports?rightsConfirmed=true`, owner.token, fixture)
   if (imported.status >= 300) throw new Error(`import failed: ${imported.status}`)
   const board = (await call("GET", `${P}/chunks`)).body
   // An integration build needs at least two matched functions.

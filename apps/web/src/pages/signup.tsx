@@ -14,6 +14,7 @@ export function SignupPage() {
   const [displayName, setDisplayName] = React.useState("")
   const [password, setPassword] = React.useState("")
   const [confirm, setConfirm] = React.useState("")
+  const [acceptPolicy, setAcceptPolicy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
 
@@ -31,10 +32,14 @@ export function SignupPage() {
       setError("Use at least 8 characters.")
       return
     }
+    if (!acceptPolicy) {
+      setError("Agree to the content policy to create an account.")
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      const session = await api.signUp(email.trim(), displayName.trim(), password)
+      const session = await api.signUp(email.trim(), displayName.trim(), password, acceptPolicy)
       setSession(session)
       navigate("/projects", { replace: true })
     } catch (err) {
@@ -108,8 +113,23 @@ export function SignupPage() {
                 maxLength={128}
               />
             </div>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={acceptPolicy}
+                onChange={(event) => setAcceptPolicy(event.target.checked)}
+              />
+              <span>
+                I agree to the{" "}
+                <Link to="/policy" target="_blank" className="underline underline-offset-2">
+                  content policy
+                </Link>
+                : no distributed programs, leaked material, or malware.
+              </span>
+            </label>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <Button type="submit" disabled={busy} className="w-full">
+            <Button type="submit" disabled={busy || !acceptPolicy} className="w-full">
               Create account
             </Button>
           </form>

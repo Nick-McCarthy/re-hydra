@@ -25,7 +25,9 @@ export const Password = Schema.String.check(Schema.isMinLength(8))
 export const UserProfile = Schema.Struct({
   id: Uuid,
   email: Email,
-  displayName: Schema.String
+  displayName: Schema.String,
+  /** A site admin: handles reports and takedowns. */
+  isAdmin: Schema.Boolean
 }).annotate({ identifier: "UserProfile" })
 
 export type UserProfile = typeof UserProfile.Type
@@ -33,7 +35,9 @@ export type UserProfile = typeof UserProfile.Type
 export const SignUpPayload = Schema.Struct({
   email: AccountEmail,
   displayName: DisplayName,
-  password: Password
+  password: Password,
+  /** Must be true: the person agrees to the content policy. */
+  acceptPolicy: Schema.optionalKey(Schema.Boolean)
 }).annotate({ identifier: "SignUpPayload" })
 
 export type SignUpPayload = typeof SignUpPayload.Type
@@ -70,6 +74,13 @@ export class ResetRejected extends HttpApiError.Problem<ResetRejected>()("ResetR
   type: "https://re-hydra.dev/problems/reset-rejected",
   status: 400,
   title: "Reset link not valid"
+}) {}
+
+/** A site admin suspended this account under the content policy. */
+export class AccountSuspended extends HttpApiError.Problem<AccountSuspended>()("AccountSuspended", {
+  type: "https://re-hydra.dev/problems/account-suspended",
+  status: 403,
+  title: "Account suspended"
 }) {}
 
 export class AccountRejected extends HttpApiError.Problem<AccountRejected>()(

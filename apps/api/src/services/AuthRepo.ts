@@ -16,6 +16,7 @@ import {
   AccountRejected,
   EmailTaken,
   InvalidCredentials,
+  AccountSuspended,
   SignInLimited,
   PasswordRejected,
   TokenRejected
@@ -23,6 +24,7 @@ import {
 import type { Uuid } from "../domain/Uuid.js"
 import { signInEmailRule } from "../http/rateLimit.js"
 import { RateLimits } from "./RateLimits.js"
+import { POLICY_VERSION } from "../domain/Moderation.js"
 
 const hashToken = (token: string): Buffer =>
   createHash("sha256").update(token, "utf8").digest()
@@ -39,6 +41,8 @@ type UserRow = {
   readonly email: string
   readonly display_name: string
   readonly password_hash: string | null
+  readonly is_admin: boolean
+  readonly suspended_at: Date | string | null
 }
 
 type SessionRow = {
@@ -46,16 +50,19 @@ type SessionRow = {
   readonly user_id: string
   readonly email: string
   readonly display_name: string
+  readonly is_admin: boolean
 }
 
 const toProfile = (row: {
   readonly id: string
   readonly email: string
   readonly display_name: string
+  readonly is_admin: boolean
 }): UserProfile => ({
   id: row.id,
   email: row.email,
-  displayName: row.display_name
+  displayName: row.display_name,
+  isAdmin: row.is_admin
 })
 
 export class AuthRepo extends Context.Service<
@@ -66,7 +73,7 @@ export class AuthRepo extends Context.Service<
     ) => Effect.Effect<SessionResponse, EmailTaken | AccountRejected>
     readonly signIn: (
       payload: SignInPayload
-    ) => Effect.Effect<SessionResponse, InvalidCredentials | SignInLimited>
+    ) => Effect.Effect<SessionResponse, InvalidCredentials | SignInLimited | AccountSuspended>
     readonly changePassword: (
       userId: Uuid,
       payload: ChangePasswordPayload
@@ -113,7 +120,7 @@ export class AuthRepo extends Context.Service<
         `.pipe(Effect.orDie)
 
         const users = yield* sql<UserRow>`
-          SELECT id, email, display_name, password_hash
+          SELECT id, email, display_name, password_hash, is_admin, suspended_at
           FROM users
           WHERE id = ${userId}
           LIMIT 1
@@ -146,6 +153,12 @@ export class AuthRepo extends Context.Service<
           })
         }
 
+        if (payload.acceptPolicy !== true) {
+          return yield* new AccountRejected({
+            detail: "Agree to the content policy to create an account."
+          })
+        }
+
         const existing = yield* sql<{ readonly id: string }>`
           SELECT id FROM users WHERE email = ${email} LIMIT 1
         `.pipe(Effect.orDie)
@@ -158,8 +171,8 @@ export class AuthRepo extends Context.Service<
         const passwordHash = yield* hashPassword(payload.password).pipe(Effect.orDie)
         const userId = randomUUID()
         yield* sql`
-          INSERT INTO users (id, email, display_name, password_hash)
-          VALUES (${userId}, ${email}, ${displayName}, ${passwordHash})
+          INSERT INTO users (id, email, display_name, password_hash, policy_version, policy_accepted_at)
+          VALUES (${userId}, ${email}, ${displayName}, ${passwordHash}, ${POLICY_VERSION}, now())
         `.pipe(
           Effect.catchTag("SqlError", (error) => {
             if (error.message.includes("users_email") || error.message.includes("duplicate key")) {
@@ -187,7 +200,7 @@ export class AuthRepo extends Context.Service<
           })
         }
         const rows = yield* sql<UserRow>`
-          SELECT id, email, display_name, password_hash
+          SELECT id, email, display_name, password_hash, is_admin, suspended_at
           FROM users
           WHERE email = ${email}
           LIMIT 1
@@ -198,6 +211,11 @@ export class AuthRepo extends Context.Service<
         )
         if (row === undefined || row.password_hash === null || !matches) {
           return yield* wrongCredentials()
+        }
+        if (row.suspended_at !== null) {
+          return yield* new AccountSuspended({
+            detail: "This account is suspended. To appeal, use the contact address in the content policy."
+          })
         }
         // Audit A-040: move older, cheaper hashes up to the current cost. A
         // failure here never blocks the sign-in.
@@ -215,7 +233,7 @@ export class AuthRepo extends Context.Service<
         payload: ChangePasswordPayload
       ) {
         const rows = yield* sql<UserRow>`
-          SELECT id, email, display_name, password_hash
+          SELECT id, email, display_name, password_hash, is_admin, suspended_at
           FROM users
           WHERE id = ${userId}
           LIMIT 1
@@ -254,10 +272,12 @@ export class AuthRepo extends Context.Service<
               s.id,
               s.user_id,
               u.email,
-              u.display_name
+              u.display_name,
+              u.is_admin
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token_hash = ${tokenHash}
+              AND u.suspended_at IS NULL
               AND s.revoked_at IS NULL
               AND s.expires_at > now()
             LIMIT 1
@@ -277,7 +297,8 @@ export class AuthRepo extends Context.Service<
           return Option.some({
             id: row.user_id,
             email: row.email,
-            displayName: row.display_name
+            displayName: row.display_name,
+            isAdmin: row.is_admin
           } satisfies UserProfile)
         },
         Effect.orDie
@@ -291,10 +312,12 @@ export class AuthRepo extends Context.Service<
               t.id,
               u.id AS user_id,
               u.email,
-              u.display_name
+              u.display_name,
+              u.is_admin
             FROM access_tokens t
             INNER JOIN users u ON u.id = t.user_id
             WHERE t.token_hash = ${tokenHash}
+              AND u.suspended_at IS NULL
               AND t.revoked_at IS NULL
             LIMIT 1
           `
@@ -313,7 +336,8 @@ export class AuthRepo extends Context.Service<
           return Option.some({
             id: row.user_id,
             email: row.email,
-            displayName: row.display_name
+            displayName: row.display_name,
+            isAdmin: row.is_admin
           } satisfies UserProfile)
         },
         Effect.orDie

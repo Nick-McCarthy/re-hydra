@@ -13,6 +13,7 @@
     "api:migrate": "npm run migrate -w @re-hydra/api",
     "api:seed": "npm run seed -w @re-hydra/api",
     "api:blobs": "npm run blobs:copy -w @re-hydra/api",
+    "api:admin": "npm run admin -w @re-hydra/api --",
     "hydra": "npm run start -w @re-hydra/cli --",
     "cli:typecheck": "npm run typecheck -w @re-hydra/cli",
     "matchd": "npm run dev -w @re-hydra/matchd",

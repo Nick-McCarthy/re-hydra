@@ -29,6 +29,11 @@ export function AppShell() {
             <Link to="/faq" className="text-muted-foreground hover:text-foreground">
               FAQ
             </Link>
+            {user?.isAdmin ? (
+              <Link to="/admin" className="text-muted-foreground hover:text-foreground">
+                Admin
+              </Link>
+            ) : null}
             <button
               type="button"
               role="switch"
@@ -68,6 +73,16 @@ export function AppShell() {
       <main className="mx-auto max-w-6xl px-4 py-8">
         <Outlet />
       </main>
+      <footer className="border-t">
+        <div className="mx-auto flex max-w-6xl flex-wrap gap-4 px-4 py-6 text-xs text-muted-foreground">
+          <Link to="/policy" className="hover:text-foreground">
+            Content policy
+          </Link>
+          <Link to="/faq" className="hover:text-foreground">
+            FAQ
+          </Link>
+        </div>
+      </footer>
     </div>
   )
 }

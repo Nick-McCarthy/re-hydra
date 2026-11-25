@@ -1012,6 +1012,57 @@ CREATE TABLE binary_symbols (
 ALTER TABLE integrations ADD COLUMN claim_token uuid;
 ```
 
+## Content policy enforcement — migration 022
+
+```sql
+-- Site admins are granted from the command line (npm run api:admin), never in
+-- the app. Session and access-token lookups ignore suspended accounts, and
+-- suspending also deletes the account's sessions and access tokens.
+ALTER TABLE users ADD COLUMN is_admin boolean NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN suspended_at timestamptz;
+ALTER TABLE users ADD COLUMN suspended_reason text;
+-- Which version of the content policy the account agreed to at sign-up.
+ALTER TABLE users ADD COLUMN policy_version text;
+ALTER TABLE users ADD COLUMN policy_accepted_at timestamptz;
+-- The importer ticked the rights confirmation (content policy 2.3).
+ALTER TABLE imports ADD COLUMN rights_confirmed_at timestamptz;
+ALTER TABLE imports ADD COLUMN rights_confirmed_by uuid REFERENCES users (id) ON DELETE SET NULL;
+
+-- A report on a project, optionally narrowed to one of its chunks or posts.
+CREATE TABLE reports (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  reporter_id  uuid REFERENCES users (id) ON DELETE SET NULL,
+  project_id   uuid NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+  chunk_id     uuid REFERENCES chunks (id) ON DELETE CASCADE,
+  post_id      uuid REFERENCES project_posts (id) ON DELETE CASCADE,
+  reason       text NOT NULL CHECK (reason IN ('copyright', 'malware', 'abuse', 'other')),
+  body         text NOT NULL CHECK (length(body) BETWEEN 1 AND 2000),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  resolved_at  timestamptz,
+  resolved_by  uuid REFERENCES users (id) ON DELETE SET NULL,
+  resolution   text CHECK (resolution IS NULL OR length(resolution) BETWEEN 1 AND 2000),
+  CHECK ((resolved_at IS NULL) = (resolution IS NULL))
+);
+CREATE INDEX reports_open ON reports (created_at) WHERE resolved_at IS NULL;
+CREATE INDEX reports_by_project ON reports (project_id, created_at);
+
+-- The record: every admin action, with a required note, written in the same
+-- transaction as the change. admin_id is NULL for the command line.
+CREATE TABLE moderation_actions (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id    uuid REFERENCES users (id) ON DELETE SET NULL,
+  kind        text NOT NULL CHECK (kind IN ('archive_project', 'restore_project', 'remove_post',
+                'suspend_user', 'restore_user', 'resolve_report', 'grant_admin', 'revoke_admin')),
+  project_id  uuid REFERENCES projects (id) ON DELETE SET NULL,
+  user_id     uuid REFERENCES users (id) ON DELETE SET NULL,
+  post_id     uuid REFERENCES project_posts (id) ON DELETE SET NULL,
+  report_id   uuid REFERENCES reports (id) ON DELETE SET NULL,
+  note        text NOT NULL CHECK (length(note) BETWEEN 1 AND 2000),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX moderation_actions_recent ON moderation_actions (created_at DESC);
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

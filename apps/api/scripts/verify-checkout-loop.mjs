@@ -56,7 +56,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const signUp = async (label) => {
   const name = `Loop ${label} ${randomBytes(2).toString("hex")}`
   const res = await call("POST", "/auth/sign-up", undefined, {
-    email: `audit-loop-${label}-${randomBytes(3).toString("hex")}@example.test`, displayName: name, password: randomBytes(18).toString("base64url")
+    email: `audit-loop-${label}-${randomBytes(3).toString("hex")}@example.test`, displayName: name, password: randomBytes(18).toString("base64url"), acceptPolicy: true
   })
   if (!ok(res.status)) throw new Error(`sign-up failed: ${res.status}`)
   return { token: res.body.token, id: res.body.user.id, name }
@@ -73,7 +73,7 @@ const created = await call("POST", "/projects", owner.token, {
   slug, name: "Checkout loop", homeRegion: "us-east-1", language: fixture.language, toolchain: fixture.toolchain
 })
 check("the owner creates a project with the fixture's toolchain", created.status === 201, detail(created))
-const imported = await call("POST", `${P}/imports`, owner.token, fixture)
+const imported = await call("POST", `${P}/imports?rightsConfirmed=true`, owner.token, fixture)
 check("the Ghidra export imports", ok(imported.status), detail(imported))
 const board = (await call("GET", `${P}/chunks`)).body
 const byName = Object.fromEntries(board.map((c) => [c.name, c]))

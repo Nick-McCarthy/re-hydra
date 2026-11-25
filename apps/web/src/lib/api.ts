@@ -2,6 +2,8 @@ export type UserProfile = {
   id: string
   email: string
   displayName: string
+  /** Site admin: sees reports; can archive projects, remove posts, suspend accounts. */
+  isAdmin: boolean
 }
 
 export type Session = {
@@ -524,11 +526,77 @@ async function request<T>(
   return parsed.value as T
 }
 
+export type ReportReason = "copyright" | "malware" | "abuse" | "other"
+
+export type ReportTarget = {
+  projectSlug: string
+  chunkId?: string
+  postId?: string
+}
+
+type PersonRef = { id: string; displayName: string }
+
+export type AdminReport = {
+  id: string
+  reason: ReportReason
+  body: string
+  createdAt: string
+  reporter: PersonRef | null
+  project: { id: string; slug: string; name: string; archived: boolean }
+  chunk: { id: string; name: string } | null
+  post: { id: string; threadId: string; excerpt: string; removed: boolean; author: PersonRef | null } | null
+  resolvedAt: string | null
+  resolution: string | null
+  resolvedBy: PersonRef | null
+}
+
+export type AdminUser = {
+  id: string
+  email: string
+  displayName: string
+  isAdmin: boolean
+  suspendedAt: string | null
+  suspendedReason: string | null
+  createdAt: string
+}
+
+export type AdminProject = {
+  id: string
+  slug: string
+  name: string
+  ownerName: string | null
+  archivedAt: string | null
+  openReports: number
+  createdAt: string
+}
+
+export type ModerationActionKind =
+  | "archive_project"
+  | "restore_project"
+  | "remove_post"
+  | "suspend_user"
+  | "restore_user"
+  | "resolve_report"
+  | "grant_admin"
+  | "revoke_admin"
+
+export type ModerationAction = {
+  id: string
+  kind: ModerationActionKind
+  admin: PersonRef | null
+  project: { id: string; slug: string; name: string } | null
+  user: PersonRef | null
+  postId: string | null
+  reportId: string | null
+  note: string
+  createdAt: string
+}
+
 export const api = {
-  signUp(email: string, displayName: string, password: string) {
+  signUp(email: string, displayName: string, password: string, acceptPolicy: boolean) {
     return request<Session>("/auth/sign-up", {
       method: "POST",
-      body: JSON.stringify({ email, displayName, password })
+      body: JSON.stringify({ email, displayName, password, acceptPolicy })
     })
   },
 
@@ -605,9 +673,10 @@ export const api = {
     }, token)
   },
 
+  /** Only call once the user has ticked the rights statement on the import form. */
   importExport(slug: string, jsonText: string, token: string) {
     return request<ImportResult>(
-      `/projects/${encodeURIComponent(slug)}/imports`,
+      `/projects/${encodeURIComponent(slug)}/imports?rightsConfirmed=true`,
       {
         method: "POST",
         body: jsonText,
@@ -1119,5 +1188,61 @@ export const api = {
       },
       token
     )
+  },
+
+  report(target: ReportTarget, reason: ReportReason, body: string, token: string) {
+    return request<{ id: string }>(
+      "/reports",
+      { method: "POST", body: JSON.stringify({ ...target, reason, body }) },
+      token
+    )
+  },
+
+  adminReports(status: "open" | "resolved", token: string) {
+    return request<Array<AdminReport>>(`/admin/reports?status=${status}`, {}, token)
+  },
+
+  adminResolveReport(reportId: string, resolution: string, token: string) {
+    return request<AdminReport>(
+      `/admin/reports/${encodeURIComponent(reportId)}/resolve`,
+      { method: "POST", body: JSON.stringify({ resolution }) },
+      token
+    )
+  },
+
+  adminProjects(q: string, token: string) {
+    return request<Array<AdminProject>>(`/admin/projects?q=${encodeURIComponent(q)}`, {}, token)
+  },
+
+  adminSetProjectArchived(slug: string, archived: boolean, note: string, token: string) {
+    return request<AdminProject>(
+      `/admin/projects/${encodeURIComponent(slug)}/${archived ? "archive" : "restore"}`,
+      { method: "POST", body: JSON.stringify({ note }) },
+      token
+    )
+  },
+
+  adminRemovePost(postId: string, note: string, token: string) {
+    return request<void>(
+      `/admin/posts/${encodeURIComponent(postId)}/remove`,
+      { method: "POST", body: JSON.stringify({ note }) },
+      token
+    )
+  },
+
+  adminUsers(q: string, token: string) {
+    return request<Array<AdminUser>>(`/admin/users?q=${encodeURIComponent(q)}`, {}, token)
+  },
+
+  adminSetUserSuspended(userId: string, suspended: boolean, note: string, token: string) {
+    return request<AdminUser>(
+      `/admin/users/${encodeURIComponent(userId)}/${suspended ? "suspend" : "restore"}`,
+      { method: "POST", body: JSON.stringify({ note }) },
+      token
+    )
+  },
+
+  adminActions(token: string) {
+    return request<Array<ModerationAction>>("/admin/actions?limit=200", {}, token)
   }
 }

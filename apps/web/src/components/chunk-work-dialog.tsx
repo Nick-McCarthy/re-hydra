@@ -5,6 +5,7 @@ import { Dialog } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { ReportButton } from "@/components/report-button"
 import { Textarea } from "@/components/ui/textarea"
 import {
   ApiError,
@@ -372,6 +373,7 @@ export function ChunkWorkDialog({
               Clear lease
             </Button>
           ) : null}
+          <ReportButton target={{ projectSlug, chunkId }} what="this function" variant="outline" />
         </div>
         {lease ? (
           <p className="text-xs text-muted-foreground">

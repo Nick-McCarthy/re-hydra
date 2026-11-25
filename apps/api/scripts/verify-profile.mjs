@@ -52,7 +52,7 @@ const signUp = async (label) => {
   const res = await call("POST", "/auth/sign-up", undefined, {
     email: `audit-profile-${label}-${randomBytes(3).toString("hex")}@example.test`,
     displayName: `Profile ${label} ${randomBytes(2).toString("hex")}`,
-    password: randomBytes(18).toString("base64url")
+    password: randomBytes(18).toString("base64url"), acceptPolicy: true
   })
   if (!ok(res.status)) throw new Error(`sign-up failed: ${res.status}`)
   return { token: res.body.token, id: res.body.user.id }
@@ -72,7 +72,7 @@ const makeProject = async () => {
     toolchain: { compiler: "gcc", version: "4.8.5", flags: ["-O2"], image: "ghcr.io/re-hydra/gcc:4.8.5@sha256:dev" }
   })
   if (created.status !== 201) throw new Error(`project create failed: ${detail(created)}`)
-  await call("POST", `/projects/${slug}/imports`, dev, sample)
+  await call("POST", `/projects/${slug}/imports?rightsConfirmed=true`, dev, sample)
   const chunks = (await call("GET", `/projects/${slug}/chunks`)).body
   const byName = Object.fromEntries(chunks.map((c) => [c.name, c]))
   return { slug, byName }

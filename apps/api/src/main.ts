@@ -12,6 +12,8 @@ import { HealthLive } from "./http/HealthLive.js"
 import { ImportsLive } from "./http/ImportsLive.js"
 import { ProjectsLive } from "./http/ProjectsLive.js"
 import { DiscussionLive } from "./http/DiscussionLive.js"
+import { AdminLive, ReportsLive } from "./http/ModerationLive.js"
+import { Moderation } from "./services/Moderation.js"
 import { TypesLive } from "./http/TypesLive.js"
 import { DirectoryLive, UsersLive } from "./http/UsersLive.js"
 import { EdgeMiddlewareLive } from "./http/EdgeMiddleware.js"
@@ -118,6 +120,7 @@ const DataLive = Layer.mergeAll(
   ),
   BlobsLive,
   RateLimits.layer,
+  Moderation.layer.pipe(Layer.provide(RateLimits.layer)),
   AuthRepo.layer.pipe(Layer.provide(RateLimits.layer)),
   PasswordResets.layer.pipe(Layer.provide(RateLimits.layer), Layer.provide(Mailer.layer)),
   Layer.provideMerge(MatchdClient.layer, MatchdPool.layer)
@@ -132,7 +135,9 @@ const ApiHandlers = Layer.mergeAll(
   ChunksLive,
   ImportsLive,
   TypesLive,
-  DiscussionLive
+  DiscussionLive,
+  ReportsLive,
+  AdminLive
 ).pipe(
   Layer.provide(DataLive),
   Layer.provide(SqlLive)
