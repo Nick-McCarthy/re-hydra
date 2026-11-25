@@ -7,8 +7,9 @@ Measured on 2026-11-24 on a 16-thread desktop (Docker Desktop, 16 CPUs, 8 GB), w
 - **Compiling is cheap.** A GCC or Clang match job uses about 0.2 CPU-seconds. All the compiles for a 10,000-function game come to about 15 CPU-hours spread over the project's life, which is under a dollar of compute.
 - **What costs money is keeping things running**, not the jobs: 18 warm compiler images, Postgres, and the API. One 8-core, 32 GB machine can carry the whole site for a long time.
 - **What breaks first under load** is not raw CPU:
-  1. Integration builds of a large project take tens of minutes, because units are compiled one after another.
-  2. One matchd container tops out around 16 jobs/s while using only about 3 cores. More throughput means more copies of the container, not a bigger machine.
+  1. One matchd container tops out around 16 jobs/s while using only about 3 cores. More throughput means more copies of the container, not a bigger machine.
+  2. The first integration build of a large project still takes minutes. Later builds reuse every unchanged function and take seconds.
+- **Fixed on 2026-11-25:** integration builds compile units in parallel and cache each compiled unit. A 200-function rebuild with one change went from 23 s to 0.4 s.
 - **Fixed on 2026-11-24:**
   - A long integration build is no longer claimed and run a second time. The claimer renews its claim every 30 s, and writes its result only while it still holds the claim (migration 021, `verify-integration-claim.mjs`).
   - GBA and GameCube jobs were 8× slower than the rest because their compiler wrappers started through `npx tsx`. The wrappers are now bundled to plain JS, and those jobs run as fast as GCC.
@@ -68,13 +69,17 @@ These are assumptions, not measurements. Change them as real usage arrives.
 
 **Integration builds** do not scale yet:
 
-| Project | Build time |
-| --- | --- |
-| 1,000 matched | ~2 min |
-| 10,000 matched | ~20 min |
-| 50,000 matched | ~1.6 h |
+Measured on host gcc, one container:
 
-Units are compiled one after another inside one request (measured on host gcc; GBA and GameCube should now be close). The build ties up one matchd container for the whole run. The API used to reclaim a `running` integration after 2 minutes, so with more than one API process a long build was started again while the first copy still ran. Now the claimer renews `claimed_at` every 30 s (`INTEGRATION_HEARTBEAT_SECONDS`), and the build is reclaimed only after 120 s without a renewal (`INTEGRATION_RECLAIM_SECONDS`). Each claim carries a `claim_token`, so a worker that lost its claim writes nothing.
+| Build | Before | First build now | Rebuild, cache warm |
+| --- | --- | --- | --- |
+| 200 functions | 23 s | 7.8 s | 0.3 s (0.4 s with one changed) |
+| 1,000 functions | ~2 min (est.) | 41 s | 4.3 s |
+| 10,000 functions | ~20 min (est.) | ~7 min (est.) | under a minute (est.) |
+
+Units compile side by side (`MATCHD_LINK_CONCURRENCY`, default the CPU count up to 8). The first build gains only about 3× from that, because it hits the same per-container ceiling as match jobs. Each compiled unit is cached on disk (`MATCHD_LINK_CACHE_DIR`, `MATCHD_LINK_CACHE_MB`, default 1 GB, least recently used dropped first). The key is a hash of the target, compiler digest, language, flags, type headers, symbol and source. The address is not part of it, because placement happens at link time. A cached unit still goes through the inline-assembly rule for its chunk, and the link and compare always run in full.
+
+The cache lives in the container. A restart or a different copy of the image starts cold, unless the directory is a shared volume. A change to the type headers misses on every unit, because the headers shape every object. The API used to reclaim a `running` integration after 2 minutes, so with more than one API process a long build was started again while the first copy still ran. Now the claimer renews `claimed_at` every 30 s (`INTEGRATION_HEARTBEAT_SECONDS`), and the build is reclaimed only after 120 s without a renewal (`INTEGRATION_RECLAIM_SECONDS`). Each claim carries a `claim_token`, so a worker that lost its claim writes nothing.
 
 ## Cost
 
@@ -94,7 +99,7 @@ Smaller items: object storage for imports (tens of GB, a few dollars), an image 
 
 1. ~~Integration build heartbeat.~~ Done.
 2. ~~Faster GBA and GameCube wrappers.~~ Done: about 8× faster and 20× less CPU per job.
-3. **Parallel and incremental integration builds.** Compile units across several workers, and cache each unit's object by (source hash, toolchain digest, flags). A rebuild after one new match then recompiles one function instead of all 10k.
+3. ~~Parallel and incremental integration builds.~~ Done. A shared cache volume, or sending builds for a project to the same container, would keep the cache warm across copies.
 4. **A per-container ceiling.** Find what holds a GCC container at about 16 jobs/s with idle cores (likely spawning on Node's single thread), or run 2–3 copies per busy image by default.
 5. **A production scaler.** `MATCHD_SCALE=docker` covers one machine. Hosting needs the same rule (scale an image when interactive wait passes 30 s, keep one warm copy) on ECS, Nomad or Kubernetes, with batch work on spot capacity.
 6. **Cold images.** Rarely used images (Xbox, Saturn) could start on demand instead of staying warm, which saves about 250 MB each. A first submit then waits about 10 s plus the image pull.

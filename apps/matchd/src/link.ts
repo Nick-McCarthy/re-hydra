@@ -1,10 +1,11 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { availableParallelism, tmpdir } from "node:os"
 import * as path from "node:path"
 import { Config, Effect } from "effect"
 import { inlineAsmRefusal, scanInlineAsm } from "./asmCheck.js"
 import type { LinkJobRequest } from "./domain/Job.js"
 import { readElfSections } from "./elf.js"
+import { type CachedUnit, type LinkCache, makeLinkCache, unitCacheKey } from "./linkCache.js"
 import { checkFlags, describeRefusal } from "./flagPolicy.js"
 import {
   assignKnownSymbols,
@@ -96,7 +97,18 @@ const parseAddress = (raw: string): bigint | undefined => {
   }
 }
 
-const catchRun = (effect: Effect.Effect<RunResult, Error>): Effect.Effect<RunResult> =>
+/** One cache per directory and size, shared by every link job in this process. */
+const caches = new Map<string, LinkCache>()
+const linkCacheFor = (dir: string, maxBytes: number): LinkCache => {
+  const id = `${dir}\u0000${maxBytes}`
+  const existing = caches.get(id)
+  if (existing !== undefined) return existing
+  const cache = makeLinkCache(dir, maxBytes)
+  caches.set(id, cache)
+  return cache
+}
+
+const catchRun =(effect: Effect.Effect<RunResult, Error>): Effect.Effect<RunResult> =>
   effect.pipe(
     Effect.catch((err) =>
       Effect.succeed({
@@ -127,6 +139,13 @@ type LinkObject = {
 export const runLinkJob = Effect.fn("runLinkJob")(function*(job: LinkJobRequest) {
   const language = job.language
   const timeoutMs = yield* Config.Int("MATCHD_TIMEOUT_MS").pipe(Config.withDefault(30_000))
+  const linkConcurrency = yield* Config.Int("MATCHD_LINK_CONCURRENCY").pipe(
+    Config.withDefault(Math.max(1, Math.min(8, availableParallelism())))
+  )
+  const cacheDir = yield* Config.String("MATCHD_LINK_CACHE_DIR").pipe(
+    Config.withDefault(path.join(tmpdir(), "rehydra-link-cache"))
+  )
+  const cacheBytes = (yield* Config.Int("MATCHD_LINK_CACHE_MB").pipe(Config.withDefault(1024))) * 1024 * 1024
   const extension = language === "cpp" ? "cpp" : "c"
   const flags = [...(job.flags ?? job.toolchain.flags)]
   const unavailable = (diagnostics: string, toolchainDigest: string): LinkEngineResult => ({
@@ -215,100 +234,149 @@ export const runLinkJob = Effect.fn("runLinkJob")(function*(job: LinkJobRequest)
     }
 
     const outcomes = new Map<string, LinkUnitOutcome>()
+    const cache = linkCacheFor(cacheDir, cacheBytes)
+
+    type Prepared =
+      | { readonly ok: false; readonly outcome: LinkUnitOutcome }
+      | {
+        readonly ok: true
+        readonly object: LinkObject
+        readonly undefinedPairs: ReadonlyArray<{ readonly mangled: string; readonly demangled: string }>
+        readonly cached: boolean
+      }
+
+    const fail = (symbol: string, detail: string): Prepared => ({ ok: false, outcome: failed(symbol, detail) })
+
+    /**
+     * One unit's object and what the link needs to know about it: from the
+     * cache when this exact compile was done before, otherwise compiled and
+     * read here, then cached.
+     */
+    const prepare = (unit: LinkJobRequest["units"][number], index: number) =>
+      Effect.gen(function*() {
+        const address = parseAddress(unit.address)
+        if (address === undefined) return fail(unit.symbol, `bad address ${unit.address}`)
+        const sourceName = `unit${index}.${extension}`
+        const objectName = `unit${index}.o`
+        const objectPath = path.join(work, objectName)
+        const key = unitCacheKey({
+          target: target.id,
+          toolchainDigest,
+          language,
+          flags: compileFlags,
+          headers: job.headers,
+          symbol: unit.symbol,
+          source: unit.source
+        })
+        const toObject = (meta: CachedUnit, cached: boolean): Prepared => {
+          // Audit A-032: the same inline-assembly rule as a checkout match.
+          if (meta.asmHit !== null && unit.allowInlineAsm !== true) {
+            return fail(unit.symbol, inlineAsmRefusal(meta.asmHit))
+          }
+          return {
+            ok: true,
+            cached,
+            undefinedPairs: meta.undefinedPairs,
+            object: {
+              file: objectName,
+              symbol: unit.symbol,
+              mangled: meta.mangled,
+              address,
+              section: meta.section,
+              offset: meta.offset,
+              size: meta.size,
+              relocations: meta.relocations
+            }
+          }
+        }
+
+        const hit = yield* cache.get(key, objectPath)
+        if (hit !== undefined) return toObject(hit, true)
+
+        yield* Effect.tryPromise({
+          try: () => writeFile(path.join(work, sourceName), unit.source, "utf8"),
+          catch: (cause) => new Error(String(cause))
+        }).pipe(Effect.orDie)
+
+        const asm = yield* scanInlineAsm({
+          compiler,
+          flags: compileFlags,
+          sourceFile: sourceName,
+          work,
+          timeoutMs,
+          rawSources: [{ name: sourceName, text: unit.source }, { name: "types.h", text: job.headers }]
+        })
+        if (!asm.ok) return fail(unit.symbol, asm.reason)
+        // Refuse before compiling; a refused unit is not worth caching.
+        if (asm.hit !== undefined && unit.allowInlineAsm !== true) {
+          return fail(unit.symbol, inlineAsmRefusal(asm.hit))
+        }
+
+        const compiled = yield* catchRun(
+          runProcess(compiler, [...compileFlags, "-o", objectName, sourceName], work, timeoutMs)
+        )
+        if (compiled.code !== 0) return fail(unit.symbol, `compile failed:\n${compiled.stderr || compiled.stdout}`)
+
+        const mangledNm = yield* catchRun(runProcess(nm, [objectName], work, timeoutMs))
+        const demangledNm = yield* catchRun(runProcess(nm, ["-C", objectName], work, timeoutMs))
+        const mangled = resolveEntrySymbol(mangledNm.stdout, demangledNm.stdout, unit.symbol)
+        if (mangled === undefined || !safeSymbol(mangled)) {
+          return fail(unit.symbol, `symbol ${unit.symbol} not found in ${objectName}\n${demangledNm.stdout || mangledNm.stdout}`)
+        }
+
+        const table = yield* catchRun(runProcess(objdump, ["-t", objectName], work, timeoutMs))
+        const found = findObjectSymbol(table.stdout, mangled)
+        if (found === undefined) return fail(unit.symbol, `symbol ${mangled} missing from the symbol table of ${objectName}`)
+        // ELFv1 PowerPC puts the function symbol on its descriptor in .opd; the
+        // code itself starts the object's .text.
+        const inCode = found.section.startsWith(".text")
+        const section = inCode ? found.section : ".text"
+        const offset = inCode ? found.value : 0
+
+        const dump = yield* catchRun(runProcess(objdump, ["-r", objectName], work, timeoutMs))
+        if (dump.code !== 0) return fail(unit.symbol, `objdump -r failed: ${dump.stderr || dump.stdout}`)
+        const relocations = parseSectionRelocations(dump.stdout, section)
+          .map((relocation) => ({ ...relocation, offset: relocation.offset - offset }))
+          .filter((relocation) => relocation.offset >= 0 && relocation.offset < found.size)
+
+        const plain = yield* catchRun(runProcess(nm, ["-u", objectName], work, timeoutMs))
+        const pretty = yield* catchRun(runProcess(nm, ["-u", "-C", objectName], work, timeoutMs))
+        const demangledNames = parseUndefined(pretty.stdout)
+        const undefinedPairs = parseUndefined(plain.stdout).map((name, at) => ({
+          mangled: name,
+          demangled: demangledNames[at] ?? name
+        }))
+
+        const meta: CachedUnit = {
+          version: 1,
+          asmHit: asm.hit ?? null,
+          mangled,
+          section,
+          offset,
+          size: found.size,
+          relocations,
+          undefinedPairs
+        }
+        yield* cache.put(key, meta, objectPath)
+        return toObject(meta, false)
+      })
+
+    // Units are independent until the link, so they compile side by side.
+    const prepared = yield* Effect.forEach(job.units, prepare, { concurrency: linkConcurrency })
     const objects: Array<LinkObject> = []
     const undefinedPairs: Array<{ mangled: string; demangled: string }> = []
-
-    for (let index = 0; index < job.units.length; index++) {
+    let reused = 0
+    prepared.forEach((result, index) => {
       const unit = job.units[index]
-      if (unit === undefined) continue
-      const address = parseAddress(unit.address)
-      if (address === undefined) {
-        outcomes.set(unit.symbol, failed(unit.symbol, `bad address ${unit.address}`))
-        continue
+      if (unit === undefined) return
+      if (!result.ok) {
+        outcomes.set(unit.symbol, result.outcome)
+        return
       }
-      const sourceName = `unit${index}.${extension}`
-      const objectName = `unit${index}.o`
-      yield* Effect.tryPromise({
-        try: () => writeFile(path.join(work, sourceName), unit.source, "utf8"),
-        catch: (cause) => new Error(String(cause))
-      }).pipe(Effect.orDie)
-
-      // Audit A-032: the same inline-assembly rule as a checkout match.
-      const asm = yield* scanInlineAsm({
-        compiler,
-        flags: compileFlags,
-        sourceFile: sourceName,
-        work,
-        timeoutMs,
-        rawSources: [{ name: sourceName, text: unit.source }, { name: "types.h", text: job.headers }]
-      })
-      if (!asm.ok) {
-        outcomes.set(unit.symbol, failed(unit.symbol, asm.reason))
-        continue
-      }
-      if (asm.hit !== undefined && unit.allowInlineAsm !== true) {
-        outcomes.set(unit.symbol, failed(unit.symbol, inlineAsmRefusal(asm.hit)))
-        continue
-      }
-
-      const compiled = yield* catchRun(
-        runProcess(compiler, [...compileFlags, "-o", objectName, sourceName], work, timeoutMs)
-      )
-      if (compiled.code !== 0) {
-        outcomes.set(unit.symbol, failed(unit.symbol, `compile failed:\n${compiled.stderr || compiled.stdout}`))
-        continue
-      }
-
-      const mangledNm = yield* catchRun(runProcess(nm, [objectName], work, timeoutMs))
-      const demangledNm = yield* catchRun(runProcess(nm, ["-C", objectName], work, timeoutMs))
-      const mangled = resolveEntrySymbol(mangledNm.stdout, demangledNm.stdout, unit.symbol)
-      if (mangled === undefined || !safeSymbol(mangled)) {
-        outcomes.set(
-          unit.symbol,
-          failed(unit.symbol, `symbol ${unit.symbol} not found in ${objectName}\n${demangledNm.stdout || mangledNm.stdout}`)
-        )
-        continue
-      }
-
-      const table = yield* catchRun(runProcess(objdump, ["-t", objectName], work, timeoutMs))
-      const found = findObjectSymbol(table.stdout, mangled)
-      if (found === undefined) {
-        outcomes.set(unit.symbol, failed(unit.symbol, `symbol ${mangled} missing from the symbol table of ${objectName}`))
-        continue
-      }
-      // ELFv1 PowerPC puts the function symbol on its descriptor in .opd; the
-      // code itself starts the object's .text.
-      const inCode = found.section.startsWith(".text")
-      const section = inCode ? found.section : ".text"
-      const offset = inCode ? found.value : 0
-
-      const dump = yield* catchRun(runProcess(objdump, ["-r", objectName], work, timeoutMs))
-      if (dump.code !== 0) {
-        outcomes.set(unit.symbol, failed(unit.symbol, `objdump -r failed: ${dump.stderr || dump.stdout}`))
-        continue
-      }
-      const relocations = parseSectionRelocations(dump.stdout, section)
-        .map((relocation) => ({ ...relocation, offset: relocation.offset - offset }))
-        .filter((relocation) => relocation.offset >= 0 && relocation.offset < found.size)
-
-      const plain = yield* catchRun(runProcess(nm, ["-u", objectName], work, timeoutMs))
-      const pretty = yield* catchRun(runProcess(nm, ["-u", "-C", objectName], work, timeoutMs))
-      const demangledNames = parseUndefined(pretty.stdout)
-      parseUndefined(plain.stdout).forEach((name, at) => {
-        undefinedPairs.push({ mangled: name, demangled: demangledNames[at] ?? name })
-      })
-
-      objects.push({
-        file: objectName,
-        symbol: unit.symbol,
-        mangled,
-        address,
-        section,
-        offset,
-        size: found.size,
-        relocations
-      })
-    }
+      if (result.cached) reused++
+      objects.push(result.object)
+      undefinedPairs.push(...result.undefinedPairs)
+    })
 
     if (objects.length === 0) {
       return {
@@ -481,7 +549,8 @@ export const runLinkJob = Effect.fn("runLinkJob")(function*(job: LinkJobRequest)
     const passed = units.filter((unit) => unit.passed).length
     return {
       compilerOk: true,
-      diagnostics: `${passed}/${units.length} functions matched at their original addresses`,
+      diagnostics: `${passed}/${units.length} functions matched at their original addresses` +
+        (reused > 0 ? ` (${reused} reused from earlier builds)` : ""),
       toolchainDigest,
       units
     } satisfies LinkEngineResult
