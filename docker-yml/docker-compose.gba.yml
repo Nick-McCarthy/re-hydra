@@ -2,6 +2,7 @@
 #   docker compose -f compose.yaml -f docker-yml/docker-compose.gba.yml up -d --build matchd
 services:
   matchd:
+    image: re-hydra-matchd-gba
     build:
       context: ./apps/matchd
       dockerfile: Dockerfile.agbcc

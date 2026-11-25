@@ -16,6 +16,7 @@ export const n64Gcc: MatchTarget = {
   tools: {
     c: { env: "MATCHD_N64_GCC", fallback: "mips-linux-gnu-gcc" },
     nm: { env: "MATCHD_MIPS_NM", fallback: "mips-linux-gnu-nm" },
-    objdump: { env: "MATCHD_MIPS_OBJDUMP", fallback: "mips-linux-gnu-objdump" }
+    objdump: { env: "MATCHD_MIPS_OBJDUMP", fallback: "mips-linux-gnu-objdump" },
+    ld: { env: "MATCHD_MIPS_LD", fallback: "mips-linux-gnu-ld" }
   }
 }

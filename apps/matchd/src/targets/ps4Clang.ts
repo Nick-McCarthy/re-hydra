@@ -18,6 +18,7 @@ export const ps4Clang: MatchTarget = {
     c: { env: "MATCHD_CLANG", fallback: "ps4-clang" },
     cpp: { env: "MATCHD_CLANG", fallback: "ps4-clang" },
     nm: { env: "MATCHD_LLVM_NM", fallback: "llvm-nm" },
-    objdump: { env: "MATCHD_LLVM_OBJDUMP", fallback: "llvm-objdump" }
+    objdump: { env: "MATCHD_LLVM_OBJDUMP", fallback: "llvm-objdump" },
+    ld: { env: "MATCHD_LLD", fallback: "ld.lld" }
   }
 }

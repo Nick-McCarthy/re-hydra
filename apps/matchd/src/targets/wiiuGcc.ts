@@ -17,6 +17,7 @@ export const wiiuGcc: MatchTarget = {
     c: { env: "MATCHD_WIIU_GCC", fallback: "powerpc-linux-gnu-gcc" },
     cpp: { env: "MATCHD_WIIU_GXX", fallback: "powerpc-linux-gnu-g++" },
     nm: { env: "MATCHD_WIIU_NM", fallback: "powerpc-linux-gnu-nm" },
-    objdump: { env: "MATCHD_WIIU_OBJDUMP", fallback: "powerpc-linux-gnu-objdump" }
+    objdump: { env: "MATCHD_WIIU_OBJDUMP", fallback: "powerpc-linux-gnu-objdump" },
+    ld: { env: "MATCHD_WIIU_LD", fallback: "powerpc-linux-gnu-ld" }
   }
 }

@@ -17,6 +17,7 @@ export const pspGcc: MatchTarget = {
     c: { env: "MATCHD_PSP_GCC", fallback: "psp-gcc" },
     cpp: { env: "MATCHD_PSP_GXX", fallback: "psp-g++" },
     nm: { env: "MATCHD_PSP_NM", fallback: "psp-nm" },
-    objdump: { env: "MATCHD_PSP_OBJDUMP", fallback: "psp-objdump" }
+    objdump: { env: "MATCHD_PSP_OBJDUMP", fallback: "psp-objdump" },
+    ld: { env: "MATCHD_PSP_LD", fallback: "psp-ld" }
   }
 }

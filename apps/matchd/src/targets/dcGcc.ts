@@ -19,6 +19,7 @@ export const dcGcc: MatchTarget = {
     c: { env: "MATCHD_DC_GCC", fallback: "dc-gcc" },
     cpp: { env: "MATCHD_DC_GXX", fallback: "dc-g++" },
     nm: { env: "MATCHD_DC_NM", fallback: "sh4-linux-gnu-nm" },
-    objdump: { env: "MATCHD_DC_OBJDUMP", fallback: "dc-objdump" }
+    objdump: { env: "MATCHD_DC_OBJDUMP", fallback: "dc-objdump" },
+    ld: { env: "MATCHD_DC_LD", fallback: "sh4-linux-gnu-ld" }
   }
 }

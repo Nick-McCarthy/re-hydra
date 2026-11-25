@@ -20,6 +20,9 @@ export const saturnGcc: MatchTarget = {
   tools: {
     c: { env: "MATCHD_SATURN_GCC", fallback: "saturn-gcc" },
     nm: { env: "MATCHD_SATURN_NM", fallback: "sh-elf-nm" },
-    objdump: { env: "MATCHD_SATURN_OBJDUMP", fallback: "saturn-objdump" }
+    objdump: { env: "MATCHD_SATURN_OBJDUMP", fallback: "saturn-objdump" },
+    ld: { env: "MATCHD_SATURN_LD", fallback: "sh-elf-ld" },
+    // The wrapper compiles with -ml; sh-elf-ld defaults to big-endian.
+    ldFlags: ["-EL"]
   }
 }

@@ -18,6 +18,8 @@ export const n3dsGcc: MatchTarget = {
     c: { env: "MATCHD_3DS_GCC", fallback: "3ds-gcc" },
     cpp: { env: "MATCHD_3DS_GXX", fallback: "3ds-g++" },
     nm: { env: "MATCHD_3DS_NM", fallback: "arm-none-eabi-nm" },
-    objdump: { env: "MATCHD_3DS_OBJDUMP", fallback: "arm-none-eabi-objdump" }
+    objdump: { env: "MATCHD_3DS_OBJDUMP", fallback: "arm-none-eabi-objdump" },
+    ld: { env: "MATCHD_3DS_LD", fallback: "arm-none-eabi-ld" },
+    thumbAs: { env: "MATCHD_3DS_AS", fallback: "arm-none-eabi-as" }
   }
 }

@@ -13,6 +13,7 @@ export const hostGcc: MatchTarget = {
     c: { env: "MATCHD_GCC", fallback: "gcc" },
     cpp: { env: "MATCHD_GXX", fallback: "g++" },
     nm: { env: "MATCHD_NM", fallback: "nm" },
-    objdump: { env: "MATCHD_OBJDUMP", fallback: "objdump" }
+    objdump: { env: "MATCHD_OBJDUMP", fallback: "objdump" },
+    ld: { env: "MATCHD_LD", fallback: "ld" }
   }
 }

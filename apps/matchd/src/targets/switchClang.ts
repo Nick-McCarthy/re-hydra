@@ -17,6 +17,7 @@ export const switchClang: MatchTarget = {
     c: { env: "MATCHD_CLANG", fallback: "switch-clang" },
     cpp: { env: "MATCHD_CLANG", fallback: "switch-clang" },
     nm: { env: "MATCHD_LLVM_NM", fallback: "llvm-nm" },
-    objdump: { env: "MATCHD_LLVM_OBJDUMP", fallback: "llvm-objdump" }
+    objdump: { env: "MATCHD_LLVM_OBJDUMP", fallback: "llvm-objdump" },
+    ld: { env: "MATCHD_LLD", fallback: "ld.lld" }
   }
 }

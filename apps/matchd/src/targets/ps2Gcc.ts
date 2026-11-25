@@ -18,6 +18,7 @@ export const ps2Gcc: MatchTarget = {
     c: { env: "MATCHD_PS2_GCC", fallback: "ps2-gcc" },
     cpp: { env: "MATCHD_PS2_GXX", fallback: "ps2-g++" },
     nm: { env: "MATCHD_PS2_NM", fallback: "mips64el-linux-gnuabi64-nm" },
-    objdump: { env: "MATCHD_PS2_OBJDUMP", fallback: "mips64el-linux-gnuabi64-objdump" }
+    objdump: { env: "MATCHD_PS2_OBJDUMP", fallback: "mips64el-linux-gnuabi64-objdump" },
+    ld: { env: "MATCHD_PS2_LD", fallback: "mips64el-linux-gnuabi64-ld" }
   }
 }

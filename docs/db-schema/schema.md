@@ -988,6 +988,30 @@ CREATE INDEX password_resets_open_by_user
   ON password_resets (user_id) WHERE used_at IS NULL;
 ```
 
+## Binary symbols — migration 020
+
+```sql
+-- Data labels and thunks from the Ghidra export, so an integration build can
+-- define them at their original addresses. Replaced whole by an import that
+-- carries `symbols`; kept by one that does not.
+CREATE TABLE binary_symbols (
+  binary_id  uuid NOT NULL REFERENCES binaries (id) ON DELETE CASCADE,
+  name       text NOT NULL,
+  address    bigint NOT NULL CHECK (address >= 0),
+  kind       text NOT NULL CHECK (kind IN ('data', 'function')),
+  PRIMARY KEY (binary_id, name, address)
+);
+```
+
+## Integration claim token — migration 021
+
+```sql
+-- A fresh token on each claim. The claimer renews claimed_at every 30 s and
+-- writes results only while the row still carries its token, so a long build
+-- is not run twice and a worker that lost the claim writes nothing.
+ALTER TABLE integrations ADD COLUMN claim_token uuid;
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

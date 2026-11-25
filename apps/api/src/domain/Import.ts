@@ -28,6 +28,18 @@ export const ImportFunction = Schema.Struct({
 
 export type ImportFunction = typeof ImportFunction.Type
 
+/**
+ * A global or a non-chunk function (a thunk) with its address in the original
+ * program. Integration builds link references to these names there.
+ */
+export const ImportSymbol = Schema.Struct({
+  name: SymbolName,
+  address: Schema.String.check(Schema.isMinLength(1)),
+  kind: Schema.Literals(["data", "function"])
+}).annotate({ identifier: "ImportSymbol" })
+
+export type ImportSymbol = typeof ImportSymbol.Type
+
 export const GhidraExportPayload = Schema.Struct({
   binarySha256: Schema.String.check(Schema.isMinLength(64)).check(
     Schema.isMaxLength(64)
@@ -39,7 +51,9 @@ export const GhidraExportPayload = Schema.Struct({
   types: Schema.String,
   /** Full binary bytes optional; function bodies are enough for matching. */
   binaryBase64: Schema.optionalKey(Schema.String),
-  functions: Schema.Array(ImportFunction).check(Schema.isMinLength(1))
+  functions: Schema.Array(ImportFunction).check(Schema.isMinLength(1)),
+  /** Exports from before symbols were added leave this out. */
+  symbols: Schema.optionalKey(Schema.Array(ImportSymbol).check(Schema.isMaxLength(200_000)))
 }).annotate({ identifier: "GhidraExportPayload" })
 
 export type GhidraExportPayload = typeof GhidraExportPayload.Type

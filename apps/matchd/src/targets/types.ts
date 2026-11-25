@@ -27,5 +27,18 @@ export type MatchTarget = {
     readonly cpp?: TargetTool
     readonly nm: TargetTool
     readonly objdump: TargetTool
+    /**
+     * Links an integration build. Absent for COFF targets, whose objects cannot
+     * be placed at fixed addresses with the tools in the image.
+     */
+    readonly ld?: TargetTool
+    /** Extra linker options, such as the byte order a wrapper compiles for. */
+    readonly ldFlags?: ReadonlyArray<string>
+    /**
+     * ARM only. Assembles the known callees of Thumb calls as Thumb symbols
+     * (`.thumb_set`). A linker-script symbol is taken for ARM code, and the
+     * linker would route the call through an interworking veneer.
+     */
+    readonly thumbAs?: TargetTool
   }
 }

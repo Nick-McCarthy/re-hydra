@@ -16,6 +16,7 @@ export const ps1Gcc: MatchTarget = {
     c: { env: "MATCHD_PS1_GCC", fallback: "mipsel-linux-gnu-gcc" },
     cpp: { env: "MATCHD_PS1_GXX", fallback: "mipsel-linux-gnu-g++" },
     nm: { env: "MATCHD_MIPSEL_NM", fallback: "mipsel-linux-gnu-nm" },
-    objdump: { env: "MATCHD_MIPSEL_OBJDUMP", fallback: "mipsel-linux-gnu-objdump" }
+    objdump: { env: "MATCHD_MIPSEL_OBJDUMP", fallback: "mipsel-linux-gnu-objdump" },
+    ld: { env: "MATCHD_MIPSEL_LD", fallback: "mipsel-linux-gnu-ld" }
   }
 }

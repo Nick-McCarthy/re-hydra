@@ -297,6 +297,17 @@ const blank = (
   return { bytes: out, masked }
 }
 
+/** Blank relocation fields in a copy of `bytes`. */
+export const maskBytes = (
+  bytes: Uint8Array,
+  relocations: ReadonlyArray<Relocation>,
+  widths: RelocationWidths = allRelocationWidths(),
+  endian: ObjectEndian = "little"
+): Uint8Array | { readonly reason: string } => {
+  const result = blank(bytes, relocations, widths, endian)
+  return "reason" in result ? result : result.bytes
+}
+
 /**
  * A blanked nibble prints as `?`. A nibble with some bits blanked prints the
  * bits that are left, so `48` under a branch mask still shows the opcode.

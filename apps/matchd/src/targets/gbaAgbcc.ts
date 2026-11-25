@@ -15,6 +15,8 @@ export const gbaAgbcc: MatchTarget = {
   tools: {
     c: { env: "MATCHD_AGBCC", fallback: "agbcc-cc" },
     nm: { env: "MATCHD_ARM_NM", fallback: "arm-none-eabi-nm" },
-    objdump: { env: "MATCHD_ARM_OBJDUMP", fallback: "arm-none-eabi-objdump" }
+    objdump: { env: "MATCHD_ARM_OBJDUMP", fallback: "arm-none-eabi-objdump" },
+    ld: { env: "MATCHD_ARM_LD", fallback: "arm-none-eabi-ld" },
+    thumbAs: { env: "MATCHD_ARM_AS", fallback: "arm-none-eabi-as" }
   }
 }

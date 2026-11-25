@@ -22,6 +22,8 @@ import migration016 from "./migrations/016_project_members.js"
 import migration017 from "./migrations/017_join_requests.js"
 import migration018 from "./migrations/018_discussion.js"
 import migration019 from "./migrations/019_password_resets.js"
+import migration020 from "./migrations/020_binary_symbols.js"
+import migration021 from "./migrations/021_integration_claim_token.js"
 
 const program = PgMigrator.run({
   loader: Migrator.fromRecord({
@@ -43,7 +45,9 @@ const program = PgMigrator.run({
     "016_project_members": migration016,
     "017_join_requests": migration017,
     "018_discussion": migration018,
-    "019_password_resets": migration019
+    "019_password_resets": migration019,
+    "020_binary_symbols": migration020,
+    "021_integration_claim_token": migration021
   })
 }).pipe(
   Effect.tap((applied) =>

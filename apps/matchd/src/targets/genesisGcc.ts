@@ -20,6 +20,7 @@ export const genesisGcc: MatchTarget = {
     c: { env: "MATCHD_GENESIS_GCC", fallback: "genesis-gcc" },
     cpp: { env: "MATCHD_GENESIS_GXX", fallback: "genesis-g++" },
     nm: { env: "MATCHD_GENESIS_NM", fallback: "m68k-linux-gnu-nm" },
-    objdump: { env: "MATCHD_GENESIS_OBJDUMP", fallback: "m68k-linux-gnu-objdump" }
+    objdump: { env: "MATCHD_GENESIS_OBJDUMP", fallback: "m68k-linux-gnu-objdump" },
+    ld: { env: "MATCHD_GENESIS_LD", fallback: "m68k-linux-gnu-ld" }
   }
 }

@@ -195,6 +195,41 @@ export class ImportsRepo extends Context.Service<
               UPDATE imports SET binary_id = ${binaryId} WHERE id = ${importId}
             `
 
+            // Older exports have no symbol list; keep whatever an earlier import stored.
+            if (payload.symbols !== undefined) {
+              const unique = new Map<string, { name: string; address: string; kind: string }>()
+              for (const symbol of payload.symbols) {
+                const address = yield* parseAddress(symbol.address).pipe(
+                  Effect.mapError(() =>
+                    reject(`Symbol ${symbol.name} has address "${symbol.address}", which is not a number.`)
+                  )
+                )
+                if (address < 0n || address > maxInt8) {
+                  return yield* reject(`Symbol ${symbol.name} has address "${symbol.address}", which is out of range.`)
+                }
+                unique.set(`${symbol.name}@${address}`, {
+                  name: symbol.name,
+                  address: address.toString(),
+                  kind: symbol.kind
+                })
+              }
+              yield* sql`DELETE FROM binary_symbols WHERE binary_id = ${binaryId}`
+              const rows = [...unique.values()]
+              for (let start = 0; start < rows.length; start += 5_000) {
+                const batch = rows.slice(start, start + 5_000)
+                yield* sql`
+                  INSERT INTO binary_symbols (binary_id, name, address, kind)
+                  SELECT ${binaryId}, s.name, s.address, s.kind
+                  FROM unnest(
+                    ${batch.map((row) => row.name)}::text[],
+                    ${batch.map((row) => row.address)}::bigint[],
+                    ${batch.map((row) => row.kind)}::text[]
+                  ) AS s(name, address, kind)
+                  ON CONFLICT DO NOTHING
+                `
+              }
+            }
+
             const revRows = yield* sql<{ readonly revision: number }>`
               SELECT COALESCE(MAX(revision), 0) AS revision
               FROM type_revisions

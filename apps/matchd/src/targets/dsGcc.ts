@@ -18,6 +18,8 @@ export const dsGcc: MatchTarget = {
     c: { env: "MATCHD_DS_GCC", fallback: "arm-none-eabi-gcc" },
     cpp: { env: "MATCHD_DS_GXX", fallback: "arm-none-eabi-g++" },
     nm: { env: "MATCHD_DS_NM", fallback: "arm-none-eabi-nm" },
-    objdump: { env: "MATCHD_DS_OBJDUMP", fallback: "arm-none-eabi-objdump" }
+    objdump: { env: "MATCHD_DS_OBJDUMP", fallback: "arm-none-eabi-objdump" },
+    ld: { env: "MATCHD_DS_LD", fallback: "arm-none-eabi-ld" },
+    thumbAs: { env: "MATCHD_DS_AS", fallback: "arm-none-eabi-as" }
   }
 }

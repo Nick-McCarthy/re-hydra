@@ -18,6 +18,7 @@ export const ps3Gcc: MatchTarget = {
     c: { env: "MATCHD_PS3_GCC", fallback: "powerpc64-linux-gnu-gcc" },
     cpp: { env: "MATCHD_PS3_GXX", fallback: "powerpc64-linux-gnu-g++" },
     nm: { env: "MATCHD_PS3_NM", fallback: "powerpc64-linux-gnu-nm" },
-    objdump: { env: "MATCHD_PS3_OBJDUMP", fallback: "ps3-objdump" }
+    objdump: { env: "MATCHD_PS3_OBJDUMP", fallback: "ps3-objdump" },
+    ld: { env: "MATCHD_PS3_LD", fallback: "powerpc64-linux-gnu-ld" }
   }
 }

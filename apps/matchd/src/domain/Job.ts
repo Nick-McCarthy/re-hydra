@@ -79,7 +79,18 @@ export const LinkJobRequest = Schema.Struct({
   flags: Schema.optionalKey(Schema.Array(Schema.String)),
   expectedToolchainDigest: Schema.optionalKey(Schema.String),
   headers: Schema.String,
-  units: Schema.Array(LinkUnit).check(Schema.isMinLength(1))
+  units: Schema.Array(LinkUnit).check(Schema.isMinLength(1)),
+  /**
+   * Original addresses of functions the import knows but this build does not
+   * link. Calls to them are linked to those addresses. Other references are
+   * blanked before the compare.
+   */
+  symbols: Schema.optionalKey(
+    Schema.Array(Schema.Struct({
+      name: Schema.String.check(Schema.isMinLength(1)),
+      address: Schema.String.check(Schema.isPattern(/^(0x[0-9a-fA-F]{1,16}|[0-9]{1,20})$/))
+    })).check(Schema.isMaxLength(200_000))
+  )
 }).annotate({ identifier: "LinkJobRequest" })
 
 export type LinkJobRequest = typeof LinkJobRequest.Type

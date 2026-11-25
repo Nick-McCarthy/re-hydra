@@ -75,7 +75,12 @@ export const LinkJobRequest = Schema.Struct({
     originalBytesBase64: Schema.String,
     source: Schema.String,
     allowInlineAsm: Schema.optionalKey(Schema.Boolean)
-  }))
+  })),
+  /** Imported functions this build does not link, at their original addresses. */
+  symbols: Schema.optionalKey(Schema.Array(Schema.Struct({
+    name: Schema.String,
+    address: Schema.String
+  })))
 })
 
 export type LinkJobRequest = typeof LinkJobRequest.Type

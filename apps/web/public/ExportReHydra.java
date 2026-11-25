@@ -15,6 +15,13 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
+import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolIterator;
+import ghidra.program.model.symbol.SymbolType;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.regex.Pattern;
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.file.Files;
@@ -25,6 +32,9 @@ public class ExportReHydra extends GhidraScript {
 	private static final int DECOMPILE_TIMEOUT_SEC = 30;
 	/** 0 exports every defined function. Set a positive count to stop after that many. */
 	private static final int MAX_FUNCTIONS = 0;
+	/** Names re-hydra accepts. Others are left out of the symbol list. */
+	private static final Pattern SYMBOL_NAME = Pattern.compile("^[A-Za-z0-9_:<>~,.*&()\\[\\]+=!$@?`' -]{1,256}$");
+	private static final int MAX_SYMBOLS = 200000;
 
 	@Override
 	public void run() throws Exception {
@@ -68,8 +78,10 @@ public class ExportReHydra extends GhidraScript {
 		root.addProperty("language", currentProgram.getLanguageID().getIdAsString());
 		root.addProperty("types", "");
 		root.add("functions", functions);
+		JsonArray symbols = exportSymbols();
+		root.add("symbols", symbols);
 		Files.writeString(out.toPath(), new GsonBuilder().setPrettyPrinting().create().toJson(root));
-		println("Wrote " + functions.size() + " functions, skipped " + skipped + ", to " + out.getAbsolutePath());
+		println("Wrote " + functions.size() + " functions and " + symbols.size() + " symbols, skipped " + skipped + ", to " + out.getAbsolutePath());
 	}
 
 	private JsonObject exportFunction(DecompInterface decomp, Function function) {
@@ -109,6 +121,50 @@ public class ExportReHydra extends GhidraScript {
 		}
 		row.add("callees", callees);
 		return row;
+	}
+
+	/**
+	 * Addresses of globals and of functions that are not chunks (thunks such as
+	 * PLT stubs). The integration build links references to these names at
+	 * their original addresses, so a matched function's data accesses and
+	 * library calls are checked too. External symbols have no address here.
+	 */
+	private JsonArray exportSymbols() {
+		JsonArray symbols = new JsonArray();
+		Set<String> seen = new HashSet<>();
+		SymbolIterator it = currentProgram.getSymbolTable().getAllSymbols(true);
+		while (it.hasNext() && !monitor.isCancelled() && symbols.size() < MAX_SYMBOLS) {
+			Symbol symbol = it.next();
+			if (symbol.isExternal() || !symbol.isPrimary() || !symbol.getAddress().isMemoryAddress()) {
+				continue;
+			}
+			String kind;
+			if (symbol.getSymbolType() == SymbolType.FUNCTION) {
+				Function function = currentProgram.getFunctionManager().getFunctionAt(symbol.getAddress());
+				if (function == null || !function.isThunk()) {
+					continue;
+				}
+				kind = "function";
+			} else if (symbol.getSymbolType() == SymbolType.LABEL) {
+				MemoryBlock block = currentProgram.getMemory().getBlock(symbol.getAddress());
+				if (block == null || block.isExecute()) {
+					continue;
+				}
+				kind = "data";
+			} else {
+				continue;
+			}
+			String name = symbol.getName();
+			if (!SYMBOL_NAME.matcher(name).matches() || !seen.add(name)) {
+				continue;
+			}
+			JsonObject row = new JsonObject();
+			row.addProperty("name", name);
+			row.addProperty("address", hexAddress(symbol.getAddress().getOffset()));
+			row.addProperty("kind", kind);
+			symbols.add(row);
+		}
+		return symbols;
 	}
 
 	private String hexAddress(long offset) {

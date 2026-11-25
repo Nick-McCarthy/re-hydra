@@ -17,6 +17,7 @@ export const gamecubeMwcc: MatchTarget = {
     c: { env: "MATCHD_MWCC", fallback: "mwcc-cc" },
     cpp: { env: "MATCHD_MWCC", fallback: "mwcc-cc" },
     nm: { env: "MATCHD_PPC_NM", fallback: "powerpc-linux-gnu-nm" },
-    objdump: { env: "MATCHD_PPC_OBJDUMP", fallback: "powerpc-linux-gnu-objdump" }
+    objdump: { env: "MATCHD_PPC_OBJDUMP", fallback: "powerpc-linux-gnu-objdump" },
+    ld: { env: "MATCHD_PPC_LD", fallback: "powerpc-linux-gnu-ld" }
   }
 }

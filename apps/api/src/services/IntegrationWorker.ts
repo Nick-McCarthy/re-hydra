@@ -1,4 +1,4 @@
-import { Effect, Layer, Option } from "effect"
+import { Config, Effect, Fiber, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql"
 import type { SourceLanguage, Toolchain } from "../domain/Project.js"
 import { Activity } from "./Activity.js"
@@ -28,7 +28,7 @@ type UnitSource = {
   readonly allow_inline_asm: boolean
 }
 
-const asLanguage = (value: string): SourceLanguage => (value === "cpp" ? "cpp" : "c")
+const asLanguage =(value: string): SourceLanguage => (value === "cpp" ? "cpp" : "c")
 
 /**
  * Claims a queued integration build, links the matched sources at their
@@ -40,6 +40,10 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
   const matchd = yield* MatchdClient
   const stats = yield* ProjectChunkStats
   const activity = yield* Activity
+  // A running build whose claim has not been renewed for this long is taken
+  // again. The claimer renews it far more often than that.
+  const RECLAIM_AFTER_SECONDS = yield* Config.Int("INTEGRATION_RECLAIM_SECONDS").pipe(Config.withDefault(120))
+  const HEARTBEAT_SECONDS = yield* Config.Int("INTEGRATION_HEARTBEAT_SECONDS").pipe(Config.withDefault(30))
 
   const reopen = Effect.fn("IntegrationWorker.reopen")(function*(
     projectId: string,
@@ -89,22 +93,69 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
       readonly binary_id: string
       readonly language: string
       readonly toolchain: Toolchain
+      readonly claim_token: string
     }>`
       UPDATE integrations
-      SET status = 'running', claimed_at = now()
+      SET status = 'running', claimed_at = now(), claim_token = gen_random_uuid()
       WHERE id = (
         SELECT id FROM integrations
         WHERE status = 'queued'
-           OR (status = 'running' AND claimed_at < now() - interval '2 minutes')
+           OR (status = 'running' AND claimed_at < now() - ${RECLAIM_AFTER_SECONDS} * interval '1 second')
         ORDER BY created_at ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1
       )
-      RETURNING id, project_id, binary_id, language, toolchain
+      RETURNING id, project_id, binary_id, language, toolchain, claim_token
     `
 
     const claimedRow = claimed[0]
     if (claimedRow === undefined) return
+
+    // A large build runs for many minutes. Renewing the claim keeps another
+    // worker from taking it as abandoned; a worker that dies stops renewing,
+    // and the build is claimed again after the reclaim window.
+    const heartbeat = yield* sql`
+      UPDATE integrations
+      SET claimed_at = now()
+      WHERE id = ${claimedRow.id}
+        AND claim_token = ${claimedRow.claim_token}
+        AND status = 'running'
+    `.pipe(
+      Effect.ignore,
+      Effect.delay(`${HEARTBEAT_SECONDS} seconds`),
+      Effect.forever,
+      Effect.forkChild
+    )
+    yield* build(claimedRow).pipe(Effect.ensuring(Fiber.interrupt(heartbeat)))
+  }).pipe(Effect.orDie)
+
+  const build = Effect.fnUntraced(function*(claimedRow: {
+    readonly id: string
+    readonly project_id: string
+    readonly binary_id: string
+    readonly language: string
+    readonly toolchain: Toolchain
+    readonly claim_token: string
+  }) {
+    /**
+     * Locks the integration row if this worker still holds the claim. Every
+     * result write runs inside a transaction that starts with this, so a
+     * worker whose claim was taken over writes nothing.
+     */
+    const stillOwned = Effect.gen(function*() {
+      const rows = yield* sql<{ readonly id: string }>`
+        SELECT id FROM integrations
+        WHERE id = ${claimedRow.id}
+          AND claim_token = ${claimedRow.claim_token}
+          AND status = 'running'
+        FOR UPDATE
+      `
+      if (rows[0] === undefined) {
+        yield* Effect.logWarning(`integration ${claimedRow.id} was claimed by another worker; result dropped`)
+        return false
+      }
+      return true
+    })
 
     const contextRows = yield* sql<{
       readonly arch: string
@@ -217,15 +268,33 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
     }
 
     if (linkUnits.length === 0) {
-      yield* finish("error", "Integration build had no source to link", "matched source is missing", null)
-      yield* activity.record({
-        projectId: job.project_id,
-        kind: "integration_failed",
-        subjectId: job.id,
-        summary: "Integration build failed: matched source is missing"
-      })
+      yield* sql.withTransaction(Effect.gen(function*() {
+        if (!(yield* stillOwned)) return
+        yield* finish("error", "Integration build had no source to link", "matched source is missing", null)
+        yield* activity.record({
+          projectId: job.project_id,
+          kind: "integration_failed",
+          subjectId: job.id,
+          summary: "Integration build failed: matched source is missing"
+        })
+      }))
       return
     }
+
+    // Calls from a matched function to one nobody has matched yet still have
+    // to land on the original address, so send every other imported function,
+    // plus the globals and thunks the export listed.
+    const linkedIds = linkUnits.map((unit) => unit.chunkId)
+    const others = yield* sql<{ readonly name: string; readonly address: string | number | bigint }>`
+      SELECT name, address
+      FROM chunks
+      WHERE binary_id = ${job.binary_id}
+        AND NOT (id = ANY(${linkedIds}::uuid[]))
+      UNION ALL
+      SELECT name, address
+      FROM binary_symbols
+      WHERE binary_id = ${job.binary_id}
+    `
 
     const pins = new Set<string>()
     let expectedDigest: string | undefined
@@ -238,13 +307,16 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
     }
     if (pins.size > 1) {
       const diagnostics = "matches were proved with different compilers"
-      yield* finish("error", "Integration build stopped", diagnostics, null)
-      yield* activity.record({
-        projectId: job.project_id,
-        kind: "integration_failed",
-        subjectId: job.id,
-        summary: "Integration build stopped: matches were proved with different compilers"
-      })
+      yield* sql.withTransaction(Effect.gen(function*() {
+        if (!(yield* stillOwned)) return
+        yield* finish("error", "Integration build stopped", diagnostics, null)
+        yield* activity.record({
+          projectId: job.project_id,
+          kind: "integration_failed",
+          subjectId: job.id,
+          summary: "Integration build stopped: matches were proved with different compilers"
+        })
+      }))
       return
     }
 
@@ -264,7 +336,8 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
         source: unit.source,
         // Audit A-032: the same inline-assembly rule as the checkout match.
         allowInlineAsm: unit.allowInlineAsm
-      }))
+      })),
+      symbols: others.map((row) => ({ name: row.name, address: String(row.address) }))
     }).pipe(
       Effect.catch((err) =>
         Effect.succeed({
@@ -281,6 +354,7 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
     const reopened: Array<string> = []
 
     yield* sql.withTransaction(Effect.gen(function*() {
+      if (!(yield* stillOwned)) return
       for (const failure of localFailures) {
         yield* sql`
           UPDATE integration_units
@@ -362,7 +436,7 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
         summary
       })
     }))
-  }).pipe(Effect.orDie)
+  })
 
   yield* Effect.logInfo("integration worker started")
   yield* processOnce.pipe(

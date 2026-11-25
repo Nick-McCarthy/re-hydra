@@ -25,6 +25,18 @@ Forgot password: the sign-in page links to a form that emails a reset link. The 
 
 The whole contributor loop (import, checkout, heartbeat, miss, match, profile, call-target refusal, integration build, release, sweeper expiry) runs against a real matchd in `apps/api/scripts/verify-checkout-loop.mjs`.
 
+An integration build defines every imported function it does not link at its original address, and blanks references it cannot place (string literals, library code, anything the import does not name). Before this, those resolved to address 0, so a correct match that called an unmatched function was reopened. Checked by `apps/matchd/scripts/verify-link-symbols.mjs`.
+
+`ExportReHydra.java` also exports labelled data (globals in non-executable blocks) and thunks as `symbols`. An import stores them in `binary_symbols` (migration 020); an import without `symbols` keeps the stored list, and one with `symbols` replaces it. The integration build defines those names at their addresses too, so a wrong global address now fails the build instead of being blanked. Existing projects need a re-export from Ghidra to get symbols. Checked by `apps/api/scripts/verify-import-symbols.mjs`.
+
+The link step runs with each target's own compiler flags and linker (`tools.ld` in the target file; lld for `switch-clang` and `ps4-clang`). It places each unit's code section so the function lands on its address, defines known symbols in the script, and reads the result straight from the ELF section headers. On ARM, a known callee of a Thumb branch is defined with `.thumb_set` in a small assembled object (`tools.thumbAs`): a linker-script symbol counts as ARM code, and ld would route the call through an interworking veneer. Base-relative references (PowerPC small data, MIPS `$gp`) get a placeholder in a real `.sdata` and are blanked, because the original base register value is not known. `apps/matchd/scripts/verify-link-targets.ts` builds a reference program on each image and checks that a linked call and a global land where the reference put them, and that a wrong global address fails:
+
+| Target | Integration build |
+| --- | --- |
+| host, n64, ps1, ps2, psp, wiiu, gba, ds, 3ds (ARM and Thumb), switch, ps4, dc, saturn, genesis | Calls and data checked |
+| ps3 (TOC), gamecube-mwcc (r13 small data) | Calls checked; globals are reached through a base register, so their address never appears in the function's bytes and is blanked |
+| msvc-x64, xbox-i386 | Not available: COFF objects and no linker that places them at fixed addresses. The build says so |
+
 Attempt and integration lists are public, but the byte comparison inside a diagnostic is not. A missed attempt shows its original-versus-candidate dump to the submitter, the chunk's current holder, and project owners and maintainers; an integration's mismatch hex goes to owners and maintainers. Everyone else gets the same text with the byte lines removed and a note saying who can see them. These endpoints read an optional bearer token; a bad token counts as signed out.
 
 Seed fixtures:
@@ -49,7 +61,7 @@ These steps add compile capacity and keep the lease, the digest, and the byte ma
 
 ## Compilers
 
-matchd grows as three directories: `families/` (relocation widths), `toolchains/` (how a compiler is pinned), and `targets/` (one registered image). A console is a new family when the relocation names are new, a new toolchain file when the driver is not GCC, and a new target once a compiler the operator can ship emits that object format. The link step stays on host `gcc` until a console linker exists.
+matchd grows as three directories: `families/` (relocation widths), `toolchains/` (how a compiler is pinned), and `targets/` (one registered image). A console is a new family when the relocation names are new, a new toolchain file when the driver is not GCC, and a new target once a compiler the operator can ship emits that object format. A target that supports integration builds also names its linker (`tools.ld`, plus `ldFlags` when needed).
 
 Licensed Nintendo, Sony, Microsoft, ARM, Metrowerks, and Hitachi SDKs are not installed. Each registered compiler below is a public build. The retail SDK compiler is a different binary, so a ROM built with the SDK will not match this one. Ghidra compiler specs describe calling conventions. They are not these binaries.
 
