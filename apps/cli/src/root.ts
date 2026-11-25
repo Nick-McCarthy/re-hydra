@@ -15,7 +15,10 @@ export const hydra = Command.make("hydra").pipe(
       Flag.withDefault(false)
     )
   }),
-  Command.withDescription("re-hydra contributor CLI")
+  Command.withDescription(
+    "re-hydra contributor CLI. Agents: run `hydra skill print` to learn how to work with hydra, " +
+      "or `hydra skill install` to keep it."
+  )
 )
 
 /** Print `value` as JSON with --json, else the lines. */
