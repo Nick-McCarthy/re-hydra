@@ -36,6 +36,7 @@ import { ProjectChunkStats } from "./services/ProjectChunkStats.js"
 import { RateLimits } from "./services/RateLimits.js"
 import { Mailer } from "./services/Mailer.js"
 import { PasswordResets } from "./services/PasswordResets.js"
+import { ReportNotifierLive } from "./services/ReportNotifier.js"
 import { DirectoryRepo } from "./services/DirectoryRepo.js"
 import { ProjectsRepo } from "./services/ProjectsRepo.js"
 import { ProjectModeration } from "./services/ProjectModeration.js"
@@ -147,7 +148,8 @@ const WorkersLive = Layer.mergeAll(
   MatchWorkerLive,
   IntegrationWorkerLive,
   LeaseSweeperLive,
-  MatchdScalerLive
+  MatchdScalerLive,
+  ReportNotifierLive.pipe(Layer.provide(Mailer.layer))
 ).pipe(
   Layer.provide(DataLive),
   Layer.provide(SqlLive)

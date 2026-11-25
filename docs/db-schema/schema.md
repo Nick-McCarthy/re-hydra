@@ -1063,6 +1063,17 @@ CREATE TABLE moderation_actions (
 CREATE INDEX moderation_actions_recent ON moderation_actions (created_at DESC);
 ```
 
+## Report notifications — migration 023
+
+```sql
+-- When the site admins were emailed about a report. The notifier claims rows
+-- with notified_at NULL (FOR UPDATE SKIP LOCKED), emails every active admin
+-- once per batch, and sets it in the same transaction. Rows that existed
+-- before this migration are backfilled, so the backlog is not mailed.
+ALTER TABLE reports ADD COLUMN notified_at timestamptz;
+CREATE INDEX reports_unnotified ON reports (created_at) WHERE notified_at IS NULL;
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.
