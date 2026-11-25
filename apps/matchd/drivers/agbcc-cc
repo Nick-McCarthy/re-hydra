@@ -1,2 +1,2 @@
 #!/bin/sh
-exec npx --prefix /app tsx /app/src/drivers/agbcc-cc.ts "$@"
+exec node /opt/drivers/agbcc-cc.mjs "$@"
