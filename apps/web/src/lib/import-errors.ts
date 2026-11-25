@@ -90,13 +90,7 @@ export function explainExport(text: string): string | null {
     return "language has to be a string."
   }
   if (value.binaryBase64 !== undefined) {
-    if (typeof value.binaryBase64 !== "string") {
-      return "binaryBase64 has to be a string."
-    }
-    const binaryLength = base64ByteLength(value.binaryBase64)
-    if (binaryLength === null || binaryLength === 0) {
-      return "binaryBase64 is not valid base64."
-    }
+    return "Remove binaryBase64: re-hydra does not store whole programs (content policy 2.2). Function bytes are enough for matching, and ExportReHydra never includes it."
   }
   if (value.toolchain !== undefined) {
     if (!isRecord(value.toolchain)) {

@@ -198,7 +198,7 @@ type SampleExport = {
     readonly flags: ReadonlyArray<string>
     readonly image: string
   }
-  readonly binaryBase64: string
+  readonly binarySha256: string
   readonly functions: ReadonlyArray<SampleFunction>
 }
 
@@ -257,9 +257,9 @@ const seedExportProject = (
     const binaryId = randomUUID()
     const revisionId = randomUUID()
     const headers = Buffer.from(sample.types, "utf8")
-    const binary = Buffer.from(sample.binaryBase64, "base64")
     const headersHash = sha256(headers)
-    const binaryHash = sha256(binary)
+    // Like a real import: only the program's hash, as a placeholder blob row.
+    const binaryHash = Buffer.from(sample.binarySha256, "hex")
 
     const prepared = sample.functions.map((fn) => {
       const bytes = Buffer.from(fn.bytesBase64, "base64")
@@ -280,8 +280,7 @@ const seedExportProject = (
 
     const store = yield* Blobs
     const stored: Array<{ readonly bytes: Uint8Array; readonly type: string }> = [
-      { bytes: headers, type: "text/x-c" },
-      { bytes: binary, type: "application/octet-stream" }
+      { bytes: headers, type: "text/x-c" }
     ]
     for (const row of prepared) {
       stored.push(
@@ -293,6 +292,11 @@ const seedExportProject = (
     for (const blob of stored) {
       yield* store.put(blob.bytes, blob.type)
     }
+    yield* sql`
+      INSERT INTO blobs (sha256, size_bytes, content_type)
+      VALUES (${binaryHash}, ${0}, ${"application/octet-stream"})
+      ON CONFLICT DO NOTHING
+    `
 
     yield* sql.withTransaction(Effect.gen(function*() {
       yield* sql`

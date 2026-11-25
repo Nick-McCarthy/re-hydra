@@ -14,7 +14,6 @@ So the site holds:
 | --- | --- |
 | Each function's machine-code bytes, disassembly, and Ghidra's pseudocode | The contributor holding the chunk, in their work bundle. A missed attempt's diagnostics compare the original bytes with the candidate's; that comparison is shown only to the submitter, the chunk's current holder, and project maintainers. Everyone else sees the score without the bytes. Integration diagnostics likewise show bytes only to maintainers |
 | Names of functions, symbols, types, and the binary; each function's address and size | Anyone |
-| The whole binary file, if the owner chose to include it in the import | Not served by any page or API today. It is stored |
 | Source code that contributors submit | The submitter, and later contributors on that chunk (the best attempt so far) |
 | Discussion posts | Anyone |
 
@@ -33,7 +32,7 @@ Most programs people will want to rebuild here are copyrighted by someone else. 
 
 ### 2.2 You may not
 
-- **Distribute the program.** No ROMs, disc images, executables, installers, or download links to them, in any field, file, or post. Leave the full binary out of your import unless `[decision: keep this option, or remove it before launch]`. Function bytes are enough for matching.
+- **Distribute the program.** No ROMs, disc images, executables, installers, or download links to them, in any field, file, or post. Imports never include the whole program: re-hydra keeps only its hash, and an export that carries the full file is refused. Function bytes are enough for matching.
 - **Upload leaked material.** No leaked source code, leaked SDKs, internal documents, or anything that came from a breach. Do not use leaked source to write submissions, even if you rewrite it. If a project's history depends on a leak, it will be removed.
 - **Upload licensed developer tools.** Retail SDK compilers, libraries, and headers stay off re-hydra. The registered compilers are public builds for this reason.
 - **Upload keys or circumvention tools.** No encryption or signing keys, no tools or instructions for getting around copy protection or DRM.
@@ -121,7 +120,7 @@ The policy promises things the product does not do yet:
 | --- | --- | --- |
 | Terms of use, and agreeing to them at sign-up | Makes the policy binding on users | Sign-up requires agreeing to this policy and stores the version (`content-policy-draft-2026-11`) and time. Separate terms of use are not written |
 | A rights confirmation on import (section 2.3) | The importer takes responsibility for what they upload | Done: three checkboxes on the import form; the API refuses an import without `rightsConfirmed=true` and records who confirmed |
-| A decision on full-binary upload (`binaryBase64`) | Matching does not need it. Dropping it removes the riskiest thing stored | Optional in the import today, stored, not served |
+| A decision on full-binary upload (`binaryBase64`) | Matching does not need it. Dropping it removes the riskiest thing stored | Done: dropped. The API refuses an export that carries it; only the program's hash is kept |
 | A license for submitted source (section 2.4), shown on the submit screen | Later contributors see and reuse submissions | Not decided |
 | A report button on projects, chunks, and posts | The malware and abuse path in sections 4.2 and 5 | Done: signed-in users, 10 reports an hour |
 | Admin tools: archive a project, remove material, suspend an account, keep a record of notices | Acting on a takedown within the stated time | Done: `/admin` (reports queue, archive and restore projects, remove posts, suspend and restore accounts, the record). Every action needs a note. Admins are granted with `npm run api:admin -- grant <email>`. Notices that arrive by email are logged by putting their details in the action's note |

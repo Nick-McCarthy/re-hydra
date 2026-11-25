@@ -74,8 +74,7 @@ test("the scratch region starts a page past the last function", () => {
 
 test("section headers are read from a real ELF file", () => {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..")
-  const fixture = JSON.parse(readFileSync(path.join(root, "fixtures/link/export.json"), "utf8"))
-  const sections = readElfSections(Buffer.from(fixture.binaryBase64, "base64"))
+  const sections = readElfSections(readFileSync(path.join(root, "fixtures/link/link.elf")))
   assert.ok(!("reason" in sections))
   const leaf = sections.find((item) => item.name === ".text.leaf")
   assert.deepEqual(leaf, { name: ".text.leaf", address: 0x401000n, fileOffset: 0x1000, size: 4, inFile: true })

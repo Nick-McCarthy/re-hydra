@@ -91,7 +91,7 @@ An unresolved type moves the open and stale chunks that use it to `blocked`. Cle
 
 ### Import and work bundle
 
-The owner uploads JSON from their own Ghidra script. Chunk identity is the binary hash, the address range, and the hash of the raw bytes. Re-importing the same function refreshes pseudocode and does not open a second claim on bytes that are already leased or matched.
+The owner uploads JSON from their own Ghidra script. It carries each function's bytes and the program's SHA-256, never the program itself: an export with `binaryBase64` is refused. Chunk identity is the binary hash, the address range, and the hash of the raw bytes. Re-importing the same function refreshes pseudocode and does not open a second claim on bytes that are already leased or matched.
 
 A checkout returns original bytes, disassembly, pseudocode, the pinned headers, callee signatures, the recipe, the best previous attempt when one exists, and `instructions.agent` for the contributor's agent. When that attempt matched alone and the link then disagreed, the checkout also includes `integration.txt` with the byte comparison. The pseudocode is a hint. Compiling it as-is will not reproduce the original bytes.
 

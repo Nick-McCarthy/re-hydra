@@ -93,7 +93,6 @@ const callees = {
 
 const exportJson = {
   binarySha256,
-  binaryBase64: objectBytes.toString("base64"),
   arch: "x86_64",
   name: "sample.o",
   language: "c",

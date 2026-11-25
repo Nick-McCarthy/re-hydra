@@ -49,7 +49,11 @@ export const GhidraExportPayload = Schema.Struct({
   language: Schema.optionalKey(Schema.String),
   toolchain: Schema.optionalKey(Toolchain),
   types: Schema.String,
-  /** Full binary bytes optional; function bodies are enough for matching. */
+  /**
+   * Refused (content policy 2.2): re-hydra does not store whole programs.
+   * Kept in the schema only so the import can say why, instead of silently
+   * dropping it. Function bytes are enough for matching.
+   */
   binaryBase64: Schema.optionalKey(Schema.String),
   functions: Schema.Array(ImportFunction).check(Schema.isMinLength(1)),
   /** Exports from before symbols were added leave this out. */

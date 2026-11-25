@@ -118,7 +118,6 @@ decoy.disassembly = [
 const addressOf = (name) => `0x${byName.get(name).address.toString(16)}`
 const exportJson = {
   binarySha256,
-  binaryBase64: elf.toString("base64"),
   arch: "x86_64",
   name: "link.elf",
   language: "c",
@@ -144,6 +143,9 @@ const exportJson = {
 }
 
 writeFileSync(join(dir, "export.json"), `${JSON.stringify(exportJson, null, 2)}\n`)
+// The linked image stays out of the export (imports refuse whole programs).
+// matchd's ELF reader test reads it from here.
+writeFileSync(join(dir, "link.elf"), elf)
 for (const name of ["leaf.o", "caller.o", "decoy.o", "image.elf", "link.ld"]) {
   unlinkSync(join(dir, name))
 }

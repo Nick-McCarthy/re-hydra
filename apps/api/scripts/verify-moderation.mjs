@@ -9,7 +9,7 @@
 //   AUDIT_DATABASE_URL=postgres://rehydra:rehydra@127.0.0.1:5432/rehydra_audit \
 //   node apps/api/scripts/verify-moderation.mjs
 import { execFileSync } from "node:child_process"
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { createRequire } from "node:module"
 import path from "node:path"
@@ -81,6 +81,16 @@ await call("POST", "/projects", owner.token, {
 const unconfirmed = await call("POST", `${P}/imports`, owner.token, fixture)
 check("an import without the rights confirmation is refused, saying what to confirm",
   unconfirmed.status === 400 && /own a copy/.test(unconfirmed.body?.detail ?? ""), detail(unconfirmed))
+// A program no earlier run has seen, so nothing could already be stored under its hash.
+const program = randomBytes(4096)
+const programSha = createHash("sha256").update(program).digest("hex")
+const withBinary = await call("POST", `${P}/imports?rightsConfirmed=true`, owner.token, {
+  ...fixture, binarySha256: programSha, binaryBase64: program.toString("base64")
+})
+const storedBinary = await db.query("SELECT 1 FROM blobs WHERE sha256 = decode($1, 'hex')", [programSha])
+check("an import carrying the whole program is refused, and nothing of it is stored",
+  withBinary.status === 400 && /binaryBase64/.test(withBinary.body?.detail ?? "") && storedBinary.rows.length === 0,
+  `${detail(withBinary)} blobRows=${storedBinary.rows.length}`)
 const imported = await call("POST", `${P}/imports?rightsConfirmed=true`, owner.token, fixture)
 const importRow = (await db.query("SELECT rights_confirmed_at, rights_confirmed_by FROM imports WHERE id = $1", [imported.body?.id])).rows[0]
 check("a confirmed import goes through and records who confirmed",

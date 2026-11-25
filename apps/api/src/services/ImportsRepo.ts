@@ -154,6 +154,15 @@ export class ImportsRepo extends Context.Service<
             )
           }
 
+          // Content policy 2.2: no whole programs. Checked before anything is
+          // stored, so the bytes never reach the blob store or the saved export.
+          if (payload.binaryBase64 !== undefined) {
+            return yield* reject(
+              "Remove binaryBase64: re-hydra does not store whole programs. Function bytes are enough for matching, " +
+                "and ExportReHydra never includes it."
+            )
+          }
+
           const binarySha = yield* parseHexSha256(payload.binarySha256)
           const exportJson = Buffer.from(JSON.stringify(payload), "utf8")
           const exportSha = yield* blobs.put(exportJson, "application/json")
@@ -161,20 +170,12 @@ export class ImportsRepo extends Context.Service<
           const headersBytes = Buffer.from(payload.types, "utf8")
           const headersSha = yield* blobs.put(headersBytes, "text/x-c")
 
-          if (payload.binaryBase64 !== undefined) {
-            const binaryBytes = yield* decodeBase64(payload.binaryBase64)
-            const actual = createHash("sha256").update(binaryBytes).digest()
-            if (!actual.equals(binarySha)) {
-              return yield* reject("binarySha256 does not match binaryBase64.")
-            }
-            yield* blobs.put(binaryBytes, "application/octet-stream")
-          } else {
-            yield* sql`
-              INSERT INTO blobs (sha256, size_bytes, content_type)
-              VALUES (${binarySha}, ${0}, ${"application/octet-stream"})
-              ON CONFLICT DO NOTHING
-            `.pipe(Effect.orDie)
-          }
+          // Only the program's hash is kept: a placeholder blob row, no bytes.
+          yield* sql`
+            INSERT INTO blobs (sha256, size_bytes, content_type)
+            VALUES (${binarySha}, ${0}, ${"application/octet-stream"})
+            ON CONFLICT DO NOTHING
+          `.pipe(Effect.orDie)
 
           return yield* sql.withTransaction(Effect.gen(function*() {
             const importId = randomUUID()
