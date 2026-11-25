@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto"
+import { readdirSync, readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises"
 import * as path from "node:path"
 import { Effect } from "effect"
@@ -25,7 +27,42 @@ export type CachedUnit = {
   readonly undefinedPairs: ReadonlyArray<{ readonly mangled: string; readonly demangled: string }>
 }
 
+/**
+ * A hash of matchd's own source. A cached unit holds matchd's reading of the
+ * object (entry symbol, section, relocations), so code that reads objects
+ * differently must not reuse it. Computed once from `src/` (tests left out),
+ * so a new image or a local edit starts a fresh cache even when the cache
+ * directory outlives the container. `MATCHD_BUILD_ID` overrides it.
+ */
+let buildId: string | undefined
+export const matchdBuildId = (): string => {
+  if (buildId !== undefined) return buildId
+  const fromEnv = process.env.MATCHD_BUILD_ID
+  if (fromEnv !== undefined && fromEnv.length > 0) {
+    buildId = fromEnv
+    return buildId
+  }
+  const root = path.dirname(fileURLToPath(import.meta.url))
+  const hash = createHash("sha256")
+  const walk = (dir: string): Array<string> =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) return walk(full)
+      return entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts") ? [full] : []
+    })
+  for (const file of walk(root).sort()) {
+    hash.update(path.relative(root, file).replaceAll("\\", "/"))
+    hash.update("\u0000")
+    hash.update(readFileSync(file))
+    hash.update("\u0000")
+  }
+  buildId = hash.digest("hex").slice(0, 16)
+  return buildId
+}
+
 export type UnitKeyParts = {
+  /** matchd's own code; see matchdBuildId. */
+  readonly build: string
   readonly target: string
   readonly toolchainDigest: string
   readonly language: string
@@ -39,6 +76,7 @@ export const unitCacheKey = (parts: UnitKeyParts): string =>
   createHash("sha256")
     .update(JSON.stringify([
       "link-unit-v1",
+      parts.build,
       parts.target,
       parts.toolchainDigest,
       parts.language,

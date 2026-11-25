@@ -5,7 +5,7 @@ import { Config, Effect } from "effect"
 import { inlineAsmRefusal, scanInlineAsm } from "./asmCheck.js"
 import type { LinkJobRequest } from "./domain/Job.js"
 import { readElfSections } from "./elf.js"
-import { type CachedUnit, type LinkCache, makeLinkCache, unitCacheKey } from "./linkCache.js"
+import { type CachedUnit, type LinkCache, makeLinkCache, matchdBuildId, unitCacheKey } from "./linkCache.js"
 import { checkFlags, describeRefusal } from "./flagPolicy.js"
 import {
   assignKnownSymbols,
@@ -260,6 +260,7 @@ export const runLinkJob = Effect.fn("runLinkJob")(function*(job: LinkJobRequest)
         const objectName = `unit${index}.o`
         const objectPath = path.join(work, objectName)
         const key = unitCacheKey({
+          build: matchdBuildId(),
           target: target.id,
           toolchainDigest,
           language,

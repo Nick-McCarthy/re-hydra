@@ -4,9 +4,10 @@ import { tmpdir } from "node:os"
 import * as path from "node:path"
 import { test } from "node:test"
 import { Effect } from "effect"
-import { type CachedUnit, disabledLinkCache, makeLinkCache, unitCacheKey } from "./linkCache.js"
+import { type CachedUnit, disabledLinkCache, makeLinkCache, matchdBuildId, unitCacheKey } from "./linkCache.js"
 
 const parts = {
+  build: "0123456789abcdef",
   target: "host-gcc",
   toolchainDigest: "sha256:v2:abc",
   language: "c",
@@ -41,6 +42,7 @@ test("every input that shapes the object changes the key; the address is not one
   assert.match(base, /^[0-9a-f]{64}$/)
   assert.equal(unitCacheKey({ ...parts }), base)
   for (const changed of [
+    { build: "fedcba9876543210" },
     { target: "ps2-gcc" },
     { toolchainDigest: "sha256:v2:def" },
     { language: "cpp" },
@@ -51,6 +53,12 @@ test("every input that shapes the object changes the key; the address is not one
   ]) {
     assert.notEqual(unitCacheKey({ ...parts, ...changed }), base, JSON.stringify(changed))
   }
+})
+
+test("the build ID is a stable hash of matchd's source", () => {
+  const id = matchdBuildId()
+  assert.match(id, /^[0-9a-f]{16}$/)
+  assert.equal(matchdBuildId(), id)
 })
 
 test("a stored unit comes back with its object", () =>
