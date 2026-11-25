@@ -8,6 +8,17 @@ import { Uuid } from "./Uuid.js"
  */
 export const POLICY_VERSION = "content-policy-draft-2026-11"
 
+/** Content policy 2.4: submitted source is released under this (SPDX id). */
+export const SOURCE_LICENSE = "CC0-1.0"
+
+/**
+ * Content policy section 3: an account with this many active strikes (not
+ * reversed, younger than STRIKE_WINDOW_DAYS) is closed. Admins suspend by
+ * hand, so a counter-notice can still reverse a strike first.
+ */
+export const STRIKE_LIMIT = 3
+export const STRIKE_WINDOW_DAYS = 365
+
 /** A report that cannot be filed: the target is not on that project, or too many reports. */
 export class ReportRefused extends HttpApiError.Problem<ReportRefused>()("ReportRefused", {
   type: "https://re-hydra.dev/problems/report-refused",
@@ -79,8 +90,26 @@ export const AdminUser = Schema.Struct({
   isAdmin: Schema.Boolean,
   suspendedAt: Schema.NullOr(Schema.String),
   suspendedReason: Schema.NullOr(Schema.String),
+  /** Strikes not reversed and younger than STRIKE_WINDOW_DAYS. */
+  activeStrikes: Schema.Int,
+  /** activeStrikes has reached STRIKE_LIMIT: the policy says close the account. */
+  atStrikeLimit: Schema.Boolean,
   createdAt: Schema.String
 }).annotate({ identifier: "AdminUser" })
+
+export const Strike = Schema.Struct({
+  id: Uuid,
+  user: PersonRef,
+  admin: Schema.NullOr(PersonRef),
+  note: Schema.String,
+  createdAt: Schema.String,
+  reversedAt: Schema.NullOr(Schema.String),
+  reversedBy: Schema.NullOr(PersonRef),
+  reversalNote: Schema.NullOr(Schema.String),
+  /** Counts toward the limit: not reversed and inside the window. */
+  active: Schema.Boolean
+}).annotate({ identifier: "Strike" })
+export type Strike = typeof Strike.Type
 export type AdminUser = typeof AdminUser.Type
 
 export const AdminProject = Schema.Struct({
@@ -102,7 +131,9 @@ export const ModerationActionKind = Schema.Literals([
   "restore_user",
   "resolve_report",
   "grant_admin",
-  "revoke_admin"
+  "revoke_admin",
+  "add_strike",
+  "reverse_strike"
 ])
 
 export const ModerationAction = Schema.Struct({

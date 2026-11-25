@@ -51,7 +51,7 @@ The import is refused until all three are ticked. re-hydra records who confirmed
 
 ### 2.4 Source code you submit
 
-Your submissions are stored and shown to later contributors on that chunk, so they can build on the best attempt. By submitting, you agree that your source is available under `[decision: CC0 1.0, or MIT, or a license each project owner picks]`. You confirm it is your own work and was not copied from leaked or proprietary source.
+Your submissions are stored and shown to later contributors on that chunk, so they can build on the best attempt. By submitting, you release your source under the Creative Commons CC0 1.0 Universal public domain dedication: anyone may use, change, and share it, with no conditions and no credit required. This lets later contributors build on an attempt without tracking who wrote which line. You confirm it is your own work and was not copied from leaked or proprietary source, or from code under another license.
 
 ### 2.5 What counts as infringement here
 
@@ -101,7 +101,7 @@ For a notice under the US Digital Millennium Copyright Act (17 U.S.C. § 512(c)(
 - We act on a complete notice within `[2 business days]`. We usually archive the whole project: it disappears from listings and its pages stop loading, and checkouts end. We may instead remove specific material.
 - We tell the project owner, and forward the notice with your personal contact details removed `[or: as required by law]`.
 - **Counter-notice.** If the owner believes the removal was a mistake or the use is lawful, they can send a counter-notice with the elements in 17 U.S.C. § 512(g)(3). We forward it to you. Unless you tell us within 10 to 14 business days that you have filed a court action, we may restore the material.
-- **Repeat infringers.** We close the accounts of people who repeatedly upload infringing material. Section 2.5 says what counts as a strike. `[decision: e.g. two strikes in 12 months]`.
+- **Repeat infringers.** We close the accounts of people who repeatedly upload infringing material. Section 2.5 says what counts as a strike. An account with three strikes in 12 months is closed. A strike reversed by a counter-notice, or found to be a mistake, does not count.
 
 Rights holders outside the US can use the same address. We handle notices under other laws (for example the EU Digital Services Act) through the same process, adapted as those laws require. `[Lawyer to confirm.]`
 
@@ -147,7 +147,8 @@ The policy promises things the product does not do yet:
 | Terms of use, and agreeing to them at sign-up | Makes the policy binding on users | Sign-up requires agreeing to this policy and stores the version (`content-policy-draft-2026-11`) and time. Separate terms of use are not written |
 | A rights confirmation on import (section 2.3) | The importer takes responsibility for what they upload | Done: three checkboxes on the import form; the API refuses an import without `rightsConfirmed=true` and records who confirmed |
 | A decision on full-binary upload (`binaryBase64`) | Matching does not need it. Dropping it removes the riskiest thing stored | Done: dropped. The API refuses an export that carries it; only the program's hash is kept |
-| A license for submitted source (section 2.4), shown on the submit screen | Later contributors see and reuse submissions | Not decided |
+| A license for submitted source (section 2.4), shown on the submit screen | Later contributors see and reuse submissions | Done: CC0 1.0. Shown under the Submit button, printed by `hydra submit`, stated in the agent instructions, and recorded on each attempt (`source_license`) |
+| A repeat-infringer rule (section 3) | Safe-harbour protection in the US needs one that is actually enforced | Done: three active strikes in 12 months. Admins add and reverse strikes on the Users tab, which shows each account's count and flags the limit; suspension stays a manual step |
 | A report button on projects, chunks, and posts | The malware and abuse path in sections 4.2 and 5 | Done: signed-in users, 10 reports an hour |
 | Admin tools: archive a project, remove material, suspend an account, keep a record of notices | Acting on a takedown within the stated time | Done: `/admin` (reports queue, archive and restore projects, remove posts, suspend and restore accounts, the record). Every action needs a note. Admins are granted with `npm run api:admin -- grant <email>`. Notices that arrive by email are logged by putting their details in the action's note. Admins are emailed about new reports within a minute |
 | A registered DMCA designated agent | Safe-harbour protection in the US needs a registered agent with the Copyright Office | Not done |

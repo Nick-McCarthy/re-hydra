@@ -44,7 +44,7 @@ Read these files before writing:
 - neighbors.json lists functions this one calls. Call them by those names. Leave their bodies out of candidate.c.
 - original.bin is the byte sequence the server compares after compilation.
 ${attempt}${integration}
-candidate.c contains only the translation of that function, in ${language}. Do not use inline assembly; the server rejects it unless the project owner has allowed it for this function. The server compiles that file alone, with types.h included for you, using the recipe in chunk.json. A match means the compiled bytes equal original.bin after the server masks relocations.
+candidate.c contains only the translation of that function, in ${language}. Write it yourself from the files in this directory. Do not copy source from anywhere else (leaked or proprietary code, or code under another license): the person who submits it releases it under CC0 1.0. Do not use inline assembly; the server rejects it unless the project owner has allowed it for this function. The server compiles that file alone, with types.h included for you, using the recipe in chunk.json. A match means the compiled bytes equal original.bin after the server masks relocations.
 ${integrationClose}
 When candidate.c is saved, stop. The person who checked out this chunk submits that file.
 `

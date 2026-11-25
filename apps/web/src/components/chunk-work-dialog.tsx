@@ -453,6 +453,13 @@ export function ChunkWorkDialog({
             >
               Submit
             </Button>
+            <p className="text-xs text-muted-foreground">
+              Write it yourself: no leaked or proprietary source. By submitting, you release this source under{" "}
+              <Link to="/policy#2" target="_blank" className="underline underline-offset-2">
+                CC0 1.0
+              </Link>
+              , so later contributors can build on it.
+            </p>
             {attempt ? (
               <div className="space-y-3 rounded-md border bg-muted/30 p-3 text-sm">
                 <p>

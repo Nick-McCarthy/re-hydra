@@ -180,11 +180,54 @@ const back = await call("POST", `/admin/users/${reporter.id}/restore`, admin.tok
 const signInAgain = await call("POST", "/auth/sign-in", undefined, { email: reporter.email, password: reporter.password })
 check("a restored account can sign in again", ok(back.status) && ok(signInAgain.status), `${detail(back)} ${detail(signInAgain)}`)
 
+// --- Submitted source is recorded as CC0 (policy 2.4).
+const lease = await call("POST", `${P}/chunks/${leaf.id}/checkout`, owner.token)
+const submitted = await call("POST", `${P}/chunks/${leaf.id}/submit`, owner.token, {
+  leaseToken: lease.body?.leaseToken, source: "int leaf(int x) { return x; }\n"
+})
+const license = (await db.query("SELECT source_license FROM attempts WHERE id = $1", [submitted.body?.attemptId])).rows[0]
+check("a submission records the CC0 license", license?.source_license === "CC0-1.0",
+  `${detail(lease)} ${detail(submitted)} ${JSON.stringify(license)}`)
+
+// --- Strikes (policy 2.5 and 3).
+const S = `/admin/users/${reporter.id}/strikes`
+const strikesAsUser = await call("GET", S, owner.token)
+check("someone who is not an admin cannot see strikes", strikesAsUser.status === 403, detail(strikesAsUser))
+const selfStrike = await call("POST", `/admin/users/${admin.id}/strikes`, admin.token, { note: "test" })
+check("an admin cannot give their own account a strike", selfStrike.status === 409, detail(selfStrike))
+const noNote = await call("POST", S, admin.token, { note: " " })
+check("a strike needs a note", noNote.status === 409, detail(noNote))
+const strikeIds = []
+for (const note of ["Notice from Example Corp upheld.", "Posted a ROM link.", "Pasted leaked source."]) {
+  strikeIds.push((await call("POST", S, admin.token, { note })).body?.id)
+}
+const strikeUser = async () =>
+  ((await call("GET", `/admin/users?q=${encodeURIComponent(reporter.email)}`, admin.token)).body ?? [])[0]
+const atLimit = await strikeUser()
+check("three strikes put the account at the limit",
+  strikeIds.every(Boolean) && atLimit?.activeStrikes === 3 && atLimit?.atStrikeLimit === true, JSON.stringify(atLimit))
+const reversed = await call("POST", `/admin/strikes/${strikeIds[0]}/reverse`, admin.token, { note: "Counter-notice, no lawsuit filed." })
+const afterReverse = await strikeUser()
+check("a reversed strike stops counting and keeps who reversed it and why",
+  ok(reversed.status) && reversed.body.active === false && reversed.body.reversedBy?.id === admin.id &&
+    reversed.body.reversalNote === "Counter-notice, no lawsuit filed." &&
+    afterReverse?.activeStrikes === 2 && afterReverse?.atStrikeLimit === false,
+  `${detail(reversed)} active=${afterReverse?.activeStrikes}`)
+const reverseAgain = await call("POST", `/admin/strikes/${strikeIds[0]}/reverse`, admin.token, { note: "again" })
+check("a reversed strike cannot be reversed again", reverseAgain.status === 409, detail(reverseAgain))
+await db.query("UPDATE strikes SET created_at = now() - interval '13 months' WHERE id = $1", [strikeIds[1]])
+const afterExpiry = await strikeUser()
+const listed = await call("GET", S, admin.token)
+check("a strike older than 12 months stops counting but stays listed",
+  afterExpiry?.activeStrikes === 1 && listed.body?.length === 3 &&
+    listed.body.find((s) => s.id === strikeIds[1])?.active === false,
+  `active=${afterExpiry?.activeStrikes} listed=${listed.body?.length}`)
+
 // --- The record.
 const log = await call("GET", "/admin/actions?limit=50", admin.token)
 const kinds = new Set((log.body ?? []).filter((a) => a.admin?.id === admin.id || a.user?.id === admin.id).map((a) => a.kind))
 check("every action is in the record with its note",
-  ["grant_admin", "remove_post", "resolve_report", "archive_project", "restore_project", "suspend_user", "restore_user"].every((k) => kinds.has(k)) &&
+  ["grant_admin", "remove_post", "resolve_report", "archive_project", "restore_project", "suspend_user", "restore_user", "add_strike", "reverse_strike"].every((k) => kinds.has(k)) &&
     (log.body ?? []).some((a) => a.kind === "archive_project" && a.note.startsWith("DMCA notice")),
   [...kinds].join(","))
 adminCommand("revoke", admin.email)

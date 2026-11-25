@@ -272,6 +272,10 @@ const submit = Command.make(
         new Error(`Could not read ${sourcePath}: ${String(cause)}`)
     })
 
+    const root = yield* hydra
+    if (!root.json) {
+      yield* Console.log("Submitted source is released under CC0 1.0 (content policy 2.4).")
+    }
     const client = yield* ApiClient
     const result = yield* client.chunks.submit({
       params: {
@@ -285,7 +289,6 @@ const submit = Command.make(
     })
 
     let current = result
-    const root = yield* hydra
     if (current.state !== "finished") {
       if (!root.json) {
         yield* Console.log("Matching…")

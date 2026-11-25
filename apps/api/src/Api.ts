@@ -121,7 +121,8 @@ import {
   ModerationRefused,
   ReportCreated,
   ReportRefused,
-  ResolveReportPayload
+  ResolveReportPayload,
+  Strike
 } from "./domain/Moderation.js"
 import { Uuid } from "./domain/Uuid.js"
 import { Authorization } from "./http/Authorization.js"
@@ -914,6 +915,29 @@ export const AdminGroup = HttpApiGroup.make("admin")
       params: { userId: Uuid },
       payload: ModerationNote,
       success: AdminUser,
+      error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.get("listStrikes", "/admin/users/:userId/strikes", {
+      params: { userId: Uuid },
+      success: Schema.Array(Strike),
+      error: [Unauthorized, Forbidden, NotFound]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("addStrike", "/admin/users/:userId/strikes", {
+      params: { userId: Uuid },
+      payload: ModerationNote,
+      success: Strike,
+      error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("reverseStrike", "/admin/strikes/:strikeId/reverse", {
+      params: { strikeId: Uuid },
+      payload: ModerationNote,
+      success: Strike,
       error: [Unauthorized, Forbidden, NotFound, ModerationRefused]
     }).middleware(Authorization)
   )

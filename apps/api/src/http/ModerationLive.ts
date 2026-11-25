@@ -81,6 +81,24 @@ export const AdminLive = HttpApiBuilder.group(Api, "admin", (handlers) =>
         return yield* (yield* Moderation).restoreUser(admin.id, request.params.userId, request.payload.note)
       })
     )
+    .handle("listStrikes", (request) =>
+      Effect.gen(function*() {
+        yield* requireAdmin
+        return yield* (yield* Moderation).listStrikes(request.params.userId)
+      })
+    )
+    .handle("addStrike", (request) =>
+      Effect.gen(function*() {
+        const admin = yield* requireAdmin
+        return yield* (yield* Moderation).addStrike(admin.id, request.params.userId, request.payload.note)
+      })
+    )
+    .handle("reverseStrike", (request) =>
+      Effect.gen(function*() {
+        const admin = yield* requireAdmin
+        return yield* (yield* Moderation).reverseStrike(admin.id, request.params.strikeId, request.payload.note)
+      })
+    )
     .handle("listActions", (request) =>
       Effect.gen(function*() {
         yield* requireAdmin

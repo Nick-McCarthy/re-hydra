@@ -4,6 +4,7 @@ import { Conflict, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import type { AttemptResult, AttemptSummary } from "../domain/Attempt.js"
 import { hideBytes } from "../domain/diagnostics.js"
+import { SOURCE_LICENSE } from "../domain/Moderation.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Blobs } from "./Blobs.js"
 import { ProjectChunkStats } from "./ProjectChunkStats.js"
@@ -392,14 +393,15 @@ export class AttemptsRepo extends Context.Service<
           const attemptRows = yield* sql<{ readonly id: string }>`
             INSERT INTO attempts (
               chunk_id, user_id, lease_token, source_sha256,
-              type_revision_id, language
+              type_revision_id, language, source_license
             ) VALUES (
               ${options.chunkId},
               ${options.userId},
               ${options.leaseToken},
               ${sourceSha},
               ${lease.type_revision_id},
-              ${lease.language}
+              ${lease.language},
+              ${SOURCE_LICENSE}
             )
             RETURNING id
           `.pipe(Effect.orDie)

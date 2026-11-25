@@ -557,7 +557,23 @@ export type AdminUser = {
   isAdmin: boolean
   suspendedAt: string | null
   suspendedReason: string | null
+  /** Strikes not reversed and under 12 months old. */
+  activeStrikes: number
+  /** activeStrikes has reached the limit (3): the policy says close the account. */
+  atStrikeLimit: boolean
   createdAt: string
+}
+
+export type Strike = {
+  id: string
+  user: PersonRef
+  admin: PersonRef | null
+  note: string
+  createdAt: string
+  reversedAt: string | null
+  reversedBy: PersonRef | null
+  reversalNote: string | null
+  active: boolean
 }
 
 export type AdminProject = {
@@ -579,6 +595,8 @@ export type ModerationActionKind =
   | "resolve_report"
   | "grant_admin"
   | "revoke_admin"
+  | "add_strike"
+  | "reverse_strike"
 
 export type ModerationAction = {
   id: string
@@ -1237,6 +1255,26 @@ export const api = {
   adminSetUserSuspended(userId: string, suspended: boolean, note: string, token: string) {
     return request<AdminUser>(
       `/admin/users/${encodeURIComponent(userId)}/${suspended ? "suspend" : "restore"}`,
+      { method: "POST", body: JSON.stringify({ note }) },
+      token
+    )
+  },
+
+  adminStrikes(userId: string, token: string) {
+    return request<Array<Strike>>(`/admin/users/${encodeURIComponent(userId)}/strikes`, {}, token)
+  },
+
+  adminAddStrike(userId: string, note: string, token: string) {
+    return request<Strike>(
+      `/admin/users/${encodeURIComponent(userId)}/strikes`,
+      { method: "POST", body: JSON.stringify({ note }) },
+      token
+    )
+  },
+
+  adminReverseStrike(strikeId: string, note: string, token: string) {
+    return request<Strike>(
+      `/admin/strikes/${encodeURIComponent(strikeId)}/reverse`,
       { method: "POST", body: JSON.stringify({ note }) },
       token
     )

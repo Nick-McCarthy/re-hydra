@@ -14,7 +14,8 @@ import {
   type AdminReport,
   type AdminUser,
   type ModerationAction,
-  type ModerationActionKind
+  type ModerationActionKind,
+  type Strike
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 
@@ -31,7 +32,9 @@ const actionLabels: Record<ModerationActionKind, string> = {
   restore_user: "Restored account",
   resolve_report: "Resolved report",
   grant_admin: "Granted admin",
-  revoke_admin: "Revoked admin"
+  revoke_admin: "Revoked admin",
+  add_strike: "Gave a strike",
+  reverse_strike: "Reversed a strike"
 }
 
 /**
@@ -324,6 +327,91 @@ function ProjectsTab({ token }: { token: string }) {
   )
 }
 
+/**
+ * An account's strikes under the repeat-infringer rule (content policy 2.5
+ * and 3): add one, or reverse one after a counter-notice or a mistake.
+ */
+function StrikesButton({ account, token, selfId, onChange }: {
+  account: AdminUser
+  token: string
+  selfId: string
+  onChange: () => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [strikes, setStrikes] = React.useState<Array<Strike> | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+  const load = React.useCallback(() => {
+    api.adminStrikes(account.id, token).then(setStrikes, (err: unknown) => setError(errorText(err, "Could not load strikes")))
+  }, [account.id, token])
+  React.useEffect(() => {
+    if (open) load()
+  }, [open, load])
+  const changed = () => {
+    load()
+    onChange()
+  }
+  return (
+    <>
+      <button type="button" className="underline underline-offset-2" onClick={() => setOpen(true)}>
+        {account.activeStrikes} of 3
+      </button>
+      {account.atStrikeLimit ? (
+        <Badge variant="warning" className="ml-2">
+          at the limit
+        </Badge>
+      ) : null}
+      <Dialog open={open} title={`Strikes: ${account.displayName}`} onClose={() => setOpen(false)} size="md">
+        <div className="space-y-4 text-sm">
+          <p className="text-muted-foreground">
+            A strike counts for 12 months unless it is reversed. At 3, the policy says close the account: suspend it
+            once any counter-notice has been handled.
+          </p>
+          {error ? <p className="text-destructive">{error}</p> : null}
+          {strikes === null ? (
+            <p className="text-muted-foreground">Loading…</p>
+          ) : strikes.length === 0 ? (
+            <p className="text-muted-foreground">No strikes.</p>
+          ) : (
+            <ul className="space-y-3">
+              {strikes.map((strike) => (
+                <li key={strike.id} className="space-y-1 rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">
+                    {when(strike.createdAt)} by {strike.admin?.displayName ?? "a removed admin"}
+                    {strike.active ? null : strike.reversedAt ? " · reversed" : " · expired"}
+                  </p>
+                  <p className="whitespace-pre-wrap">{strike.note}</p>
+                  {strike.reversedAt ? (
+                    <p className="text-xs text-muted-foreground">
+                      Reversed {when(strike.reversedAt)} by {strike.reversedBy?.displayName ?? "a removed admin"}:{" "}
+                      {strike.reversalNote}
+                    </p>
+                  ) : !strike.active ? null : (
+                    <NoteAction
+                      label="Reverse"
+                      title="Reverse this strike"
+                      noteLabel="Why (a counter-notice, a mistake; kept in the record)"
+                      run={(note) => api.adminReverseStrike(strike.id, note, token).then(changed)}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {account.id === selfId ? null : (
+            <NoteAction
+              label="Add strike"
+              title={`Add a strike to ${account.displayName}`}
+              noteLabel="What it is for: the notice or the material, with links (kept in the record)"
+              destructive
+              run={(note) => api.adminAddStrike(account.id, note, token).then(changed)}
+            />
+          )}
+        </div>
+      </Dialog>
+    </>
+  )
+}
+
 function UsersTab({ token, selfId }: { token: string; selfId: string }) {
   const search = React.useCallback((q: string) => api.adminUsers(q, token), [token])
   const { q, setQ, rows, error, reload, submit } = useSearch<AdminUser>(search)
@@ -337,6 +425,7 @@ function UsersTab({ token, selfId }: { token: string; selfId: string }) {
             <tr>
               <th className="px-3 py-2 font-medium">Account</th>
               <th className="px-3 py-2 font-medium">Joined</th>
+              <th className="px-3 py-2 font-medium">Strikes</th>
               <th className="px-3 py-2 font-medium">State</th>
               <th className="px-3 py-2" />
             </tr>
@@ -352,6 +441,9 @@ function UsersTab({ token, selfId }: { token: string; selfId: string }) {
                   <div className="text-xs text-muted-foreground">{account.email}</div>
                 </td>
                 <td className="px-3 py-2">{new Date(account.createdAt).toLocaleDateString()}</td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  <StrikesButton account={account} token={token} selfId={selfId} onChange={() => void reload()} />
+                </td>
                 <td className="px-3 py-2">
                   {account.suspendedAt ? (
                     <>

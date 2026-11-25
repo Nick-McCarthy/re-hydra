@@ -35,7 +35,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`my-4 w-full ${size === "md" ? "max-w-lg" : "max-w-5xl"} rounded-lg border bg-background p-6 shadow-lg`}
+        className={`my-4 w-full ${size === "md" ? "max-w-lg" : "max-w-5xl"} rounded-lg border bg-background p-6 text-left whitespace-normal shadow-lg`}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-4">

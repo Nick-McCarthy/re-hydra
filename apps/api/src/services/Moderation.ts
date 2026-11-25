@@ -8,7 +8,10 @@ import {
   type CreateReportPayload,
   type ModerationAction,
   ModerationRefused,
-  ReportRefused
+  ReportRefused,
+  STRIKE_LIMIT,
+  STRIKE_WINDOW_DAYS,
+  type Strike
 } from "../domain/Moderation.js"
 import type { Uuid } from "../domain/Uuid.js"
 import { RateLimits } from "./RateLimits.js"
@@ -50,6 +53,9 @@ export class Moderation extends Context.Service<
     readonly searchUsers: (q: string) => Effect.Effect<ReadonlyArray<AdminUser>>
     readonly suspendUser: (adminId: Uuid, userId: Uuid, note: string) => Effect.Effect<AdminUser, NotFound | ModerationRefused>
     readonly restoreUser: (adminId: Uuid, userId: Uuid, note: string) => Effect.Effect<AdminUser, NotFound | ModerationRefused>
+    readonly listStrikes: (userId: Uuid) => Effect.Effect<ReadonlyArray<Strike>, NotFound>
+    readonly addStrike: (adminId: Uuid, userId: Uuid, note: string) => Effect.Effect<Strike, NotFound | ModerationRefused>
+    readonly reverseStrike: (adminId: Uuid, strikeId: Uuid, note: string) => Effect.Effect<Strike, NotFound | ModerationRefused>
     readonly listActions: (limit: number) => Effect.Effect<ReadonlyArray<ModerationAction>>
   }
 >()("rehydra/services/Moderation") {
@@ -319,6 +325,7 @@ export class Moderation extends Context.Service<
         readonly is_admin: boolean
         readonly suspended_at: Date | string | null
         readonly suspended_reason: string | null
+        readonly active_strikes: number | string
         readonly created_at: Date | string
       }
       const toUser = (row: UserRow): AdminUser => ({
@@ -328,10 +335,16 @@ export class Moderation extends Context.Service<
         isAdmin: row.is_admin,
         suspendedAt: isoOrNull(row.suspended_at),
         suspendedReason: row.suspended_reason,
+        activeStrikes: Number(row.active_strikes),
+        atStrikeLimit: Number(row.active_strikes) >= STRIKE_LIMIT,
         createdAt: toIso(row.created_at)
       })
+      // A strike counts while it is not reversed and inside the window.
+      const activeStrike = sql`s.reversed_at IS NULL AND s.created_at > now() - make_interval(days => ${STRIKE_WINDOW_DAYS})`
       const userSelect = sql`
-        SELECT id, email, display_name, is_admin, suspended_at, suspended_reason, created_at FROM users
+        SELECT id, email, display_name, is_admin, suspended_at, suspended_reason, created_at,
+          (SELECT count(*) FROM strikes s WHERE s.user_id = users.id AND ${activeStrike}) AS active_strikes
+        FROM users
       `
 
       const searchUsers = Effect.fn("Moderation.searchUsers")(function*(q: string) {
@@ -381,6 +394,87 @@ export class Moderation extends Context.Service<
           yield* record(adminId, "restore_user", note.trim(), { userId })
         })).pipe(Effect.orDie)
         return toUser((yield* userById(userId)) ?? before)
+      })
+
+      // --- Strikes (repeat-infringer rule, content policy 2.5 and 3) ---------
+
+      type StrikeRow = {
+        readonly id: Uuid
+        readonly user_id: string
+        readonly user_name: string
+        readonly admin_id: string | null
+        readonly admin_name: string | null
+        readonly note: string
+        readonly created_at: Date | string
+        readonly reversed_at: Date | string | null
+        readonly reverser_id: string | null
+        readonly reverser_name: string | null
+        readonly reversal_note: string | null
+        readonly active: boolean
+      }
+      const toStrike = (row: StrikeRow): Strike => ({
+        id: row.id,
+        user: { id: row.user_id, displayName: row.user_name },
+        admin: person(row.admin_id, row.admin_name),
+        note: row.note,
+        createdAt: toIso(row.created_at),
+        reversedAt: isoOrNull(row.reversed_at),
+        reversedBy: person(row.reverser_id, row.reverser_name),
+        reversalNote: row.reversal_note,
+        active: row.active
+      })
+      const strikeSelect = sql`
+        SELECT s.id, s.note, s.created_at, s.reversed_at, s.reversal_note,
+          u.id AS user_id, u.display_name AS user_name,
+          a.id AS admin_id, a.display_name AS admin_name,
+          r.id AS reverser_id, r.display_name AS reverser_name,
+          (${activeStrike}) AS active
+        FROM strikes s
+        JOIN users u ON u.id = s.user_id
+        LEFT JOIN users a ON a.id = s.admin_id
+        LEFT JOIN users r ON r.id = s.reversed_by
+      `
+      const strikeById = (strikeId: Uuid) =>
+        sql<StrikeRow>`${strikeSelect} WHERE s.id = ${strikeId}`.pipe(
+          Effect.map((rows) => rows[0]),
+          Effect.orDie
+        )
+
+      const listStrikes = Effect.fn("Moderation.listStrikes")(function*(userId: Uuid) {
+        if ((yield* userById(userId)) === undefined) return yield* new NotFound()
+        const rows = yield* sql<StrikeRow>`${strikeSelect} WHERE s.user_id = ${userId} ORDER BY s.created_at DESC`.pipe(
+          Effect.orDie
+        )
+        return rows.map(toStrike)
+      })
+
+      const addStrike = Effect.fn("Moderation.addStrike")(function*(adminId: Uuid, userId: Uuid, note: string) {
+        if (note.trim().length === 0) return yield* new ModerationRefused({ detail: "Write a note saying why." })
+        if ((yield* userById(userId)) === undefined) return yield* new NotFound()
+        if (userId === adminId) return yield* new ModerationRefused({ detail: "You cannot give your own account a strike." })
+        const id = yield* sql.withTransaction(Effect.gen(function*() {
+          const rows = yield* sql<{ readonly id: Uuid }>`
+            INSERT INTO strikes (user_id, admin_id, note) VALUES (${userId}, ${adminId}, ${note.trim()}) RETURNING id
+          `
+          yield* record(adminId, "add_strike", note.trim(), { userId })
+          return rows[0]!.id
+        })).pipe(Effect.orDie)
+        return toStrike((yield* strikeById(id))!)
+      })
+
+      const reverseStrike = Effect.fn("Moderation.reverseStrike")(function*(adminId: Uuid, strikeId: Uuid, note: string) {
+        if (note.trim().length === 0) return yield* new ModerationRefused({ detail: "Write a note saying why." })
+        const before = yield* strikeById(strikeId)
+        if (before === undefined) return yield* new NotFound()
+        if (before.reversed_at !== null) return yield* new ModerationRefused({ detail: "This strike is already reversed." })
+        yield* sql.withTransaction(Effect.gen(function*() {
+          yield* sql`
+            UPDATE strikes SET reversed_at = now(), reversed_by = ${adminId}, reversal_note = ${note.trim()}
+            WHERE id = ${strikeId}
+          `
+          yield* record(adminId, "reverse_strike", note.trim(), { userId: before.user_id })
+        })).pipe(Effect.orDie)
+        return toStrike((yield* strikeById(strikeId)) ?? before)
       })
 
       // --- The record ----------------------------------------------------------
@@ -439,6 +533,9 @@ export class Moderation extends Context.Service<
         searchUsers,
         suspendUser,
         restoreUser,
+        listStrikes,
+        addStrike,
+        reverseStrike,
         listActions
       })
     })

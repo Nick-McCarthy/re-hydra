@@ -27,6 +27,8 @@ Content policy enforcement (migration 022). Sign-up requires agreeing to the con
 
 Site admins are emailed about new reports (migration 023). Every `REPORT_NOTIFY_SECONDS` (default 60) a worker claims reports nobody has been told about, sends each active admin one email listing them (reason, project, function or post, an excerpt, a link to `/admin`), and marks them notified in the same transaction. A burst of reports is one email. A failed send leaves the batch for the next tick; with no admin, reports wait and the API logs a warning each tick. Several API processes never mail the same report (`SKIP LOCKED`). Reports filed before migration 023 count as already notified. Checked by `apps/api/scripts/verify-report-emails.mjs`.
 
+Submitted source is released under CC0 1.0 (policy 2.4, migration 024). The work dialog says so under Submit, `hydra submit` prints it, the agent instructions tell the agent to write the source itself, and each attempt records `source_license` (earlier attempts have none). Repeat infringers (policy 2.5 and 3): admins add a strike with a note on the Users tab, or reverse one with a note, and both go in the record. A strike counts for 12 months unless reversed; the Users tab shows each account's active count and flags three, the point at which the policy says close the account. Suspending stays a manual step, so a counter-notice can be handled first. Checked by `apps/api/scripts/verify-moderation.mjs`.
+
 The whole contributor loop (import, checkout, heartbeat, miss, match, profile, call-target refusal, integration build, release, sweeper expiry) runs against a real matchd in `apps/api/scripts/verify-checkout-loop.mjs`.
 
 An integration build defines every imported function it does not link at its original address, and blanks references it cannot place (string literals, library code, anything the import does not name). Before this, those resolved to address 0, so a correct match that called an unmatched function was reopened. Checked by `apps/matchd/scripts/verify-link-symbols.mjs`.
@@ -178,7 +180,7 @@ A project whose writer lives in Europe is a further change. The API would send t
 - Xbox 360 and PlayStation 5, until a public compiler emits the retail object format.
 - Retail SDK compilers. They stay unregistered.
 - What happens to member matches if a fused chunk is later split. Split is not implemented.
-- The content policy is a draft ([content-policy.md](content-policy.md)). It needs legal review. Still open from its checklist: a license for submitted source, a repeat-infringer rule, a registered DMCA agent, contact addresses, separate terms of use, and and a known-malware hash check on import.
+- The content policy is a draft ([content-policy.md](content-policy.md)). It needs legal review. Still open from its checklist: a registered DMCA agent, contact addresses, separate terms of use, and a known-malware hash check on import.
 - `fixtures/link/dogfood.mjs` expects decoy to match in isolation. Since the call-target check it does not, so the script stops at decoy.
 - The object signer still uses path-style URLs. The first-deployment section is the us-east-1 cutover. `blob_objects` stays until a checkout and a match have both read from the bucket.
 - Ghidra import is a JSON upload on the project page (web) or a POST to the API. The CLI cannot import.

@@ -1074,6 +1074,32 @@ ALTER TABLE reports ADD COLUMN notified_at timestamptz;
 CREATE INDEX reports_unnotified ON reports (created_at) WHERE notified_at IS NULL;
 ```
 
+## Source license and strikes — migration 024
+
+```sql
+-- The license the submitter released the source under: 'CC0-1.0' (content
+-- policy 2.4). NULL on attempts from before this migration.
+ALTER TABLE attempts ADD COLUMN source_license text;
+
+-- Repeat-infringer rule (content policy 2.5 and 3). A strike counts while
+-- reversed_at IS NULL and created_at is less than 12 months ago; three active
+-- strikes is the limit. Reversing keeps the row with who and why.
+CREATE TABLE strikes (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  admin_id       uuid REFERENCES users (id) ON DELETE SET NULL,
+  note           text NOT NULL CHECK (length(note) BETWEEN 1 AND 2000),
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  reversed_at    timestamptz,
+  reversed_by    uuid REFERENCES users (id) ON DELETE SET NULL,
+  reversal_note  text CHECK (reversal_note IS NULL OR length(reversal_note) BETWEEN 1 AND 2000),
+  CHECK ((reversed_at IS NULL) = (reversal_note IS NULL))
+);
+CREATE INDEX strikes_by_user ON strikes (user_id, created_at DESC);
+
+-- moderation_actions.kind also allows 'add_strike' and 'reverse_strike'.
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.
