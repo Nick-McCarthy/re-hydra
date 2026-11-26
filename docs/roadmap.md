@@ -1,6 +1,6 @@
 # re-hydra roadmap
 
-Milestones 1–4 are done. Compiler images through Genesis are registered. Match capacity on one site is in place through an extra copy of a busy image. The next capacity step is a second site, which is still design. How the system runs is [architecture.md](architecture.md). The tables are [db-schema/schema.md](db-schema/schema.md).
+Milestones 1–4 are done. What comes next, in order, is the Next section. Compiler images through Genesis are registered. Match capacity on one site is in place through an extra copy of a busy image. The next capacity step is a second site, which is still design. How the system runs is [architecture.md](architecture.md). The tables are [db-schema/schema.md](db-schema/schema.md).
 
 ## Product
 
@@ -160,6 +160,50 @@ The local copy (`npm run api:blobs`) fills this machine only. Production starts 
 
 This waits until the us-east-1 pool is dull. The writer stays in us-east-1. The design, the settings that already exist, and the code to write first are in [architecture.md](architecture.md#later-more-than-one-site).
 
+## Next
+
+In this order. The first decides whether re-hydra can match retail games at all. The second and third make the lease and match code safer to change before the fourth extends what a match checks.
+
+Alongside these, launch work goes on: the us-east-1 deploy (First deployment above) and the open foundations items, agreements before launch and the built CLI before the npm release ([foundations-plan.md](foundations-plan.md)).
+
+### 1. Compilers, and what the law allows
+
+A match needs the compiler that built the game. Every registered image is a public build, and most retail games were built with a licensed SDK compiler: IDO for most N64 games, particular Metrowerks versions for GameCube and Wii, PSY-Q for PlayStation, SN Systems for several consoles. Those are different binaries, so their games will not match today. Real retail matches are realistic only where the community compiler is the one the game used, such as `agbcc` for GBA games built with it.
+
+Questions to settle, with a lawyer:
+
+- Whether the operator may run original compiler binaries in matchd as a service, which ones, and on what terms. Running a binary on a server and handing it out are different questions.
+- If some may only run on a contributor's own machine: the proof would then be a claim anyone with the compiler can recheck, not a server-side match. Decide whether the site accepts that, and how it marks such matches.
+- For each console, which compilers its games were built with, and how to tell from the binary.
+
+The result is a list of compilers per target with the legal basis for each. matchd already pins a new binary with a new toolchain file and target (see [architecture.md](architecture.md#matchd-layout)).
+
+### 2. One module for chunk state
+
+Ten services write `chunks` state directly: `ChunksRepo`, `AttemptsRepo`, `MatchWorker`, `LeaseSweeper`, `PoolReturn`, `FuseRepo`, `ImportsRepo`, `IntegrationWorker`, `ProposalAccept`, and `UnresolvedTypesRepo`. Account deletion, blocking a user, and removing a member reach them through `PoolReturn`. Each caller must keep the lease columns consistent with the state (the `chunks_check1` constraint), lock the row, and call `ProjectChunkStats.refresh` afterwards. Audit findings A-001, A-003, and A-004 came from that, and account deletion's first version broke `chunks_check1`.
+
+Plan:
+
+- A `ChunkState` service owns every transition: checkout, extra lease, heartbeat, submit, result, release, clear, expire, return to the pool, fuse, and block or unblock on an unresolved type. Each one runs in the caller's transaction, locks the row, checks the state it starts from, and writes the whole lease column set at once.
+- It records which projects changed, and refreshes their stats once at the end of the transaction instead of each caller doing it.
+- A test fails on `UPDATE chunks` outside the module, as `Problems.test.ts` does for bare errors.
+- Move one caller at a time; the verify scripts cover the behaviour while it moves.
+
+### 3. Unit tests for the lease and match rules
+
+The lease rules are tested end to end today: the verify scripts need the API, Postgres, and often matchd, and some wait on the sweeper. matchd's masking has unit tests (21 files); the API's lease and match rules have none.
+
+Once step 2 exists, test each transition directly against Postgres, inside a transaction that is rolled back: which states it accepts, the lease columns after it, the per-user hold cap, competing leases, expiry by the database clock, a job result applying once, and a miss extending the lease. They run in CI's verify job, which already has Postgres.
+
+### 4. Matching beyond one function
+
+An isolated match compares the function's code bytes. Every place the code refers to something else is masked, so the read-only data it uses (a `switch` statement's jump table, float constants, strings) is not compared. The integration build places matched functions at their addresses and defines known globals, but blanks what it cannot place and never compares data. Nothing compares the whole program. These steps close that, each building on the last. [splat](https://github.com/ethteck/splat) (splitting a program into files and sections) and [objdiff](https://github.com/encounter/objdiff) (comparing objects per section) are the community tools to learn from.
+
+1. **Read-only data per function.** The Ghidra export includes the jump tables and constants each function reads, with their bytes. The match compares those bytes too instead of masking the reference. Imports without them keep today's check.
+2. **Data chunks.** A chunk for a global table or struct. The contributor writes the C initializer and matchd compares the compiled data with the original bytes. Checkout, leases, and proof work as they do for functions.
+3. **Files.** A project-level split map says which address ranges were one source file. The integration build compiles per file, with its static functions, function order, and flags, instead of one function per compile.
+4. **The whole program, checked locally.** The server keeps only the program's hash, by design (content policy), and that does not change. `hydra build` compiles the project's files with its split map and linker script and compares the result with the contributor's own copy of the program. The site records the output hash and compares it with `binaries.sha256`, which it already stores.
+
 ## Still open
 
 - Foundations: agreements (the rest of item 3), a built CLI package, shared rate limits, and smaller fixes. Each with its likely reason and a plan in [foundations-plan.md](foundations-plan.md).
@@ -167,11 +211,11 @@ This waits until the us-east-1 pool is dull. The writer stays in us-east-1. The 
 - matchd capacity: a per-container ceiling, a production scaler, and cold images ([matchd-scaling.md](matchd-scaling.md#what-to-fix-in-order), items 4–6).
 - A microVM sandbox. The image sandbox, the flag allow-list, and the 1 GB per-compile data cap are the boundary that runs today.
 - Xbox 360 and PlayStation 5, until a public compiler emits the retail object format.
-- Retail SDK compilers. They stay unregistered.
+- Retail SDK compilers: Next, step 1.
 - What happens to member matches if a fused chunk is later split. Split is not implemented.
 - The policies in [policy/](policy) are drafts that need legal review and their bracketed decisions. Still open from the content policy's checklist (its section 6): a registered DMCA agent and contact addresses. Sign-up asks only for the content policy; the agreements table is foundations plan 3. The known-malware check needs an abuse.ch Auth-Key set in production.
 - Long term: check function bytes against malware signatures (for example YARA rules or byte patterns from public feeds). Today only the whole program's reported hash is checked, so a malware sample exported under a false hash, or a program whose functions share code with known malware, gets through. Bytes are stored per function, so a scan could run at import and again when the rules change.
 - The object signer still uses path-style URLs. The first-deployment section is the us-east-1 cutover. `blob_objects` stays until a checkout and a match have both read from the bucket.
 - The CLI does not follow, search, change project settings (lease cap, language, access), manage members, or use the discussion.
-- Integration compiles each matched function as its own translation unit. It does not search for a layout or a flag set.
+- Integration compiles each matched function as its own translation unit (per-file builds are Next, step 4). It does not search for a flag set.
 - A profile's follower count refreshes when the page reloads.

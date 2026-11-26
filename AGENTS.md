@@ -2,10 +2,10 @@
 
 ## Start here
 
-1. **`docs/roadmap.md`** — what is built, compilers, capacity, next work (read first in a new chat)
+1. **`docs/roadmap.md`** — what is built, compilers, capacity, and the Next section: the order of work (read first in a new chat)
 2. `docs/architecture.md` — how the system runs today, the product rules, and the later multi-site design
 3. `docs/db-schema/schema.md` — Postgres schema of record; `schema-reasoning.md` beside it says why
-4. `docs/foundations-plan.md` — early decisions being revisited; the next items of work come from here
+4. `docs/foundations-plan.md` — early decisions being revisited. The order of work is the roadmap's Next section
 
 `README.md` has the workspace layout, the full list of docs, and first-time setup. Policy drafts are in `docs/policy/` (the web shows them, so they are user-facing text). The 2026-11 audit is in `docs/audit/`.
 
