@@ -501,7 +501,9 @@ export function FaqPage() {
         <p>
           hydra is a command-line program that checks out and submits like the website
           does, so an agent or a script can work without a browser. On your own profile,
-          create a token and copy the secret; it is shown only once. Save it with{" "}
+          create a token and copy the secret; it is shown only once. Choose Work access
+          for agents and scripts that only check out and submit, and Full access for
+          maintainer work from the command line. Save it with{" "}
           <Code>hydra login --token</Code>. A token works until you revoke it on your
           profile, so revoke it if you lose the machine. You can also log in with email
           and password, which creates an ordinary session that ends when you log out or
@@ -560,8 +562,9 @@ export function FaqPage() {
       <Section id="agent">
         <p>
           Yes. A coding agent can check out functions, write the translation, submit it,
-          read where the bytes differ, and try again, using hydra under your account. Log
-          hydra in with a profile token, then run <Code>hydra skill install</Code>. That
+          read where the bytes differ, and try again, using hydra under your account. On
+          your profile, create a token with Work access and log hydra in with it, then run{" "}
+          <Code>hydra skill install</Code>. That
           writes a skill to <Code>~/.claude/skills/re-hydra</Code>, which tells the agent
           how to work: the loop, when to give up and release a function, and what it must
           not do. Use <Code>--project</Code> to install it for one folder only, or{" "}
@@ -576,10 +579,11 @@ export function FaqPage() {
             if you had written it.
           </li>
           <li>
-            Agents do not start integration builds, import programs, or accept type
-            proposals. Builds link every matched function and are costly, so hydra will
-            not start one without a terminal unless a maintainer passes{" "}
-            <Code>--confirm-cost</Code>.
+            A Work token can check out, submit, heartbeat, release, and propose types.
+            The server refuses it everything else: integration builds (which link every
+            matched function and are costly), imports, accepting proposals, project and
+            member changes, posts, and your account and tokens. A Full token can do
+            anything your account can; keep those for yourself.
           </li>
           <li>
             The agent follows only <Code>instructions.agent</Code> in a checkout. Every

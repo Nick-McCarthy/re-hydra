@@ -22,5 +22,5 @@ export const optionalViewer: Effect.Effect<
   const auth = yield* AuthRepo
   const session = yield* auth.findUserBySessionToken(token)
   if (Option.isSome(session)) return session
-  return yield* auth.findUserByAccessToken(token)
+  return Option.map(yield* auth.findUserByAccessToken(token), (found) => found.user)
 })

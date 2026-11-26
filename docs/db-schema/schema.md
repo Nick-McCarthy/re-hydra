@@ -1169,6 +1169,16 @@ ALTER TABLE strikes ADD CONSTRAINT strikes_user_id_fkey
   FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT;
 ```
 
+## Token scopes — migration 027
+
+`access_tokens.scope` is `work` (contributor work: checkout, submit, heartbeat, release, bundle, type proposals, and reads of the holder's own data) or `all` (everything the account can do). Rows from before the migration are `all`; the API creates new tokens as `work` unless asked otherwise. Sessions have no scope and can do everything.
+
+```sql
+ALTER TABLE access_tokens
+  ADD COLUMN IF NOT EXISTS scope text NOT NULL DEFAULT 'all'
+    CHECK (scope IN ('work', 'all'));
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

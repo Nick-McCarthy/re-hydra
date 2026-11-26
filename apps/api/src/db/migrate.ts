@@ -29,6 +29,7 @@ import migration023 from "./migrations/023_report_notifications.js"
 import migration024 from "./migrations/024_license_and_strikes.js"
 import migration025 from "./migrations/025_malware_hashes.js"
 import migration026 from "./migrations/026_keep_strikes.js"
+import migration027 from "./migrations/027_token_scopes.js"
 
 const program = PgMigrator.run({
   loader: Migrator.fromRecord({
@@ -57,7 +58,8 @@ const program = PgMigrator.run({
     "023_report_notifications": migration023,
     "024_license_and_strikes": migration024,
     "025_malware_hashes": migration025,
-    "026_keep_strikes": migration026
+    "026_keep_strikes": migration026,
+    "027_token_scopes": migration027
   })
 }).pipe(
   Effect.tap((applied) =>

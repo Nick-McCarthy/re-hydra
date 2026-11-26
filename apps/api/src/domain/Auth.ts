@@ -139,8 +139,18 @@ export const AccessTokenLabel = Schema.String.check(Schema.isMinLength(1)).check
   Schema.isMaxLength(80)
 )
 
+/**
+ * What a profile token may do. `work`: check out, submit, heartbeat, release,
+ * read the bundle, propose types, and read the holder's own data. `all`:
+ * everything the account can do.
+ */
+export const TokenScope = Schema.Literals(["work", "all"])
+export type TokenScope = typeof TokenScope.Type
+
 export const CreateAccessTokenPayload = Schema.Struct({
-  label: AccessTokenLabel
+  label: AccessTokenLabel,
+  /** Defaults to `work`. */
+  scope: Schema.optional(TokenScope)
 }).annotate({ identifier: "CreateAccessTokenPayload" })
 
 export type CreateAccessTokenPayload = typeof CreateAccessTokenPayload.Type
@@ -148,6 +158,7 @@ export type CreateAccessTokenPayload = typeof CreateAccessTokenPayload.Type
 export const AccessTokenSummary = Schema.Struct({
   id: Uuid,
   label: Schema.String,
+  scope: TokenScope,
   createdAt: Schema.String,
   lastUsedAt: Schema.NullOr(Schema.String)
 }).annotate({ identifier: "AccessTokenSummary" })
@@ -157,6 +168,7 @@ export type AccessTokenSummary = typeof AccessTokenSummary.Type
 export const AccessTokenCreatedBody = Schema.Struct({
   id: Uuid,
   label: Schema.String,
+  scope: TokenScope,
   token: Schema.String,
   createdAt: Schema.String
 }).annotate({ identifier: "AccessTokenCreatedBody" })
