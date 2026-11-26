@@ -49,7 +49,7 @@ export function AppShell() {
                     dark ? "translate-x-5" : "translate-x-0"
                   }`}
                 >
-                  {dark ? <Moon className="size-3" aria-hidden /> : <Sun className="size-3" aria-hidden />}
+                  {dark ? <Moon className="size-3 text-primary" aria-hidden /> : <Sun className="size-3" aria-hidden />}
                 </span>
               </span>
             </button>
