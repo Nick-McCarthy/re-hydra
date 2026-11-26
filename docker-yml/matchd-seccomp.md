@@ -26,6 +26,10 @@ The trade-off: unprivileged user namespaces expose more kernel code to a process
 
 `clone3` still returns `ENOSYS`, as upstream does, so libc falls back to `clone`.
 
+## AppArmor hosts
+
+On a host with AppArmor (Ubuntu, Debian, and GitHub's runners), Docker also confines each container with its `docker-default` AppArmor profile, which denies `mount`. bwrap's mounts inside its user namespace are then refused, the self-test fails, and matchd exits. Docker Desktop has no AppArmor, so this does not show there. On such a host, also pass `--security-opt apparmor=unconfined` (CI does, through `docker-yml/docker-compose.ci.yml`), or load an AppArmor profile that allows those mounts. Ubuntu 24.04 also restricts unprivileged user namespaces on the host: `sysctl kernel.apparmor_restrict_unprivileged_userns=0`. `MATCHD_SCALE=docker` copies and the pool file do not add the AppArmor option yet.
+
 ## Where it is used
 
 - `docker-yml/docker-compose.yml`: the `matchd` service

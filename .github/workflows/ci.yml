@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -34,9 +34,13 @@ jobs:
     name: End-to-end verify scripts
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # docker-compose.ci.yml lifts Docker's AppArmor profile from matchd, which
+      # otherwise blocks the compile sandbox's mounts on Ubuntu hosts.
+      COMPOSE_FILE: compose.yaml:docker-yml/docker-compose.ci.yml
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -53,7 +57,9 @@ jobs:
             curl -fsS http://127.0.0.1:3001/v1/health && exit 0
             sleep 2
           done
-          docker compose logs matchd
+          docker compose ps -a matchd
+          # Job logs need a sign-in to read; annotations do not, so put the cause there.
+          echo "::error title=matchd did not start::$(docker compose logs --no-color --tail 8 matchd 2>&1 | tr '\n' ' ' | cut -c1-1500)"
           exit 1
       - run: npm run verify -- --require-matchd
       - name: Service logs
