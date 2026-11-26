@@ -9,7 +9,7 @@ import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { Blobs } from "./Blobs.js"
 import { ProjectAuth } from "./ProjectAuth.js"
-import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { ChunkState } from "./ChunkState.js"
 
 type MemberRow = {
   readonly id: string
@@ -46,7 +46,7 @@ export class FuseRepo extends Context.Service<
     Effect.gen(function*() {
       const sql = yield* SqlClient.SqlClient
       const blobs = yield* Blobs
-      const stats = yield* ProjectChunkStats
+      const chunkState = yield* ChunkState
       const auth = yield* ProjectAuth
       const activity = yield* Activity
 
@@ -101,20 +101,6 @@ export class FuseRepo extends Context.Service<
                 reason: "not_fusable",
                 detail: `${m.name} is ${m.state}. Only open, stale, or matched chunks can be fused.`
               })
-            }
-            if (m.state === "matched") {
-              yield* sql`
-                UPDATE matches
-                SET invalidated_at = now(),
-                    invalidated_reason = 'fused into parent chunk'
-                WHERE chunk_id = ${m.id}
-                  AND invalidated_at IS NULL
-              `
-              yield* sql`
-                UPDATE chunks
-                SET current_match_id = NULL, updated_at = now()
-                WHERE id = ${m.id}
-              `
             }
           }
 
@@ -200,20 +186,8 @@ export class FuseRepo extends Context.Service<
             )
           `
 
-          for (const m of sorted) {
-            yield* sql`
-              UPDATE chunks
-              SET
-                fuse_parent_id = ${parentId},
-                state = 'blocked',
-                lease_user_id = NULL,
-                lease_token = NULL,
-                lease_expires_at = NULL,
-                hold_started_at = NULL,
-                updated_at = now()
-              WHERE id = ${m.id}
-            `
-          }
+          // Members' matches are invalidated; they stay blocked under the parent.
+          yield* chunkState.fuse({ projectId, parentId, memberIds: sorted.map((m) => m.id) })
 
           const parents = yield* sql<{
             readonly id: string
@@ -241,7 +215,6 @@ export class FuseRepo extends Context.Service<
             return yield* Effect.die("fused parent chunk disappeared")
           }
 
-          yield* stats.refresh(projectId)
           yield* activity.record({
             projectId,
             actorId: userId,

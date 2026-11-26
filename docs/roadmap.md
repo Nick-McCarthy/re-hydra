@@ -162,7 +162,7 @@ This waits until the us-east-1 pool is dull. The writer stays in us-east-1. The 
 
 ## Next
 
-In this order. The first decides whether re-hydra can match retail games at all. The second and third make the lease and match code safer to change before the fourth extends what a match checks.
+In this order. The first decides whether re-hydra can match retail games at all. The second (done) and third make the lease and match code safer to change before the fourth extends what a match checks.
 
 Alongside these, launch work goes on: the us-east-1 deploy (First deployment above) and the open foundations items, agreements before launch and the built CLI before the npm release ([foundations-plan.md](foundations-plan.md)).
 
@@ -180,20 +180,17 @@ The result is a list of compilers per target with the legal basis for each. matc
 
 ### 2. One module for chunk state
 
-Ten services write `chunks` state directly: `ChunksRepo`, `AttemptsRepo`, `MatchWorker`, `LeaseSweeper`, `PoolReturn`, `FuseRepo`, `ImportsRepo`, `IntegrationWorker`, `ProposalAccept`, and `UnresolvedTypesRepo`. Account deletion, blocking a user, and removing a member reach them through `PoolReturn`. Each caller must keep the lease columns consistent with the state (the `chunks_check1` constraint), lock the row, and call `ProjectChunkStats.refresh` afterwards. Audit findings A-001, A-003, and A-004 came from that, and account deletion's first version broke `chunks_check1`.
+Done 2026-11-26. Before it, eight services wrote chunk state and `chunk_leases` directly, and account deletion, blocking a user, and removing a member went through a shared helper. Each caller had to keep the lease columns consistent with the state (the `chunks_check1` constraint), lock the row, and recount the board afterwards. Audit findings A-001, A-003, and A-004 came from that, and account deletion's first version broke `chunks_check1`.
 
-Plan:
+Now `ChunkState` (`apps/api/src/services/ChunkState.ts`) owns every transition: checkout, competing lease, heartbeat, release, clear, expiry, submit, match, miss, a job ending with no result, going stale, fuse, and block or unblock on an unresolved type, plus ending all of one user's leases. Each method runs in the caller's transaction, acts only from the states it names, writes the whole lease column set at once, and recounts the project it changed (bulk methods recount each project once). Callers keep their own locks, refusals, activity events, attempts, jobs, and match rows.
 
-- A `ChunkState` service owns every transition: checkout, extra lease, heartbeat, submit, result, release, clear, expire, return to the pool, fuse, and block or unblock on an unresolved type. Each one runs in the caller's transaction, locks the row, checks the state it starts from, and writes the whole lease column set at once.
-- It records which projects changed, and refreshes their stats once at the end of the transaction instead of each caller doing it.
-- A test fails on `UPDATE chunks` outside the module, as `Problems.test.ts` does for bare errors.
-- Move one caller at a time; the verify scripts cover the behaviour while it moves.
+`chunkStateWrites.test.ts` fails on a write to a chunk's state, lease, current match, or fuse parent, or to `chunk_leases`, anywhere else. Updates to other chunk columns (names and bytes on import, the type revision on a proposal, language and inline assembly settings) stay where they were. The sweeper still recounts recently changed projects every tick, the backstop for concurrent recounts (A-016).
 
 ### 3. Unit tests for the lease and match rules
 
 The lease rules are tested end to end today: the verify scripts need the API, Postgres, and often matchd, and some wait on the sweeper. matchd's masking has unit tests (21 files); the API's lease and match rules have none.
 
-Once step 2 exists, test each transition directly against Postgres, inside a transaction that is rolled back: which states it accepts, the lease columns after it, the per-user hold cap, competing leases, expiry by the database clock, a job result applying once, and a miss extending the lease. They run in CI's verify job, which already has Postgres.
+Now that step 2 exists, test each `ChunkState` method directly against Postgres, inside a transaction that is rolled back: which states it accepts, the lease columns after it, the per-user hold cap, competing leases, expiry by the database clock, a job result applying once, and a miss extending the lease. They run in CI's verify job, which already has Postgres.
 
 ### 4. Matching beyond one function
 

@@ -32,6 +32,7 @@ import { IntegrationWorkerLive } from "./services/IntegrationWorker.js"
 import { IntegrationsRepo } from "./services/IntegrationsRepo.js"
 import { MatchWorkerLive } from "./services/MatchWorker.js"
 import { ProjectAuth } from "./services/ProjectAuth.js"
+import { ChunkState } from "./services/ChunkState.js"
 import { ProjectChunkStats } from "./services/ProjectChunkStats.js"
 import { RateLimits } from "./services/RateLimits.js"
 import { Mailer } from "./services/Mailer.js"
@@ -53,16 +54,19 @@ const BlobsLive = Blobs.layer
 const Authz = ProjectAuth.layer
 
 const StatsLive = ProjectChunkStats.layer
+// Every chunk state change goes through ChunkState; it recounts the board.
+const ChunkStateLive = ChunkState.layer.pipe(Layer.provide(StatsLive))
 const ActivityLive = Activity.layer
 const MalwareLive = MalwareHashes.layer
 const ChunksLiveLayer = ChunksRepo.layer.pipe(
-  Layer.provide(StatsLive),
+  Layer.provide(ChunkStateLive),
   Layer.provide(Authz),
   Layer.provide(ActivityLive)
 )
 
 const DataLive = Layer.mergeAll(
   StatsLive,
+  ChunkStateLive,
   Authz,
   ActivityLive,
   ChunksLiveLayer,
@@ -71,18 +75,18 @@ const DataLive = Layer.mergeAll(
   DirectoryRepo.layer,
   AttemptsRepo.layer.pipe(
     Layer.provide(BlobsLive),
-    Layer.provide(StatsLive),
+    Layer.provide(ChunkStateLive),
     Layer.provide(Authz)
   ),
   ProjectModeration.layer.pipe(
     Layer.provide(Authz),
     Layer.provide(ActivityLive),
-    Layer.provide(StatsLive)
+    Layer.provide(ChunkStateLive)
   ),
   ProjectMembers.layer.pipe(
     Layer.provide(Authz),
     Layer.provide(ActivityLive),
-    Layer.provide(StatsLive)
+    Layer.provide(ChunkStateLive)
   ),
   ProjectJoinRequests.layer.pipe(
     Layer.provide(Authz),
@@ -110,7 +114,7 @@ const DataLive = Layer.mergeAll(
   ),
   UnresolvedTypesRepo.layer.pipe(
     Layer.provide(Authz),
-    Layer.provide(StatsLive),
+    Layer.provide(ChunkStateLive),
     Layer.provide(ActivityLive)
   ),
   IntegrationsRepo.layer.pipe(
@@ -120,13 +124,13 @@ const DataLive = Layer.mergeAll(
   FuseRepo.layer.pipe(
     Layer.provide(Authz),
     Layer.provide(BlobsLive),
-    Layer.provide(StatsLive),
+    Layer.provide(ChunkStateLive),
     Layer.provide(ActivityLive)
   ),
   BlobsLive,
   RateLimits.layer,
   Moderation.layer.pipe(Layer.provide(RateLimits.layer)),
-  AuthRepo.layer.pipe(Layer.provide(RateLimits.layer), Layer.provide(StatsLive)),
+  AuthRepo.layer.pipe(Layer.provide(RateLimits.layer), Layer.provide(ChunkStateLive)),
   PasswordResets.layer.pipe(Layer.provide(RateLimits.layer), Layer.provide(Mailer.layer)),
   Layer.provideMerge(MatchdClient.layer, MatchdPool.layer)
 ).pipe(Layer.provide(SqlLive))

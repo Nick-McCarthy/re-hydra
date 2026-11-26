@@ -6,7 +6,7 @@ import { Blobs } from "./Blobs.js"
 import { findReferenceMismatch, nameVariants } from "./callCheck.js"
 import { MatchdClient, type MatchJobResult } from "./MatchdClient.js"
 import { landProposal, reviewerCount } from "./ProposalAccept.js"
-import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { ChunkState } from "./ChunkState.js"
 import { isPinnedDigest } from "./ToolchainPin.js"
 
 type JobRow = {
@@ -53,7 +53,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
   const pg = yield* PgClient.PgClient
   const blobs = yield* Blobs
   const matchd = yield* MatchdClient
-  const stats = yield* ProjectChunkStats
+  const chunkState = yield* ChunkState
   const activity = yield* Activity
 
   const loadArch = (chunkId: string) =>
@@ -339,27 +339,12 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
           return
         }
 
-        yield* sql`
-          UPDATE matches
-          SET
-            invalidated_at = now(),
-            invalidated_reason = ${"compiler recipe changed"}
-          WHERE id = ${matchId}
-        `
-        yield* sql`
-          UPDATE chunks
-          SET
-            state = 'stale',
-            current_match_id = NULL,
-            lease_user_id = NULL,
-            lease_token = NULL,
-            lease_expires_at = NULL,
-            hold_started_at = NULL,
-            updated_at = now()
-          WHERE id = ${recipe.chunk_id}
-            AND state = 'matched'
-        `
-        yield* stats.refresh(recipe.project_id)
+        yield* chunkState.goStale({
+          chunkId: recipe.chunk_id,
+          projectId: recipe.project_id,
+          reason: "compiler recipe changed",
+          matchId
+        })
         yield* activity.record({
           projectId: recipe.project_id,
           kind: "became_stale",
@@ -394,36 +379,6 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         AND state = 'claimed'
       RETURNING id
     `.pipe(Effect.orDie, Effect.map((rows) => rows[0] !== undefined))
-
-  /**
-   * Return a `validating` chunk to its holder when its job ends without a
-   * result. Nothing else releases `validating` (audit A-004, I11). The lease
-   * keeps its expiry, or gets a fresh one if none was stored.
-   */
-  const releaseValidating = (chunkId: string, jobId: string, leaseToken: string | null) =>
-    sql<{ readonly id: string }>`
-      UPDATE chunks AS c
-      SET
-        state = 'leased',
-        lease_expires_at = COALESCE(
-          c.lease_expires_at,
-          now() + make_interval(hours => p.lease_hours)
-        ),
-        updated_at = now()
-      FROM projects p
-      WHERE c.id = ${chunkId}
-        AND c.project_id = p.id
-        AND c.state = 'validating'
-        AND (${leaseToken}::uuid IS NULL OR c.lease_token = ${leaseToken}::uuid)
-        AND NOT EXISTS (
-          SELECT 1 FROM jobs j
-          WHERE j.chunk_id = c.id
-            AND j.kind = 'interactive'
-            AND j.state IN ('queued', 'claimed')
-            AND j.id <> ${jobId}
-        )
-      RETURNING c.id
-    `.pipe(Effect.orDie)
 
   /**
    * End a job that produced no compile result: inputs missing, or an error
@@ -465,10 +420,13 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         `.pipe(Effect.orDie)
         leaseToken = attempts[0]?.lease_token ?? null
       }
-      const released = yield* releaseValidating(job.chunk_id, job.id, leaseToken)
-      if (released[0] !== undefined) {
-        yield* stats.refresh(job.project_id)
-      }
+      // Nothing else returns a `validating` chunk to its holder (audit A-004, I11).
+      yield* chunkState.returnFromValidating({
+        chunkId: job.chunk_id,
+        projectId: job.project_id,
+        jobId: job.id,
+        leaseToken
+      })
     })).pipe(Effect.orDie)
 
   /**
@@ -634,28 +592,11 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
             `
           }
         } else {
-          yield* sql`
-            UPDATE matches
-            SET
-              invalidated_at = now(),
-              invalidated_reason = ${"type proposal revalidation failed"}
-            WHERE chunk_id = ${job.chunk_id}
-              AND invalidated_at IS NULL
-          `
-          yield* sql`
-            UPDATE chunks
-            SET
-              state = 'stale',
-              current_match_id = NULL,
-              lease_user_id = NULL,
-              lease_token = NULL,
-              lease_expires_at = NULL,
-              hold_started_at = NULL,
-              updated_at = now()
-            WHERE id = ${job.chunk_id}
-              AND state = 'matched'
-          `
-          yield* stats.refresh(job.project_id)
+          yield* chunkState.goStale({
+            chunkId: job.chunk_id,
+            projectId: job.project_id,
+            reason: "type proposal revalidation failed"
+          })
           const regressions = yield* sql<{ readonly caused_by: string }>`
             INSERT INTO proposal_regressions (
               proposal_id, project_id, chunk_id, caused_by
@@ -749,22 +690,13 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         `
 
         const matchId = matchRows[0]?.id ?? null
-        yield* activity.releaseSideLeases(job.chunk_id)
-        yield* sql`
-          UPDATE chunks
-          SET
-            state = 'matched',
-            current_match_id = ${matchId},
-            best_attempt_id = ${attempt.id},
-            lease_user_id = NULL,
-            lease_token = NULL,
-            lease_expires_at = NULL,
-            hold_started_at = NULL,
-            updated_at = now()
-          WHERE id = ${job.chunk_id}
-            AND state = 'validating'
-            AND lease_token = ${attempt.lease_token}
-        `
+        yield* chunkState.recordMatch({
+          chunkId: job.chunk_id,
+          projectId: job.project_id,
+          leaseToken: attempt.lease_token,
+          matchId,
+          attemptId: attempt.id
+        })
         yield* activity.record({
           projectId: job.project_id,
           actorId: attempt.user_id,
@@ -776,25 +708,12 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
         // A miss hands the lease back with a fresh lease_hours window, never
         // past max_hold_hours and never shorter than before (audit A-023).
         // Otherwise a long queue wait could leave the holder minutes from expiry.
-        yield* sql`
-          UPDATE chunks AS c
-          SET
-            state = 'leased',
-            best_attempt_id = ${attempt.id},
-            lease_expires_at = GREATEST(
-              c.lease_expires_at,
-              LEAST(
-                now() + make_interval(hours => p.lease_hours),
-                c.hold_started_at + make_interval(hours => p.max_hold_hours)
-              )
-            ),
-            updated_at = now()
-          FROM projects p
-          WHERE c.id = ${job.chunk_id}
-            AND c.project_id = p.id
-            AND c.state = 'validating'
-            AND c.lease_token = ${attempt.lease_token}
-        `
+        yield* chunkState.recordMiss({
+          chunkId: job.chunk_id,
+          projectId: job.project_id,
+          leaseToken: attempt.lease_token,
+          attemptId: attempt.id
+        })
         yield* activity.record({
           projectId: job.project_id,
           actorId: attempt.user_id,
@@ -803,8 +722,6 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
           summary: `Missed ${job.entry_symbol}`
         })
       }
-
-      yield* stats.refresh(job.project_id)
     }))
     return true
   })

@@ -13,7 +13,6 @@ export class Activity extends Context.Service<
       readonly subjectId?: string | null
       readonly summary: string
     }) => Effect.Effect<void>
-    readonly releaseSideLeases: (chunkId: string) => Effect.Effect<void>
   }
 >()("rehydra/services/Activity") {
   static readonly layer = Layer.effect(
@@ -43,18 +42,7 @@ export class Activity extends Context.Service<
         `.pipe(Effect.orDie)
       })
 
-      const releaseSideLeases = Effect.fn("Activity.releaseSideLeases")(function*(
-        chunkId: string
-      ) {
-        yield* sql`
-          UPDATE chunk_leases
-          SET released_at = now()
-          WHERE chunk_id = ${chunkId}
-            AND released_at IS NULL
-        `.pipe(Effect.orDie)
-      })
-
-      return Activity.of({ record, releaseSideLeases })
+      return Activity.of({ record })
     })
   )
 }

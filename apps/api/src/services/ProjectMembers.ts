@@ -13,9 +13,8 @@ import {
 } from "../domain/Project.js"
 import type { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
-import { endUserLeasesOnProject } from "./PoolReturn.js"
 import { ProjectAuth } from "./ProjectAuth.js"
-import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { ChunkState } from "./ChunkState.js"
 
 const toIso = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString()
@@ -80,7 +79,7 @@ export class ProjectMembers extends Context.Service<
       const sql = yield* SqlClient.SqlClient
       const auth = yield* ProjectAuth
       const activity = yield* Activity
-      const stats = yield* ProjectChunkStats
+      const chunkState = yield* ChunkState
 
       const findProject = (projectSlug: string) =>
         sql<{ readonly id: string; readonly checkout_policy: "open" | "members" }>`
@@ -283,8 +282,7 @@ export class ProjectMembers extends Context.Service<
           if (removed[0] === undefined) return
           // On a members-only project they can no longer work here.
           if (project.checkout_policy === "members") {
-            yield* endUserLeasesOnProject(sql, activity.releaseSideLeases, projectId, targetId)
-            yield* stats.refresh(projectId)
+            yield* chunkState.endUserLeases({ userId: targetId, projectId })
           }
           yield* record(
             projectId,

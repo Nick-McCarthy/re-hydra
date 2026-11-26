@@ -4,7 +4,7 @@ import type { SourceLanguage, Toolchain } from "../domain/Project.js"
 import { Activity } from "./Activity.js"
 import { Blobs } from "./Blobs.js"
 import { MatchdClient } from "./MatchdClient.js"
-import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { ChunkState } from "./ChunkState.js"
 import { compilerPin, isPinnedDigest } from "./ToolchainPin.js"
 
 type ClaimedIntegration = {
@@ -38,55 +38,44 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
   const sql = yield* SqlClient.SqlClient
   const blobs = yield* Blobs
   const matchd = yield* MatchdClient
-  const stats = yield* ProjectChunkStats
+  const chunkState = yield* ChunkState
   const activity = yield* Activity
   // A running build whose claim has not been renewed for this long is taken
   // again. The claimer renews it far more often than that.
   const RECLAIM_AFTER_SECONDS = yield* Config.Int("INTEGRATION_RECLAIM_SECONDS").pipe(Config.withDefault(120))
   const HEARTBEAT_SECONDS = yield* Config.Int("INTEGRATION_HEARTBEAT_SECONDS").pipe(Config.withDefault(30))
 
+  /**
+   * Chunks whose linked bytes disagree go stale together, with one recount of
+   * the board, and each gets an activity event.
+   */
   const reopen = Effect.fn("IntegrationWorker.reopen")(function*(
     projectId: string,
     integrationId: string,
-    chunkId: string,
-    name: string,
-    detail: string
+    failures: ReadonlyArray<{ readonly chunkId: string; readonly name: string; readonly detail: string }>
   ) {
-    yield* sql`
-      UPDATE matches
-      SET
-        invalidated_at = now(),
-        invalidated_reason = ${"integration build"}
-      WHERE chunk_id = ${chunkId}
-        AND invalidated_at IS NULL
-    `
-    const updated = yield* sql<{ readonly id: string }>`
-      UPDATE chunks
-      SET
-        state = 'stale',
-        current_match_id = NULL,
-        lease_user_id = NULL,
-        lease_token = NULL,
-        lease_expires_at = NULL,
-        hold_started_at = NULL,
-        updated_at = now()
-      WHERE id = ${chunkId}
-        AND state = 'matched'
-      RETURNING id
-    `
-    if (updated[0] === undefined) return
-    const firstLine = detail.split("\n")[0] ?? "linked bytes differ"
-    yield* activity.record({
+    const stale = yield* chunkState.goStaleMany({
       projectId,
-      actorId: null,
-      kind: "integration_reopened",
-      chunkId,
-      subjectId: integrationId,
-      summary: `Reopened ${name}: ${firstLine}`
+      chunkIds: failures.map((failure) => failure.chunkId),
+      reason: "integration build"
     })
+    const byId = new Map(failures.map((failure) => [failure.chunkId, failure]))
+    for (const chunkId of stale) {
+      const failure = byId.get(chunkId)
+      if (failure === undefined) continue
+      const firstLine = failure.detail.split("\n")[0] ?? "linked bytes differ"
+      yield* activity.record({
+        projectId,
+        actorId: null,
+        kind: "integration_reopened",
+        chunkId,
+        subjectId: integrationId,
+        summary: `Reopened ${failure.name}: ${firstLine}`
+      })
+    }
   })
 
-  const processOnce = Effect.gen(function*() {
+  const processOnce =Effect.gen(function*() {
     const claimed = yield* sql<{
       readonly id: string
       readonly project_id: string
@@ -352,6 +341,7 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
 
     const bySymbol = new Map(result.units.map((unit) => [unit.symbol, unit]))
     const reopened: Array<string> = []
+    const toReopen: Array<{ readonly chunkId: string; readonly name: string; readonly detail: string }> = []
 
     yield* sql.withTransaction(Effect.gen(function*() {
       if (!(yield* stillOwned)) return
@@ -373,27 +363,18 @@ export const IntegrationWorkerLive = Layer.effectDiscard(Effect.gen(function*() 
           WHERE integration_id = ${job.id} AND chunk_id = ${unit.chunkId}
         `
         if (result.compilerOk && !passed) {
-          yield* reopen(job.project_id, job.id, unit.chunkId, unit.symbol, detail)
+          toReopen.push({ chunkId: unit.chunkId, name: unit.symbol, detail })
           reopened.push(unit.symbol)
         }
       }
 
       for (const failure of localFailures) {
         if (result.compilerOk) {
-          yield* reopen(
-            job.project_id,
-            job.id,
-            failure.chunkId,
-            failure.name,
-            failure.detail
-          )
+          toReopen.push({ chunkId: failure.chunkId, name: failure.name, detail: failure.detail })
           reopened.push(failure.name)
         }
       }
-
-      if (reopened.length > 0) {
-        yield* stats.refresh(job.project_id)
-      }
+      yield* reopen(job.project_id, job.id, toReopen)
 
       if (!result.compilerOk) {
         yield* finish(

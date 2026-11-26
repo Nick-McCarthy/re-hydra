@@ -9,7 +9,7 @@ import { ChunkRefused } from "../domain/Problems.js"
 import { explainChunkRefusal } from "./chunkRefusals.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Blobs } from "./Blobs.js"
-import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { ChunkState } from "./ChunkState.js"
 import { ProjectAuth } from "./ProjectAuth.js"
 import type { ProjectAccessDenied } from "../domain/Project.js"
 
@@ -67,7 +67,7 @@ export class AttemptsRepo extends Context.Service<
       const auth = yield* ProjectAuth
       const pg = yield* PgClient.PgClient
       const blobs = yield* Blobs
-      const stats = yield* ProjectChunkStats
+      const chunkState = yield* ChunkState
 
       const listByChunk = Effect.fn("AttemptsRepo.listByChunk")(function*(
         projectSlug: string,
@@ -275,109 +275,30 @@ export class AttemptsRepo extends Context.Service<
             )
           }
 
-          let lease: LeaseRow | undefined
-          if (isPrimary) {
-            const moved = yield* sql<LeaseRow>`
-              UPDATE chunks c
-              SET state = 'validating', updated_at = now()
-              FROM projects p
-              WHERE c.id = ${options.chunkId}
-                AND c.project_id = p.id
-                AND c.state = 'leased'
-                AND c.lease_user_id = ${options.userId}
-                AND c.lease_token = ${options.leaseToken}
-                AND c.lease_expires_at > now()
-              RETURNING
-                c.id AS chunk_id,
-                c.project_id,
-                c.name,
-                c.bytes_sha256,
-                c.type_revision_id,
-                COALESCE(c.language_override, p.language) AS language,
-                p.toolchain,
-                c.lease_token,
-                c.state
-            `.pipe(Effect.orDie)
-            lease = moved[0]
-          } else {
-            // An extra holder submits: their token moves onto the chunk and the
-            // previous primary is parked in chunk_leases.
-            const displaced = yield* sql<LeaseRow>`
-              WITH side AS (
-                SELECT
-                  cl.chunk_id,
-                  cl.user_id,
-                  cl.lease_token,
-                  cl.lease_expires_at,
-                  cl.hold_started_at
-                FROM chunk_leases cl
-                WHERE cl.chunk_id = ${options.chunkId}
-                  AND cl.user_id = ${options.userId}
-                  AND cl.lease_token = ${options.leaseToken}
-                  AND cl.released_at IS NULL
-                  AND cl.lease_expires_at > now()
-              ),
-              displaced_primary AS (
-                INSERT INTO chunk_leases (
-                  chunk_id, user_id, lease_token, lease_expires_at, hold_started_at
-                )
-                SELECT
-                  c.id,
-                  c.lease_user_id,
-                  c.lease_token,
-                  c.lease_expires_at,
-                  c.hold_started_at
-                FROM chunks c
-                INNER JOIN side ON side.chunk_id = c.id
-                WHERE c.state = 'leased'
-                  AND c.lease_user_id IS NOT NULL
-                  AND c.lease_token IS NOT NULL
-                  AND c.lease_expires_at IS NOT NULL
-                  AND c.hold_started_at IS NOT NULL
-                  AND NOT EXISTS (
-                    SELECT 1 FROM chunk_leases existing
-                    WHERE existing.chunk_id = c.id
-                      AND existing.user_id = c.lease_user_id
-                      AND existing.released_at IS NULL
-                  )
-                RETURNING chunk_id
-              ),
-              drop_side AS (
-                UPDATE chunk_leases cl
-                SET released_at = now()
-                FROM side
-                WHERE cl.chunk_id = side.chunk_id
-                  AND cl.lease_token = side.lease_token
-                  AND cl.released_at IS NULL
-                  AND EXISTS (SELECT 1 FROM displaced_primary)
-                RETURNING cl.chunk_id
-              )
-              UPDATE chunks c
-              SET
-                state = 'validating',
-                lease_user_id = side.user_id,
-                lease_token = side.lease_token,
-                lease_expires_at = side.lease_expires_at,
-                hold_started_at = side.hold_started_at,
-                updated_at = now()
-              FROM side, projects p
-              WHERE c.id = side.chunk_id
-                AND c.project_id = p.id
-                AND c.state = 'leased'
-                AND EXISTS (SELECT 1 FROM drop_side)
-              RETURNING
-                c.id AS chunk_id,
-                c.project_id,
-                c.name,
-                c.bytes_sha256,
-                c.type_revision_id,
-                COALESCE(c.language_override, p.language) AS language,
-                p.toolchain,
-                c.lease_token,
-                c.state
-            `.pipe(Effect.orDie)
-            lease = displaced[0]
-          }
+          // An extra holder who submits takes the primary slot; the previous
+          // holder is parked as a competing lease.
+          const moved = yield* chunkState.startValidating({
+            chunkId: options.chunkId,
+            userId: options.userId,
+            leaseToken: options.leaseToken,
+            primary: isPrimary
+          })
+          const leaseRows = moved === undefined ? [] : yield* sql<LeaseRow>`
+            SELECT
+              c.id AS chunk_id,
+              c.project_id,
+              c.name,
+              c.bytes_sha256,
+              c.type_revision_id,
+              COALESCE(c.language_override, p.language) AS language,
+              p.toolchain,
+              c.lease_token,
+              c.state
+            FROM chunks c
+            INNER JOIN projects p ON p.id = c.project_id
+            WHERE c.id = ${moved.chunk_id}
+          `.pipe(Effect.orDie)
+          const lease = leaseRows[0]
 
           // Any failure from here rolls the move to `validating` back.
           if (lease === undefined) {
@@ -438,8 +359,6 @@ export class AttemptsRepo extends Context.Service<
           if (jobId === undefined) {
             return yield* Effect.die("INSERT INTO jobs returned no row")
           }
-
-          yield* stats.refresh(lease.project_id)
 
           return {
             attemptId,

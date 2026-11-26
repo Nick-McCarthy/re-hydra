@@ -2,12 +2,12 @@ import { createHash } from "node:crypto"
 import { Effect } from "effect"
 import type { SqlClient } from "effect/sql"
 import { AccountDeletionRefused } from "../domain/Problems.js"
-import { returnChunkToPool } from "./PoolReturn.js"
+import { ChunkState } from "./ChunkState.js"
 
 /**
  * Account deletion (foundations plan 3, migration 028). Shared by
- * `POST /auth/delete-account` and `npm run api:admin -- delete-user`, so it
- * takes the SQL client and nothing else.
+ * `POST /auth/delete-account` and `npm run api:admin -- delete-user`. It takes
+ * the SQL client and needs `ChunkState`.
  *
  * In one transaction:
  * - refuses a suspended account, and one that owns a project that is not
@@ -17,9 +17,8 @@ import { returnChunkToPool } from "./PoolReturn.js"
  *   email takes them back (content policy 3);
  * - refuses while a submission of the account's is being checked (a
  *   `validating` chunk must have a holder until matchd answers);
- * - returns the account's leased chunks to the pool and releases the
- *   competing leases on them, as blocking a user does. The caller refreshes
- *   chunk stats for `touchedProjectIds`;
+ * - ends the account's leases everywhere, as blocking a user does on one
+ *   project;
  * - deletes the user. Migration 028's rules do the rest: personal rows go,
  *   work stays with no author ("deleted account").
  */
@@ -28,8 +27,6 @@ export const emailHash = (email: string): Buffer =>
 
 export interface DeletedAccount {
   readonly archivedProjects: ReadonlyArray<{ readonly slug: string; readonly name: string }>
-  /** Projects whose chunk counts changed; refresh ProjectChunkStats for each. */
-  readonly touchedProjectIds: ReadonlyArray<string>
 }
 
 export const deleteUserAccount = (
@@ -38,12 +35,13 @@ export const deleteUserAccount = (
   options: { readonly archiveOwnedProjects: boolean }
 ) =>
   sql.withTransaction(Effect.gen(function*() {
+    const chunkState = yield* ChunkState
     const users = yield* sql<{ readonly email: string; readonly suspended: boolean }>`
       SELECT email, (suspended_at IS NOT NULL) AS suspended FROM users WHERE id = ${userId} FOR UPDATE
     `
     const user = users[0]
     if (user === undefined) {
-      return { archivedProjects: [], touchedProjectIds: [] } satisfies DeletedAccount
+      return { archivedProjects: [] } satisfies DeletedAccount
     }
     if (user.suspended) {
       return yield* new AccountDeletionRefused({
@@ -83,8 +81,8 @@ export const deleteUserAccount = (
     yield* sql`UPDATE strikes SET email_hash = ${emailHash(user.email)} WHERE user_id = ${userId}`
 
     // Locking the rows makes a concurrent submit wait, then find no lease.
-    const held = yield* sql<{ readonly id: string; readonly project_id: string; readonly state: string }>`
-      SELECT id, project_id, state FROM chunks
+    const held = yield* sql<{ readonly state: string }>`
+      SELECT state FROM chunks
       WHERE lease_user_id = ${userId} AND state IN ('leased', 'validating')
       FOR UPDATE
     `
@@ -94,15 +92,11 @@ export const deleteUserAccount = (
         detail: "A submission of yours is still being checked. Try again in a minute."
       })
     }
-    for (const chunk of held) {
-      yield* returnChunkToPool(sql, chunk.id)
-      yield* sql`UPDATE chunk_leases SET released_at = now() WHERE chunk_id = ${chunk.id} AND released_at IS NULL`
-    }
+    yield* chunkState.endUserLeases({ userId })
 
     yield* sql`DELETE FROM users WHERE id = ${userId}`
     return {
-      archivedProjects: owned.map(({ slug, name }) => ({ slug, name })),
-      touchedProjectIds: [...new Set(held.map((chunk) => chunk.project_id))]
+      archivedProjects: owned.map(({ slug, name }) => ({ slug, name }))
     } satisfies DeletedAccount
   }))
 
