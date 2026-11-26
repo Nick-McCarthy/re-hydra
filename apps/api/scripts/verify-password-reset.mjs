@@ -17,6 +17,8 @@ const pg = require("pg")
 const API = process.env.AUDIT_API ?? "http://localhost:3100/v1"
 const DATABASE_URL = process.env.AUDIT_DATABASE_URL
 const MAIL_DIR = process.env.AUDIT_MAIL_DIR
+// The API's APP_URL: reset links point at the web app.
+const APP_URL = process.env.AUDIT_APP_URL ?? "http://localhost:5174"
 if (!DATABASE_URL || !MAIL_DIR) throw new Error("Set AUDIT_DATABASE_URL and AUDIT_MAIL_DIR.")
 const db = new pg.Client({ connectionString: DATABASE_URL })
 await db.connect()
@@ -77,7 +79,7 @@ const r1 = await call("POST", "/auth/password-reset", undefined, { email: email.
 const first = await waitForMail(email, 1)
 const token1 = tokenOf(first[0])
 check("a known email (any case) gets a link with a token in the fragment",
-  r1.status === 204 && first.length === 1 && token1 !== null && first[0].text.includes("http://localhost:5174/reset-password#token="),
+  r1.status === 204 && first.length === 1 && token1 !== null && first[0].text.includes(`${APP_URL}/reset-password#token=`),
   detail(r1))
 const stored = (await db.query(
   `SELECT encode(token_hash, 'hex') AS h FROM password_resets r JOIN users u ON u.id = r.user_id WHERE u.email = $1`, [email]

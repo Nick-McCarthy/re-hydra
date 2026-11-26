@@ -1,0 +1,61 @@
+# Typecheck, unit tests, and the end-to-end verify scripts (foundations plan 7d).
+# `npm run verify` runs the same scripts locally; see apps/api/scripts/verify-all.mjs.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, unit tests, web build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run web:build
+
+  verify:
+    name: End-to-end verify scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # matchd's compile sandbox (bubblewrap) needs unprivileged user
+      # namespaces, which Ubuntu 24.04 restricts through AppArmor by default.
+      - name: Allow user namespaces for the matchd sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Start Postgres and matchd
+        run: docker compose up -d --build --wait postgres matchd
+      - name: Wait for matchd
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:3001/v1/health && exit 0
+            sleep 2
+          done
+          docker compose logs matchd
+          exit 1
+      - run: npm run verify -- --require-matchd
+      - name: Service logs
+        if: failure()
+        run: docker compose logs --no-color postgres matchd

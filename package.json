@@ -23,6 +23,8 @@
     "web:typecheck": "npm run typecheck -w @re-hydra/web",
     "web:build": "npm run build -w @re-hydra/web",
     "prepare": "effect-tsgo patch --typescript --no-oxlint",
+    "test": "npm test -w @re-hydra/api && npm test -w @re-hydra/cli && npm test -w @re-hydra/matchd",
+    "verify": "node apps/api/scripts/verify-all.mjs",
     "typecheck": "npm run api:typecheck && npm run cli:typecheck && npm run matchd:typecheck && npm run web:typecheck"
   },
   "engines": {

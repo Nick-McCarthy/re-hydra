@@ -17,9 +17,9 @@ The project is four weeks old (first commit 2026-10-28). Milestones 1–4 came f
 | 7a | Line endings | Done | — | S |
 | 7b | Addresses as decimal strings | Keep the type, add hex | Any time | S |
 | 7c | Google Fonts | Done | — | S |
-| 7d | Tests run by hand | Change | Before launch | M |
+| 7d | Tests run by hand | Done (CI not yet seen running) | — | M |
 
-Suggested order: 7a, 3a, 1, 2, and 7c (done), then 7d, 3, and 5 when the npm release is near.
+Suggested order: 7a, 3a, 1, 2, 7c, and 7d (done), then 3, and 5 when the npm release is near.
 
 ---
 
@@ -152,6 +152,8 @@ Sign-up records one agreement: `users.policy_version` and `policy_accepted_at`, 
 **Plan.** Add `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` (only the weights used: 400, 500, 600), import them in `main.tsx`, remove the Google links, tighten the CSP to `'self'` for fonts and styles, and delete the Google Fonts paragraph from the privacy policy.
 
 ### 7d. One test runner, in CI
+
+**Done.** `npm run verify` (`apps/api/scripts/verify-all.mjs`) does step 1: a fresh `rehydra_test_*` database, migrate and seed, the API on a free port with only the settings each script needs (never `apps/api/.env`), every script in turn, then the database is dropped. Compiling scripts are skipped without matchd. Three scripts stay manual: `verify-flags` (every compiler image) and `verify-phase3` and `verify-small-fixes` (the `scale100k` project). Two scripts were made independent of run order: `verify-report-emails` marks earlier reports notified first, and `verify-password-reset` takes the web origin from `AUDIT_APP_URL`. `npm test` runs the API, CLI, and matchd unit tests. `.github/workflows/ci.yml` does step 2 with both jobs; it has not run on GitHub yet. Step 3: `dogfood.mjs` is deleted, since `verify-checkout-loop` covers it. The rest of this section is the analysis it was based on.
 
 **Today.** 37 API unit tests and 5 CLI tests run with `node --test`. Twenty-one `apps/api/scripts/verify-*.mjs` scripts test real behaviour (access, limits, moderation, malware, the checkout loop) but each one needs a hand-started API on port 3100 and the `rehydra_audit` database, set up as its header describes. There is no CI (no `.github/`). The roadmap's "checked by hand" notes come from this.
 
