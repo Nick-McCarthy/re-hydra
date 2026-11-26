@@ -23,4 +23,4 @@ ENV MATCHD_TIMEOUT_MS=30000
 ENV MATCHD_SANDBOX=bwrap
 
 EXPOSE 3001
-CMD ["npx", "tsx", "src/main.ts"]
+CMD ["node", "--import", "tsx", "src/main.ts"]
