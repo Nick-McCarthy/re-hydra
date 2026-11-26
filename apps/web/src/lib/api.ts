@@ -181,8 +181,9 @@ export type AttemptResult = {
 export type AttemptSummary = {
   id: string
   chunkId: string
-  userId: string
-  displayName: string
+  /** null once the person deleted their account. */
+  userId: string | null
+  displayName: string | null
   score: number | null
   matched: boolean | null
   compilerOk: boolean | null
@@ -300,8 +301,8 @@ export type FollowState = {
 export type BlockedUser = {
   userId: string
   displayName: string
-  blockedBy: string
-  blockedByName: string
+  blockedBy: string | null
+  blockedByName: string | null
   reason: string
   createdAt: string
 }
@@ -419,7 +420,7 @@ export type TypeProposal = {
   title: string
   description: string
   state: ProposalState
-  createdBy: string
+  createdBy: string | null
   revalidationStartedBy?: string
   reviewedBy?: string
   reviewerCount: number
@@ -446,7 +447,7 @@ export type UnresolvedType = {
   projectId: string
   typeName: string
   reason: string
-  createdBy: string
+  createdBy: string | null
   createdAt: string
   clearedAt?: string
 }
@@ -683,6 +684,21 @@ export const api = {
 
   me(token: string) {
     return request<UserProfile>("/auth/me", {}, token)
+  },
+
+  updateMe(token: string, displayName: string) {
+    return request<UserProfile>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ displayName })
+    }, token)
+  },
+
+  /** Deletes the signed-in account. Refused (409, reason owns_projects) while you own a live project, unless archiveOwnedProjects. */
+  deleteAccount(token: string, password: string, archiveOwnedProjects: boolean) {
+    return request<{ archivedProjects: Array<{ slug: string; name: string }> }>("/auth/delete-account", {
+      method: "POST",
+      body: JSON.stringify({ password, archiveOwnedProjects })
+    }, token)
   },
 
   logout(token: string) {

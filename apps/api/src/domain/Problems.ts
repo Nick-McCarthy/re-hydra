@@ -119,3 +119,20 @@ export class TokenScopeRefused extends HttpApiError.Problem<TokenScopeRefused>()
   status: 403,
   title: "Not allowed with this token"
 }) {}
+
+/** Deleting your own account (foundations plan 3). */
+export const AccountDeletionRefusedReason = Schema.Literals([
+  /** You own projects that are not archived. Transfer them, or ask to archive them as part of deleting. */
+  "owns_projects",
+  /** The account is suspended; deleting it would let its owner sign up again with a clean record. */
+  "suspended",
+  /** A submission of yours is being checked; its chunk keeps its holder until matchd answers. Try again shortly. */
+  "submission_checking"
+])
+export type AccountDeletionRefusedReason = typeof AccountDeletionRefusedReason.Type
+
+export class AccountDeletionRefused extends HttpApiError.Problem<AccountDeletionRefused>()("AccountDeletionRefused", {
+  type: "https://re-hydra.dev/problems/account-deletion-refused",
+  status: 409,
+  title: "Account not deleted"
+}, { reason: AccountDeletionRefusedReason }) {}

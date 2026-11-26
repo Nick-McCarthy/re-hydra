@@ -19,10 +19,12 @@ import {
 import {
   AccessTokenCreated,
   AccessTokenSummary,
+  AccountDeleted,
   AccountRejected,
   AccountSuspended,
   ChangePasswordPayload,
   CreateAccessTokenPayload,
+  DeleteAccountPayload,
   EmailTaken,
   InvalidCredentials,
   SignInLimited,
@@ -35,6 +37,7 @@ import {
   SignInPayload,
   SignUpPayload,
   TokenRejected,
+  UpdateProfilePayload,
   UserProfile
 } from "./domain/Auth.js"
 import {
@@ -126,7 +129,14 @@ import {
   ResolveReportPayload,
   Strike
 } from "./domain/Moderation.js"
-import { ChunkRefused, IntegrationRefused, InvalidRequest, ProjectRefused, ProposalRefused } from "./domain/Problems.js"
+import {
+  AccountDeletionRefused,
+  ChunkRefused,
+  IntegrationRefused,
+  InvalidRequest,
+  ProjectRefused,
+  ProposalRefused
+} from "./domain/Problems.js"
 import { Uuid } from "./domain/Uuid.js"
 import { AllowWorkToken, Authorization } from "./http/Authorization.js"
 
@@ -167,6 +177,20 @@ export const AuthGroup = HttpApiGroup.make("auth")
       payload: ChangePasswordPayload,
       success: SessionResponse,
       error: [Unauthorized, PasswordRejected]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.patch("updateMe", "/auth/me", {
+      payload: UpdateProfilePayload,
+      success: UserProfile,
+      error: [Unauthorized, AccountRejected]
+    }).middleware(Authorization)
+  )
+  .add(
+    HttpApiEndpoint.post("deleteAccount", "/auth/delete-account", {
+      payload: DeleteAccountPayload,
+      success: AccountDeleted,
+      error: [Unauthorized, PasswordRejected, AccountDeletionRefused]
     }).middleware(Authorization)
   )
   .add(

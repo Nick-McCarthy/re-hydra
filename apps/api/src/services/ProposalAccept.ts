@@ -35,9 +35,11 @@ export const landProposal = (
     readonly projectId: string
     readonly headersSha256: Uint8Array
     readonly title: string
-    readonly createdBy: string
+    /** null once the author deleted their account. */
+    readonly createdBy: string | null
   },
-  reviewerId: string
+  /** null when the person who started a recheck deleted their account before it finished. */
+  reviewerId: string | null
 ) =>
   Effect.gen(function*() {
     const nextRev = yield* sql<{ readonly revision: number }>`

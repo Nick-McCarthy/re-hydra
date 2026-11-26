@@ -104,7 +104,7 @@ export const MatchWorkerLive = Layer.effectDiscard(Effect.gen(function*() {
       const rows = yield* sql<{
         readonly project_id: string
         readonly headers_sha256: Uint8Array
-        readonly created_by: string
+        readonly created_by: string | null
         readonly revalidation_started_by: string | null
         readonly title: string
         readonly revalidation_total: number

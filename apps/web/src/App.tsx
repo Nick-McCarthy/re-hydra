@@ -8,7 +8,7 @@ import { HomePage } from "@/pages/home"
 import { LoginPage } from "@/pages/login"
 import { ForgotPasswordPage } from "./pages/forgot-password"
 import { ResetPasswordPage } from "./pages/reset-password"
-import { PasswordPage } from "@/pages/password"
+import { AccountPage } from "@/pages/account"
 import { SignupPage } from "@/pages/signup"
 import { NewProjectPage } from "@/pages/new-project"
 import { AdminPage } from "@/pages/admin"
@@ -34,7 +34,8 @@ export default function App() {
               <Route path="signup" element={<SignupPage />} />
               <Route path="forgot-password" element={<ForgotPasswordPage />} />
               <Route path="reset-password" element={<ResetPasswordPage />} />
-              <Route path="account/password" element={<PasswordPage />} />
+              <Route path="account" element={<AccountPage />} />
+              <Route path="account/password" element={<AccountPage />} />
               <Route path="faq" element={<FaqPage />} />
               <Route path="policy" element={<PolicyPage />} />
               <Route path="privacy" element={<PrivacyPage />} />

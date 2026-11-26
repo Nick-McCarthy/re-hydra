@@ -64,6 +64,7 @@ const scripts = [
   { name: "verify-checkout-loop", matchd: true },
   { name: "verify-profile", matchd: true },
   { name: "verify-inline-asm", matchd: true },
+  { name: "verify-account-deletion", matchd: true },
   // Writes the link fixture's hash into the malware list, so it runs after
   // everything else that imports that fixture under the plain configuration.
   { name: "verify-malware-hashes", api: ({ listFile }) => ({ MALWARE_HASHLIST_URL: pathToFileURL(listFile).href }) },

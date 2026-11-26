@@ -56,8 +56,8 @@ export function AccountMenu() {
           >
             Profile
           </Link>
-          <Link role="menuitem" to="/account/password" className="block px-3 py-2 hover:bg-accent">
-            Password
+          <Link role="menuitem" to="/account" className="block px-3 py-2 hover:bg-accent">
+            Account
           </Link>
           <button
             type="button"

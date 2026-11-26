@@ -285,6 +285,18 @@ export class Moderation extends Context.Service<
               detail: archive ? "This project is already archived." : "This project is not archived."
             })
           }
+          if (!archive) {
+            // Its owner deleted their account (foundations plan 3). Every live
+            // project has an owner, so it stays archived until it has one.
+            const owners = yield* sql`
+              SELECT 1 FROM project_members WHERE project_id = ${before.id} AND role = 'owner'
+            `.pipe(Effect.orDie)
+            if (owners.length === 0) {
+              return yield* new ModerationRefused({
+                detail: "This project has no owner: its owner deleted their account. It stays archived."
+              })
+            }
+          }
           yield* sql.withTransaction(Effect.gen(function*() {
             if (archive) {
               yield* sql`UPDATE projects SET archived_at = now() WHERE id = ${before.id}`

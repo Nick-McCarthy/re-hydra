@@ -49,6 +49,28 @@ export const SignInPayload = Schema.Struct({
 
 export type SignInPayload = typeof SignInPayload.Type
 
+/** Deleting your own account. The password confirms it is you. */
+export const DeleteAccountPayload = Schema.Struct({
+  password: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(128)),
+  /** Archive the projects you still own as part of deleting. Without it, owning one refuses the deletion. */
+  archiveOwnedProjects: Schema.optionalKey(Schema.Boolean)
+}).annotate({ identifier: "DeleteAccountPayload" })
+
+export type DeleteAccountPayload = typeof DeleteAccountPayload.Type
+
+export const AccountDeleted = Schema.Struct({
+  /** Projects archived as part of the deletion (empty unless archiveOwnedProjects). */
+  archivedProjects: Schema.Array(Schema.Struct({ slug: Schema.String, name: Schema.String }))
+}).annotate({ identifier: "AccountDeleted" })
+
+export type AccountDeleted = typeof AccountDeleted.Type
+
+export const UpdateProfilePayload = Schema.Struct({
+  displayName: DisplayName
+}).annotate({ identifier: "UpdateProfilePayload" })
+
+export type UpdateProfilePayload = typeof UpdateProfilePayload.Type
+
 export const ChangePasswordPayload = Schema.Struct({
   currentPassword: Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(128)),
   newPassword: Password

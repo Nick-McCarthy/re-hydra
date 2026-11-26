@@ -10,7 +10,7 @@ The project is four weeks old (first commit 2026-10-28). Milestones 1–4 came f
 | --- | --- | --- | --- | --- |
 | 1 | Errors without a reason | Done | — | M |
 | 2 | Tokens can do everything | Done (expiry still open) | — | M |
-| 3 | Account deletion and agreements | Change; 3a done | Before launch | M |
+| 3 | Account deletion and agreements | Deletion and display name done; agreements open | Before launch | M |
 | 4 | Policy written after the features | Process; mostly caught up | Ongoing | S |
 | 5 | CLI runs from TypeScript source | Change | Before npm publish | M |
 | 6 | Rate limits in memory | Keep for one API process | Before a second API process | M |
@@ -84,6 +84,16 @@ Sign-up records one agreement: `users.policy_version` and `policy_accepted_at`, 
 2. Migration: switch every `REFERENCES users (id)` from 001–008 to the chosen rule. `NOT NULL` columns that become `SET NULL` drop the `NOT NULL`, and the web shows "deleted account" where the name was.
 3. `DELETE /v1/me` with password confirmation; a button on the account page; an admin action for requests by email.
 4. Display-name change on the account page (the privacy policy already promises corrections).
+**Done (migration 028).** Steps 1–4:
+
+- Every reference to `users` from 001–008 has a rule. SET NULL (dropping `NOT NULL`) for projects and type revisions created, attempts, matches, imports, type proposals and reviews, unresolved types, `project_events`, proposal regressions, integrations, a chunk's leaseholder, blocks made, and strikes. CASCADE for competing leases (`chunk_leases`) and ownership offers made.
+- `POST /v1/auth/delete-account` (password confirmation; not open to work tokens) and `PATCH /v1/auth/me` for the display name. Both are on the web's Account page (`/account`). `npm run api:admin -- delete-user <email> [--archive-projects]` handles requests by email.
+- Shared rules in `apps/api/src/services/accountDeletion.ts`. Refused for a suspended account, for an owner of projects that are not archived unless they ask to archive them, and while one of the account's submissions is being checked. Leased chunks go back to the pool at once and their competing leases are released, as blocking does. Strikes keep a SHA-256 of the email (`strikes.email_hash`); sign-up with that email takes them back.
+- An archived project whose owner deleted their account has no owner and cannot be restored.
+- The web, CLI, and API show "deleted account" where an author is null. Checked by `apps/api/scripts/verify-account-deletion.mjs`.
+
+Still open:
+
 5. Agreements: a table `agreements (user_id, document, version, accepted_at)` for content policy, terms, and privacy. Backfill the existing column into it. Sign-up asks for all three. When a document's version changes, ask signed-in users to accept it again.
 
 ## 4. Policy before features

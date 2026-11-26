@@ -92,8 +92,9 @@ export class ProjectAccessDenied extends HttpApiError.Problem<ProjectAccessDenie
 export const BlockedUser = Schema.Struct({
   userId: Uuid,
   displayName: Schema.String,
-  blockedBy: Uuid,
-  blockedByName: Schema.String,
+  /** null once the person who blocked deleted their account. The block stays. */
+  blockedBy: Schema.NullOr(Uuid),
+  blockedByName: Schema.NullOr(Schema.String),
   reason: Schema.String,
   createdAt: Schema.String
 }).annotate({ identifier: "BlockedUser" })

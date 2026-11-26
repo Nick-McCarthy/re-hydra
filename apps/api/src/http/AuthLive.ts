@@ -55,6 +55,21 @@ export const AuthLive = HttpApiBuilder.group(Api, "auth", (handlers) =>
       })
     )
     .handle("me", () => CurrentUser)
+    .handle("updateMe", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const auth = yield* AuthRepo
+        return yield* auth.updateProfile(user.id, request.payload)
+      })
+    )
+    .handle("deleteAccount", (request) =>
+      Effect.gen(function*() {
+        const user = yield* CurrentUser
+        const auth = yield* AuthRepo
+        const deleted = yield* auth.deleteAccount(user.id, request.payload)
+        return { archivedProjects: deleted.archivedProjects }
+      })
+    )
     .handle("createToken", (request) =>
       Effect.gen(function*() {
         const user = yield* CurrentUser

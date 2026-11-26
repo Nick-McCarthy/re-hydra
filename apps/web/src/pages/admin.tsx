@@ -167,7 +167,7 @@ function ReportsTab({ token }: { token: string }) {
                     {report.reporter.displayName}
                   </Link>
                 ) : (
-                  "a removed user"
+                  "a deleted account"
                 )}{" "}
                 · {when(report.createdAt)}
               </CardDescription>
@@ -177,7 +177,7 @@ function ReportsTab({ token }: { token: string }) {
               {report.post ? (
                 <blockquote className="border-l-2 pl-3 text-muted-foreground">
                   <p className="text-xs">
-                    Post by {report.post.author?.displayName ?? "a removed user"}
+                    Post by {report.post.author?.displayName ?? "a deleted account"}
                     {report.post.removed ? " (removed)" : ""}
                   </p>
                   <p className="whitespace-pre-wrap">{report.post.excerpt}</p>
@@ -185,7 +185,7 @@ function ReportsTab({ token }: { token: string }) {
               ) : null}
               {report.resolvedAt ? (
                 <p className="text-muted-foreground">
-                  Resolved by {report.resolvedBy?.displayName ?? "a removed user"} · {when(report.resolvedAt)}:{" "}
+                  Resolved by {report.resolvedBy?.displayName ?? "a deleted account"} · {when(report.resolvedAt)}:{" "}
                   {report.resolution}
                 </p>
               ) : (
@@ -317,7 +317,7 @@ function MalwareTab({ token }: { token: string }) {
               {hit.resolvedAt ? (
                 <p className="text-muted-foreground">
                   {hit.resolution === "allowed" ? "Allowed" : "Confirmed"} by{" "}
-                  {hit.resolvedBy?.displayName ?? "a removed user"} · {when(hit.resolvedAt)}: {hit.resolutionNote}
+                  {hit.resolvedBy?.displayName ?? "a deleted account"} · {when(hit.resolvedAt)}: {hit.resolutionNote}
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -508,13 +508,13 @@ function StrikesButton({ account, token, selfId, onChange }: {
               {strikes.map((strike) => (
                 <li key={strike.id} className="space-y-1 rounded-md border p-3">
                   <p className="text-xs text-muted-foreground">
-                    {when(strike.createdAt)} by {strike.admin?.displayName ?? "a removed admin"}
+                    {when(strike.createdAt)} by {strike.admin?.displayName ?? "a deleted account"}
                     {strike.active ? null : strike.reversedAt ? " · reversed" : " · expired"}
                   </p>
                   <p className="whitespace-pre-wrap">{strike.note}</p>
                   {strike.reversedAt ? (
                     <p className="text-xs text-muted-foreground">
-                      Reversed {when(strike.reversedAt)} by {strike.reversedBy?.displayName ?? "a removed admin"}:{" "}
+                      Reversed {when(strike.reversedAt)} by {strike.reversedBy?.displayName ?? "a deleted account"}:{" "}
                       {strike.reversalNote}
                     </p>
                   ) : !strike.active ? null : (

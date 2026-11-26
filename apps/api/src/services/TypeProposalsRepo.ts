@@ -24,7 +24,7 @@ type ProposalRow = {
   readonly description: string
   readonly affected_types: ReadonlyArray<string> | null
   readonly state: TypeProposal["state"]
-  readonly created_by: string
+  readonly created_by: string | null
   readonly revalidation_started_by: string | null
   readonly reviewed_by: string | null
   readonly resulting_revision_id: string | null
