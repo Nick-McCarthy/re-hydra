@@ -14,6 +14,8 @@ import { NewProjectPage } from "@/pages/new-project"
 import { AdminPage } from "@/pages/admin"
 import { PeoplePage } from "@/pages/people"
 import { PolicyPage } from "@/pages/policy"
+import { PrivacyPage } from "@/pages/privacy"
+import { TermsPage } from "@/pages/terms"
 import { ProfilePage } from "@/pages/profile"
 import { ProjectPage } from "@/pages/project"
 import { ProjectsPage } from "@/pages/projects"
@@ -35,6 +37,8 @@ export default function App() {
               <Route path="account/password" element={<PasswordPage />} />
               <Route path="faq" element={<FaqPage />} />
               <Route path="policy" element={<PolicyPage />} />
+              <Route path="privacy" element={<PrivacyPage />} />
+              <Route path="terms" element={<TermsPage />} />
               <Route path="admin" element={<AdminPage />} />
               <Route path="people" element={<PeoplePage />} />
               <Route path="users/:userId" element={<ProfilePage />} />
