@@ -1,0 +1,17 @@
+# Text files are stored and checked out with LF on every OS, whatever
+# core.autocrlf says. Shell scripts and Dockerfiles run in Linux containers.
+# (apps/matchd/Dockerfile.ps1 is the PlayStation image, not PowerShell.)
+* text=auto eol=lf
+
+# Windows batch files need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary: never converted or diffed as text.
+*.png binary
+*.ico binary
+*.zip binary
+*.gz binary
+*.elf binary
+*.bin binary
+*.o binary
