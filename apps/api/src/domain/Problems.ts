@@ -112,3 +112,10 @@ export class ProjectRefused extends HttpApiError.Problem<ProjectRefused>()("Proj
 /** The chunk changed between the write and the read back; the client may retry. */
 export const chunkChanged = () =>
   new ChunkRefused({ reason: "changed", detail: "The chunk changed while this request ran. Try again." })
+
+/** A `work` profile token was used for something only a full-access token or a session may do. */
+export class TokenScopeRefused extends HttpApiError.Problem<TokenScopeRefused>()("TokenScopeRefused", {
+  type: "https://re-hydra.dev/problems/token-scope-refused",
+  status: 403,
+  title: "Not allowed with this token"
+}) {}

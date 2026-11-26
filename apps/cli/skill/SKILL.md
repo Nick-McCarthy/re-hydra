@@ -19,8 +19,10 @@ hydra me          # who you are working as, and which site (exit 4: not signed i
 hydra status      # what this account already holds
 ```
 
-If `hydra me` exits 4, ask the person for a token from their re-hydra profile and run
-`hydra login --token <token>`. Never ask for or type their password.
+If `hydra me` exits 4, ask the person to create a token with Work access on their re-hydra
+profile, and run `hydra login --token <token>`. Never ask for or type their password. A work
+token is refused (exit 1, "This token is for contributor work…") for anything beyond
+contributor work; if that happens, you are doing something you should not, so stop and tell the person.
 
 Add `--json` to any command for machine-readable output. Exit codes:
 
@@ -30,7 +32,7 @@ Add `--json` to any command for machine-readable output. Exit codes:
 | 1 | Other failure; the message says why | Read it; stop if you cannot fix it |
 | 2 | `submit`: compiled but not a match, or did not compile | Read the diff or the compiler error, edit, resubmit |
 | 3 | `submit`: still being checked | `hydra attempts` later, or resubmit with a longer `--wait` |
-| 4 | Not signed in | Ask the person for a token |
+| 4 | Not signed in | Ask the person for a work token |
 | 5 | No lease here, or it expired or was released | `cd` into the work folder, or check out again |
 | 6 | `next`: nothing open | Stop; tell the person |
 

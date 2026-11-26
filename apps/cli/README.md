@@ -82,9 +82,10 @@ Inside a checkout the project comes from `.lease.json`; elsewhere pass `--projec
 
 `hydra skill install` writes the agent skill (`skill/SKILL.md` in this package) to `~/.claude/skills/re-hydra/SKILL.md`. `--project` installs it into `./.claude/skills`; `--dir <skills folder>` anywhere else. `hydra skill print` prints it. Run the install again after updating the CLI.
 
-- Agents may check out, submit, and release. What they submit goes on the account holder's record (content policy 2.4)
+- Give agents a **work** token (choose Work access when creating it on the profile page). The server lets a work token check out, submit, heartbeat, release, read bundles, and propose types, and refuses it everything else with a 403 (`TokenScopeRefused`): integration builds, imports, accepting or rechecking proposals, project and member changes, posts, admin, and the account's tokens and password. Tokens created before scopes existed have full access
+- What an agent submits goes on the account holder's record (content policy 2.4)
 - Without a terminal, `hydra login` refuses to prompt (exit 4): use `--token`
-- Without a terminal, `hydra integrate` will not start a build unless `--confirm-cost` is passed. This is a speed bump, not a permission: the server still lets any owner or maintainer start one. Agent-scoped tokens would be the real control
+- Without a terminal, `hydra integrate` also asks for `--confirm-cost`, so a maintainer's script does not start a costly build by accident
 
 ### Exit codes
 

@@ -10,6 +10,7 @@ import type {
   SessionResponse,
   SignInPayload,
   SignUpPayload,
+  TokenScope,
   UserProfile
 } from "../domain/Auth.js"
 import {
@@ -83,10 +84,11 @@ export class AuthRepo extends Context.Service<
     ) => Effect.Effect<Option.Option<UserProfile>>
     readonly findUserByAccessToken: (
       token: string
-    ) => Effect.Effect<Option.Option<UserProfile>>
+    ) => Effect.Effect<Option.Option<{ readonly user: UserProfile; readonly scope: TokenScope }>>
     readonly createAccessToken: (
       userId: Uuid,
-      label: string
+      label: string,
+      scope: TokenScope
     ) => Effect.Effect<AccessTokenCreatedBody, TokenRejected>
     readonly listAccessTokens: (
       userId: Uuid
@@ -307,9 +309,10 @@ export class AuthRepo extends Context.Service<
       const findUserByAccessToken = Effect.fn("AuthRepo.findUserByAccessToken")(
         function*(token: string) {
           const tokenHash = hashToken(token)
-          const rows = yield* sql<SessionRow>`
+          const rows = yield* sql<SessionRow & { readonly scope: TokenScope }>`
             SELECT
               t.id,
+              t.scope,
               u.id AS user_id,
               u.email,
               u.display_name,
@@ -334,25 +337,28 @@ export class AuthRepo extends Context.Service<
           `
 
           return Option.some({
-            id: row.user_id,
-            email: row.email,
-            displayName: row.display_name,
-            isAdmin: row.is_admin
-          } satisfies UserProfile)
+            user: {
+              id: row.user_id,
+              email: row.email,
+              displayName: row.display_name,
+              isAdmin: row.is_admin
+            } satisfies UserProfile,
+            scope: row.scope
+          })
         },
         Effect.orDie
       )
 
       const createAccessToken = Effect.fn("AuthRepo.createAccessToken")(
-        function*(userId: Uuid, label: string) {
+        function*(userId: Uuid, label: string, scope: TokenScope) {
           const trimmed = label.trim()
           if (trimmed.length === 0 || trimmed.length > 80) {
             return yield* new TokenRejected({ detail: "Enter a name for this token." })
           }
           const secret = newToken()
           const rows = yield* sql<{ readonly id: string; readonly created_at: Date | string }>`
-            INSERT INTO access_tokens (user_id, label, token_hash)
-            VALUES (${userId}, ${trimmed}, ${hashToken(secret)})
+            INSERT INTO access_tokens (user_id, label, token_hash, scope)
+            VALUES (${userId}, ${trimmed}, ${hashToken(secret)}, ${scope})
             RETURNING id, created_at
           `.pipe(Effect.orDie)
           const row = rows[0]
@@ -365,6 +371,7 @@ export class AuthRepo extends Context.Service<
           return {
             id: row.id,
             label: trimmed,
+            scope,
             token: secret,
             createdAt
           } satisfies AccessTokenCreatedBody
@@ -376,10 +383,11 @@ export class AuthRepo extends Context.Service<
           const rows = yield* sql<{
             readonly id: string
             readonly label: string
+            readonly scope: TokenScope
             readonly created_at: Date | string
             readonly last_used_at: Date | string | null
           }>`
-            SELECT id, label, created_at, last_used_at
+            SELECT id, label, scope, created_at, last_used_at
             FROM access_tokens
             WHERE user_id = ${userId}
               AND revoked_at IS NULL
@@ -390,6 +398,7 @@ export class AuthRepo extends Context.Service<
           return rows.map((row) => ({
             id: row.id,
             label: row.label,
+            scope: row.scope,
             createdAt: iso(row.created_at),
             lastUsedAt: row.last_used_at === null ? null : iso(row.last_used_at)
           } satisfies AccessTokenSummary))

@@ -9,7 +9,7 @@ The project is four weeks old (first commit 2026-10-28). Milestones 1–4 came f
 | # | Item | Verdict | When | Size |
 | --- | --- | --- | --- | --- |
 | 1 | Errors without a reason | Done | — | M |
-| 2 | Tokens can do everything | Change | Before launch | M |
+| 2 | Tokens can do everything | Done (expiry still open) | — | M |
 | 3 | Account deletion and agreements | Change; 3a done | Before launch | M |
 | 4 | Policy written after the features | Process; mostly caught up | Ongoing | S |
 | 5 | CLI runs from TypeScript source | Change | Before npm publish | M |
@@ -19,7 +19,7 @@ The project is four weeks old (first commit 2026-10-28). Milestones 1–4 came f
 | 7c | Google Fonts | Change | Before launch | S |
 | 7d | Tests run by hand | Change | Before launch | M |
 
-Suggested order: 7a, 3a, and 1 (done), then 2, 7c, 7d, 3, and 5 when the npm release is near.
+Suggested order: 7a, 3a, 1, and 2 (done), then 7c, 7d, 3, and 5 when the npm release is near.
 
 ---
 
@@ -44,6 +44,8 @@ Suggested order: 7a, 3a, and 1 (done), then 2, 7c, 7d, 3, and 5 when the npm rel
 5. Add a lint-style test: no bare `new Conflict()` in `apps/api/src/services`.
 
 ## 2. Scoped tokens
+
+**Done, with two changes from the plan below.** Migration 027 adds `access_tokens.scope` (`work` or `all`; existing tokens are `all`, new ones default to `work`). There are two scopes, not three: a separate `maintain` scope would only differ from `all` by excluding account settings, and nothing needs that yet. The check is in the Authorization middleware as an allow-list: an endpoint a work token may call is annotated `AllowWorkToken` in `Api.ts` (18 of them), so a new endpoint is closed to agents by default. A refused call is a 403 `TokenScopeRefused` with a detail. The profile page picks the scope and shows it on each token. Token expiry (step 5) is not done.
 
 **Today.** `access_tokens` (migration 011) has a label, a hash, and revocation. A token has the full power of its owner. `hydra integrate --confirm-cost` is the only thing between an agent and a costly build, and it is a client-side check.
 

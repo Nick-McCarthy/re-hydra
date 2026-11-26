@@ -12,9 +12,13 @@ export type Session = {
   user: UserProfile
 }
 
+/** `work`: check out, submit, heartbeat, release, propose types. `all`: anything the account can do. */
+export type TokenScope = "work" | "all"
+
 export type AccessTokenSummary = {
   id: string
   label: string
+  scope: TokenScope
   createdAt: string
   lastUsedAt: string | null
 }
@@ -22,6 +26,7 @@ export type AccessTokenSummary = {
 export type AccessTokenCreated = {
   id: string
   label: string
+  scope: TokenScope
   token: string
   createdAt: string
 }
@@ -688,10 +693,10 @@ export const api = {
     return request<Array<AccessTokenSummary>>("/auth/tokens", {}, token)
   },
 
-  createToken(token: string, label: string) {
+  createToken(token: string, label: string, scope: TokenScope) {
     return request<AccessTokenCreated>(
       "/auth/tokens",
-      { method: "POST", body: JSON.stringify({ label }) },
+      { method: "POST", body: JSON.stringify({ label, scope }) },
       token
     )
   },

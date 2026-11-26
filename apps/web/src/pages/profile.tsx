@@ -15,6 +15,7 @@ import {
   api,
   type AccessTokenCreated,
   type AccessTokenSummary,
+  type TokenScope,
   type PublicUserProfile,
   type UserProjectRef
 } from "@/lib/api"
@@ -234,6 +235,7 @@ function ProjectsTable(props: { readonly projects: ReadonlyArray<UserProjectRef>
 function AccessTokensCard({ token }: { token: string }) {
   const [tokens, setTokens] = React.useState<Array<AccessTokenSummary>>([])
   const [label, setLabel] = React.useState("")
+  const [scope, setScope] = React.useState<TokenScope>("work")
   const [secret, setSecret] = React.useState<AccessTokenCreated | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [status, setStatus] = React.useState<string | null>(null)
@@ -273,7 +275,7 @@ function AccessTokensCard({ token }: { token: string }) {
     setError(null)
     setStatus(null)
     try {
-      const created = await api.createToken(token, name)
+      const created = await api.createToken(token, name, scope)
       setSecret(created)
       setLabel("")
       await load()
@@ -314,7 +316,9 @@ function AccessTokensCard({ token }: { token: string }) {
       <CardHeader>
         <CardTitle>CLI tokens</CardTitle>
         <CardDescription>
-          A token lets hydra act as you. Copy it once. It stays valid after a password change until you revoke it.
+          A token lets hydra, or an agent using it, act as you. Copy it once. It stays valid after a password
+          change until you revoke it. Give agents a work token: it can check out, submit, heartbeat, release, and
+          propose types, but cannot start builds, import, change projects or members, or manage your account.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -328,6 +332,18 @@ function AccessTokensCard({ token }: { token: string }) {
               onChange={(event) => setLabel(event.target.value)}
               placeholder="laptop"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="token-scope">Access</Label>
+            <select
+              id="token-scope"
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              value={scope}
+              onChange={(event) => setScope(event.target.value === "all" ? "all" : "work")}
+            >
+              <option value="work">Work: contributor work only</option>
+              <option value="all">Full: anything your account can do</option>
+            </select>
           </div>
           <Button type="submit" disabled={busy}>
             Create token
@@ -356,7 +372,12 @@ function AccessTokensCard({ token }: { token: string }) {
             {tokens.map((row) => (
               <li key={row.id} className="flex items-center justify-between gap-3 py-2">
                 <div>
-                  <p className="font-medium">{row.label}</p>
+                  <p className="flex items-center gap-2 font-medium">
+                    {row.label}
+                    <Badge variant={row.scope === "work" ? "outline" : "secondary"}>
+                      {row.scope === "work" ? "work" : "full access"}
+                    </Badge>
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Created {new Date(row.createdAt).toLocaleString()}
                     {row.lastUsedAt

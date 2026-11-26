@@ -128,7 +128,7 @@ import {
 } from "./domain/Moderation.js"
 import { ChunkRefused, IntegrationRefused, InvalidRequest, ProjectRefused, ProposalRefused } from "./domain/Problems.js"
 import { Uuid } from "./domain/Uuid.js"
-import { Authorization } from "./http/Authorization.js"
+import { AllowWorkToken, Authorization } from "./http/Authorization.js"
 
 const ProjectSlug = Schema.String.check(Schema.isMinLength(1)).annotate({
   identifier: "ProjectSlug"
@@ -186,13 +186,13 @@ export const AuthGroup = HttpApiGroup.make("auth")
     HttpApiEndpoint.get("me", "/auth/me", {
       success: UserProfile,
       error: [Unauthorized]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post("logout", "/auth/logout", {
       success: HttpApiSchema.NoContent,
       error: [Unauthorized]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post("createToken", "/auth/tokens", {
@@ -261,14 +261,14 @@ export const UsersGroup = HttpApiGroup.make("users")
     HttpApiEndpoint.get("myWork", "/me/work", {
       success: MyWork,
       error: [Unauthorized]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.get("followState", "/users/:userId/follow", {
       params: { userId: Uuid },
       success: FollowState,
       error: [Unauthorized, NotFound]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post("follow", "/users/:userId/follow", {
@@ -290,19 +290,19 @@ export const DirectoryGroup = HttpApiGroup.make("directory")
     HttpApiEndpoint.get("feed", "/feed", {
       success: Schema.Array(ProjectEvent),
       error: [Unauthorized]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.get("followingUsers", "/following/users", {
       success: Schema.Array(UserSearchHit),
       error: [Unauthorized]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.get("followingProjects", "/following/projects", {
       success: Schema.Array(FollowedProject),
       error: [Unauthorized]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
 
 export const ProjectsGroup = HttpApiGroup.make("projects")
@@ -328,7 +328,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
       params: { projectSlug: ProjectSlug },
       success: ProjectMembership,
       error: [Unauthorized, NotFound]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.get("listMembers", "/projects/:projectSlug/members", {
@@ -393,14 +393,14 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
     HttpApiEndpoint.get("myOwnershipOffers", "/ownership-offers", {
       success: Schema.Array(OwnershipOffer),
       error: [Unauthorized]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.get("myJoinRequest", "/projects/:projectSlug/join-request", {
       params: { projectSlug: ProjectSlug },
       success: MyJoinRequestState,
       error: [Unauthorized, NotFound]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post("requestToJoin", "/projects/:projectSlug/join-request", {
@@ -442,7 +442,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
     HttpApiEndpoint.get("myJoinRequests", "/me/join-requests", {
       success: MyJoinRequests,
       error: [Unauthorized]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.get("listBlocks", "/projects/:projectSlug/blocks", {
@@ -485,7 +485,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
       params: { projectSlug: ProjectSlug },
       success: FollowState,
       error: [Unauthorized, NotFound]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post("follow", "/projects/:projectSlug/follow", {
@@ -571,7 +571,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       },
       success: WorkBundle,
       error: [Unauthorized, NotFound, ChunkRefused]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post("checkout", "/projects/:projectSlug/chunks/:chunkId/checkout", {
@@ -581,7 +581,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       },
       success: LeaseCreatedWithBundle,
       error: [Unauthorized, NotFound, ChunkRefused, CheckoutLimited, ProjectAccessDenied]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post("release", "/projects/:projectSlug/chunks/:chunkId/release", {
@@ -592,7 +592,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       payload: LeaseTokenPayload,
       success: ChunkSummary,
       error: [Unauthorized, NotFound, ChunkRefused]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post("heartbeat", "/projects/:projectSlug/chunks/:chunkId/heartbeat", {
@@ -603,7 +603,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       payload: LeaseTokenPayload,
       success: LeaseResponse,
       error: [Unauthorized, NotFound, ChunkRefused, ProjectAccessDenied]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post("submit", "/projects/:projectSlug/chunks/:chunkId/submit", {
@@ -614,7 +614,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       payload: SubmitPayload,
       success: AttemptAccepted,
       error: [Unauthorized, NotFound, ChunkRefused, ProjectAccessDenied]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.get("listAttempts", "/projects/:projectSlug/chunks/:chunkId/attempts", {
@@ -702,7 +702,7 @@ export const TypesGroup = HttpApiGroup.make("types")
       payload: CreateTypeProposalPayload,
       success: TypeProposalCreated,
       error: [Unauthorized, Forbidden, NotFound, ProposalRefused, ProjectAccessDenied]
-    }).middleware(Authorization)
+    }).middleware(Authorization).annotate(AllowWorkToken, true)
   )
   .add(
     HttpApiEndpoint.post(

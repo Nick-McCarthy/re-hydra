@@ -63,7 +63,7 @@ export const AuthLive = HttpApiBuilder.group(Api, "auth", (handlers) =>
         if (label.length === 0) {
           return yield* new TokenRejected({ detail: "Enter a name for this token." })
         }
-        return yield* auth.createAccessToken(user.id, label)
+        return yield* auth.createAccessToken(user.id, label, request.payload.scope ?? "work")
       })
     )
     .handle("listTokens", () =>
