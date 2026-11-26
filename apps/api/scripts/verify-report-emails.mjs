@@ -26,6 +26,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const fixture = JSON.parse(readFileSync(path.join(root, "fixtures/link/export.json"), "utf8"))
 const db = new pg.Client({ connectionString: DATABASE_URL })
 await db.connect()
+// Reports other scripts left behind would be mailed to the admins made here
+// (including the one granted and revoked below), so mark them handled first.
+await db.query("UPDATE reports SET notified_at = now() WHERE notified_at IS NULL")
 
 const results = []
 const check = (name, ok, detail = "") => {

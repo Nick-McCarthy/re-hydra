@@ -31,7 +31,7 @@ const program = Effect.gen(function*() {
 
   const emptyHeaders = Buffer.from("/* empty types */\n", "utf8")
   // gcc -O2 -c for an empty void function is typically a single `ret`.
-  // Seed original bytes must match that so dogfood submit can hit matched.
+  // Seed original bytes must match that so a submit of the real source can match.
   const fnBytes = Buffer.from([0xc3])
   const pseudocode = Buffer.from("void parse_header(void) {\n}\n", "utf8")
   const disassembly = Buffer.from("parse_header:\n  ret\n", "utf8")

@@ -74,6 +74,8 @@ npm run cli:typecheck
 npm run matchd:typecheck
 npm run web:typecheck
 npm run typecheck             # all workspaces
+npm test                      # unit tests (api, cli, matchd)
+npm run verify                # end-to-end scripts on a fresh database (needs postgres; matchd for some)
 ```
 
 ## Current milestone focus
