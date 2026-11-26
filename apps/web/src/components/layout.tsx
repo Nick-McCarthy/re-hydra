@@ -73,6 +73,12 @@ export function AppShell() {
           <Link to="/policy" className="hover:text-foreground">
             Content policy
           </Link>
+          <Link to="/terms" className="hover:text-foreground">
+            Terms
+          </Link>
+          <Link to="/privacy" className="hover:text-foreground">
+            Privacy
+          </Link>
           <Link to="/faq" className="hover:text-foreground">
             FAQ
           </Link>
