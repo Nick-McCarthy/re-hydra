@@ -26,9 +26,12 @@ The trade-off: unprivileged user namespaces expose more kernel code to a process
 
 `clone3` still returns `ENOSYS`, as upstream does, so libc falls back to `clone`.
 
-## AppArmor hosts
+## Linux hosts (AppArmor and masked /proc)
 
-On a host with AppArmor (Ubuntu, Debian, and GitHub's runners), Docker also confines each container with its `docker-default` AppArmor profile, which denies `mount`. bwrap's mounts inside its user namespace are then refused, the self-test fails, and matchd exits. Docker Desktop has no AppArmor, so this does not show there. On such a host, also pass `--security-opt apparmor=unconfined` (CI does, through `docker-yml/docker-compose.ci.yml`), or load an AppArmor profile that allows those mounts. Ubuntu 24.04 also restricts unprivileged user namespaces on the host: `sysctl kernel.apparmor_restrict_unprivileged_userns=0`. `MATCHD_SCALE=docker` copies and the pool file do not add the AppArmor option yet.
+On a host with AppArmor (Ubuntu, Debian, and GitHub's runners), Docker also confines each container with its `docker-default` AppArmor profile, which denies `mount`. bwrap's mounts inside its user namespace are then refused, the self-test fails, and matchd exits. Docker Desktop has no AppArmor, so this does not show there. On such a host, also pass `--security-opt apparmor=unconfined` (CI does, through `docker-yml/docker-compose.ci.yml`), or load an AppArmor profile that allows those mounts. Ubuntu 24.04 also restricts unprivileged user namespaces on the host: `sysctl kernel.apparmor_restrict_unprivileged_userns=0`. 
+Docker also masks parts of `/proc` in every container (`/proc/kcore`, `/proc/keys`, and others) by mounting over them. On GitHub's Ubuntu 24.04 runners the kernel then refuses the fresh `/proc` that bwrap mounts for the sandbox's pid namespace (`Can't mount proc on /newroot/proc: Operation not permitted`), because it would reveal the masked files. `--security-opt systempaths=unconfined` lifts the masking; CI passes it too. Docker Desktop accepts the mount without it. The alternative, binding the container's own `/proc` into the sandbox, would let a compile see matchd's processes, so it is not used.
+
+`MATCHD_SCALE=docker` copies and the pool file do not add these options yet. A production deploy on Linux needs both.
 
 ## Where it is used
 
