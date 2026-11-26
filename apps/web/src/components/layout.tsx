@@ -1,3 +1,4 @@
+import { Moon, Sun } from "lucide-react"
 import { Link, Outlet } from "react-router-dom"
 import { AccountMenu } from "@/components/account-menu"
 import { Button } from "@/components/ui/button"
@@ -33,22 +34,24 @@ export function AppShell() {
               type="button"
               role="switch"
               aria-checked={dark}
-              aria-label={dark ? "Dark mode" : "Light mode"}
+              aria-label="Dark mode"
+              title={dark ? "Switch to light mode" : "Switch to dark mode"}
               onClick={toggle}
-              className="inline-flex items-center gap-2 text-xs text-foreground"
+              className="inline-flex items-center text-foreground"
             >
               <span
-                className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full border p-0.5 ${
+                className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full border p-0.5 ${
                   dark ? "border-transparent bg-primary" : "border-input bg-background"
                 }`}
               >
                 <span
-                  className={`size-4 rounded-full bg-foreground transition-transform ${
-                    dark ? "translate-x-4" : "translate-x-0"
+                  className={`inline-flex size-5 items-center justify-center rounded-full bg-foreground text-background transition-transform ${
+                    dark ? "translate-x-5" : "translate-x-0"
                   }`}
-                />
+                >
+                  {dark ? <Moon className="size-3" aria-hidden /> : <Sun className="size-3" aria-hidden />}
+                </span>
               </span>
-              {dark ? "Dark" : "Light"}
             </button>
             {!ready ? null : user ? (
               <AccountMenu />
