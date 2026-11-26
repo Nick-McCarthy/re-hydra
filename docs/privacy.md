@@ -65,7 +65,6 @@ We do not sell your information, and we do not use it for advertising.
 ## 5. Who else handles it
 
 - **Amazon Web Services** hosts the site, the database, stored files, and outgoing email (Amazon SES), in the United States (us-east-1). If you are outside the US, your information is transferred there. `[Lawyer to confirm the transfer mechanism, for example the EU–US Data Privacy Framework or standard contractual clauses.]`
-- **Google Fonts.** The website loads its fonts from Google, so Google receives your IP address and browser details when a page loads. `[decision: host the fonts on re-hydra instead, which removes this.]`
 - **abuse.ch (MalwareBazaar).** We download a list of known-malware hashes from them. Nothing about you is sent.
 - **The law.** We disclose information when the law requires it, or to protect people from harm.
 

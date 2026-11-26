@@ -16,10 +16,10 @@ The project is four weeks old (first commit 2026-10-28). Milestones 1–4 came f
 | 6 | Rate limits in memory | Keep for one API process | Before a second API process | M |
 | 7a | Line endings | Done | — | S |
 | 7b | Addresses as decimal strings | Keep the type, add hex | Any time | S |
-| 7c | Google Fonts | Change | Before launch | S |
+| 7c | Google Fonts | Done | — | S |
 | 7d | Tests run by hand | Change | Before launch | M |
 
-Suggested order: 7a, 3a, 1, and 2 (done), then 7c, 7d, 3, and 5 when the npm release is near.
+Suggested order: 7a, 3a, 1, 2, and 7c (done), then 7d, 3, and 5 when the npm release is near.
 
 ---
 
@@ -142,6 +142,8 @@ Sign-up records one agreement: `users.policy_version` and `policy_accepted_at`, 
 **Plan.** Keep the string, and change its format: send hex (`"0x401000"`) everywhere, accept hex or decimal on input, and document it in the schema. This is a breaking API change for the web and the CLI, so do it before the npm release (item 5), in one change with both clients.
 
 ### 7c. Google Fonts
+
+**Done.** The web app imports IBM Plex Sans (400, 500, 600) and Mono (400, 500) from `@fontsource` in `main.tsx`, so Vite bundles the font files and serves them from the site. `index.html` no longer links Google, the production CSP allows only `'self'` for styles and fonts, and the Google Fonts line is gone from the privacy policy. The rest of this section is the analysis it was based on.
 
 **Today.** `index.html` loads IBM Plex Sans and Mono from Google. Audit A-037's content security policy allows `fonts.googleapis.com` and `fonts.gstatic.com` on purpose (audit change log).
 
