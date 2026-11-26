@@ -179,9 +179,6 @@ export function importFailureMessage(err: ApiError): string {
   if (err.status === 404) {
     return "This project is not available."
   }
-  if (err.status === 409) {
-    return "The binary for this export could not be recorded."
-  }
   if (err.status === 413) {
     return "This export is too large to upload."
   }

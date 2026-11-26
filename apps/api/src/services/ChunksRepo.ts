@@ -1,9 +1,11 @@
 import { Context, Effect, Layer, Schema } from "effect"
-import { Conflict, Forbidden, NotFound } from "effect/http-api/HttpApiError"
+import { Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import { CheckoutLimited } from "../domain/Chunk.js"
 import type { ChunkSummary, LeaseResponse, SetChunkLanguage } from "../domain/Chunk.js"
 import { likeContains } from "../domain/Directory.js"
+import { ChunkRefused, chunkChanged } from "../domain/Problems.js"
+import { explainChunkRefusal } from "./chunkRefusals.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { ProjectAuth } from "./ProjectAuth.js"
@@ -51,9 +53,9 @@ const toSummary = (row: ChunkRow): ChunkSummary => ({
   matchUsesInlineAsm: row.match_uses_inline_asm
 })
 
-const requireLeaseFields = (row: ChunkRow): Effect.Effect<LeaseResponse, Conflict> => {
+const requireLeaseFields = (row: ChunkRow): Effect.Effect<LeaseResponse, ChunkRefused> => {
   if (row.lease_token === null || row.lease_expires_at === null || row.hold_started_at === null) {
-    return Effect.fail(new Conflict())
+    return Effect.fail(chunkChanged())
   }
   return Effect.succeed({
     chunk: toSummary(row),
@@ -62,26 +64,6 @@ const requireLeaseFields = (row: ChunkRow): Effect.Effect<LeaseResponse, Conflic
     holdStartedAt: toIso(row.hold_started_at)
   })
 }
-
-const notFoundOrConflict = (
-  sql: SqlClient.SqlClient,
-  projectSlug: string,
-  chunkId: string
-) =>
-  Effect.gen(function*() {
-    const existing = yield* sql<{ readonly id: string }>`
-      SELECT c.id
-      FROM chunks c
-      INNER JOIN projects p ON p.id = c.project_id
-      WHERE p.slug = ${projectSlug}
-        AND c.id = ${chunkId}
-      LIMIT 1
-    `.pipe(Effect.orDie)
-    if (existing[0] === undefined) {
-      return yield* new NotFound()
-    }
-    return yield* new Conflict()
-  })
 
 export class ChunksRepo extends Context.Service<
   ChunksRepo,
@@ -103,36 +85,36 @@ export class ChunksRepo extends Context.Service<
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<LeaseResponse, NotFound | Conflict | CheckoutLimited | ProjectAccessDenied>
+    ) => Effect.Effect<LeaseResponse, NotFound | ChunkRefused | CheckoutLimited | ProjectAccessDenied>
     readonly release: (
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid,
       leaseToken: Uuid
-    ) => Effect.Effect<ChunkSummary, NotFound | Conflict>
+    ) => Effect.Effect<ChunkSummary, NotFound | ChunkRefused>
     readonly heartbeat: (
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid,
       leaseToken: Uuid
-    ) => Effect.Effect<LeaseResponse, NotFound | Conflict | ProjectAccessDenied>
+    ) => Effect.Effect<LeaseResponse, NotFound | ChunkRefused | ProjectAccessDenied>
     readonly setInlineAsm: (
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid,
       allow: boolean
-    ) => Effect.Effect<ChunkSummary, NotFound | Forbidden | Conflict>
+    ) => Effect.Effect<ChunkSummary, NotFound | Forbidden | ChunkRefused>
     readonly clearLease: (
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<ChunkSummary, NotFound | Forbidden | Conflict>
+    ) => Effect.Effect<ChunkSummary, NotFound | Forbidden | ChunkRefused>
     readonly setLanguage: (
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid,
       payload: SetChunkLanguage
-    ) => Effect.Effect<ChunkSummary, NotFound | Forbidden | Conflict>
+    ) => Effect.Effect<ChunkSummary, NotFound | Forbidden | ChunkRefused>
   }
 >()("rehydra/services/ChunksRepo") {
   static readonly layer = Layer.effect(
@@ -448,7 +430,7 @@ export class ChunksRepo extends Context.Service<
           if (outcome.kind === "primary") {
             const row = yield* loadChunk(projectSlug, chunkId)
             if (row === undefined) {
-              return yield* new Conflict()
+              return yield* chunkChanged()
             }
             return yield* requireLeaseFields(row)
           }
@@ -456,7 +438,7 @@ export class ChunksRepo extends Context.Service<
           if (outcome.kind === "extra") {
             const row = yield* loadChunk(projectSlug, chunkId)
             if (row === undefined) {
-              return yield* new Conflict()
+              return yield* chunkChanged()
             }
             return {
               chunk: toSummary(row),
@@ -466,7 +448,7 @@ export class ChunksRepo extends Context.Service<
             } satisfies LeaseResponse
           }
 
-          return yield* notFoundOrConflict(sql, projectSlug, chunkId)
+          return yield* explainChunkRefusal(sql, { projectSlug, chunkId, userId, purpose: "checkout" })
         }
       )
 
@@ -564,7 +546,7 @@ export class ChunksRepo extends Context.Service<
             `.pipe(Effect.orDie)
 
             if (side[0] === undefined) {
-              return yield* new Conflict()
+              return false
             }
 
             yield* activity.record({
@@ -578,7 +560,7 @@ export class ChunksRepo extends Context.Service<
           })).pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)))
 
           if (!released) {
-            return yield* new Conflict()
+            return yield* explainChunkRefusal(sql, { projectSlug, chunkId, userId, purpose: "lease", leaseToken })
           }
 
           const row = yield* loadChunk(projectSlug, chunkId)
@@ -617,7 +599,7 @@ export class ChunksRepo extends Context.Service<
           if (rows[0] !== undefined) {
             const row = yield* loadChunk(projectSlug, chunkId)
             if (row === undefined) {
-              return yield* new Conflict()
+              return yield* chunkChanged()
             }
             return yield* requireLeaseFields(row)
           }
@@ -648,12 +630,12 @@ export class ChunksRepo extends Context.Service<
 
           const holder = side[0]
           if (holder === undefined) {
-            return yield* notFoundOrConflict(sql, projectSlug, chunkId)
+            return yield* explainChunkRefusal(sql, { projectSlug, chunkId, userId, purpose: "lease", leaseToken })
           }
 
           const row = yield* loadChunk(projectSlug, chunkId)
           if (row === undefined) {
-            return yield* new Conflict()
+            return yield* chunkChanged()
           }
           return {
             chunk: toSummary(row),
@@ -692,7 +674,12 @@ export class ChunksRepo extends Context.Service<
             return yield* new NotFound()
           }
           if (chunk.state !== "leased") {
-            return yield* new Conflict()
+            return yield* new ChunkRefused({
+              reason: "not_leased",
+              detail: chunk.state === "validating"
+                ? "A submission for this chunk is being checked. Clear the lease after its result."
+                : "This chunk has no lease to clear."
+            })
           }
 
           yield* returnChunkToPool(sql, chunkId)
@@ -709,7 +696,7 @@ export class ChunksRepo extends Context.Service<
         })).pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)))
 
         if (!cleared) {
-          return yield* new Conflict()
+          return yield* chunkChanged()
         }
         const row = yield* loadChunk(projectSlug, chunkId)
         if (row === undefined) {
@@ -830,7 +817,7 @@ export class ChunksRepo extends Context.Service<
         const row = yield* loadChunk(projectSlug, chunkId)
         if (row === undefined) return yield* new NotFound()
         if (row.language_override !== next && !(row.language_override === null && next === null)) {
-          return yield* new Conflict()
+          return yield* chunkChanged()
         }
         return toSummary(row)
       })

@@ -1,7 +1,7 @@
 import { PgClient } from "@effect/sql-pg"
 import type { ProjectAccessDenied } from "../domain/Project.js"
 import { Context, Effect, Layer, Option } from "effect"
-import { Conflict, Forbidden, NotFound } from "effect/http-api/HttpApiError"
+import { Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import type {
   CreateTypeProposalPayload,
@@ -9,6 +9,7 @@ import type {
   TypeProposal
 } from "../domain/Types.js"
 import type { Toolchain } from "../domain/Project.js"
+import { ProposalRefused } from "../domain/Problems.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { Blobs } from "./Blobs.js"
@@ -81,17 +82,17 @@ export class TypeProposalsRepo extends Context.Service<
       projectSlug: string,
       userId: Uuid,
       payload: CreateTypeProposalPayload
-    ) => Effect.Effect<TypeProposal, NotFound | Forbidden | Conflict | ProjectAccessDenied>
+    ) => Effect.Effect<TypeProposal, NotFound | Forbidden | ProposalRefused | ProjectAccessDenied>
     readonly startRevalidation: (
       projectSlug: string,
       proposalId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<TypeProposal, NotFound | Forbidden | Conflict>
+    ) => Effect.Effect<TypeProposal, NotFound | Forbidden | ProposalRefused>
     readonly accept: (
       projectSlug: string,
       proposalId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<TypeProposal, NotFound | Forbidden | Conflict>
+    ) => Effect.Effect<TypeProposal, NotFound | Forbidden | ProposalRefused>
   }
 >()("rehydra/services/TypeProposalsRepo") {
   static readonly layer = Layer.effect(
@@ -232,7 +233,10 @@ export class TypeProposalsRepo extends Context.Service<
         `.pipe(Effect.orDie)
         const baseRevisionId = revisions[0]?.id
         if (baseRevisionId === undefined) {
-          return yield* new Conflict()
+          return yield* new ProposalRefused({
+            reason: "no_type_revision",
+            detail: "The project has no type revision to propose against yet. An import creates the first one."
+          })
         }
 
         const headersSha = yield* blobs.put(
@@ -259,7 +263,7 @@ export class TypeProposalsRepo extends Context.Service<
 
         const row = rows[0]
         if (row === undefined) {
-          return yield* new Conflict()
+          return yield* Effect.die("INSERT INTO type_proposals returned no row")
         }
         yield* activity.record({
           projectId,
@@ -290,7 +294,10 @@ export class TypeProposalsRepo extends Context.Service<
               return yield* new NotFound()
             }
             if (proposal.state !== "open") {
-              return yield* new Conflict()
+              return yield* new ProposalRefused({
+                reason: "not_open",
+                detail: `This proposal is ${proposal.state}. Only an open proposal can be rechecked.`
+              })
             }
 
             const affected = proposal.affected_types ?? []
@@ -403,7 +410,7 @@ export class TypeProposalsRepo extends Context.Service<
             if (targets.length === 0) {
               const sha = proposal.headers_sha256
               if (sha === undefined) {
-                return yield* new Conflict()
+                return yield* Effect.die("type proposal has no headers")
               }
               const reviewers = yield* reviewerCount(sql, projectId)
               if (reviewers >= 2) {
@@ -469,18 +476,26 @@ export class TypeProposalsRepo extends Context.Service<
             return yield* new NotFound()
           }
           if (proposal.state !== "ready") {
-            return yield* new Conflict()
+            return yield* new ProposalRefused({
+              reason: "not_ready",
+              detail: proposal.state === "open"
+                ? "This proposal has not been rechecked yet. Start a recheck first."
+                : `This proposal is ${proposal.state}. Only a proposal whose recheck passed can be accepted.`
+            })
           }
           const reviewers = yield* reviewerCount(sql, projectId)
           if (
             reviewers >= 2 &&
             proposal.revalidation_started_by === userId
           ) {
-            return yield* new Conflict()
+            return yield* new ProposalRefused({
+              reason: "same_reviewer",
+              detail: "This project has two or more reviewers, so someone other than the person who started the recheck must accept it."
+            })
           }
           const sha = proposal.headers_sha256
           if (sha === undefined) {
-            return yield* new Conflict()
+            return yield* Effect.die("type proposal has no headers")
           }
           yield* landProposal(
             sql,

@@ -242,7 +242,8 @@ const next = Command.make(
     for (const candidate of order.slice(0, 5)) {
       const taken = yield* checkoutChunk(project, candidate.id, out).pipe(
         Effect.map(Option.some),
-        Effect.catchTag("Conflict", () => Effect.succeedNone)
+        // Taken between the list and the checkout, or otherwise refused: try the next.
+        Effect.catchTag("ChunkRefused", () => Effect.succeedNone)
       )
       if (Option.isSome(taken)) {
         const { lease, dir } = taken.value

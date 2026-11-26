@@ -1,10 +1,11 @@
 import { Context, Effect, Layer, Option } from "effect"
 import type { ProjectAccessDenied } from "../domain/Project.js"
-import { Conflict, NotFound } from "effect/http-api/HttpApiError"
+import { NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import { agentInstructions, integrationNoteFile } from "../domain/agentInstructions.js"
 import type { LeaseWithBundle, Neighbor, WorkBundle } from "../domain/Bundle.js"
 import { CheckoutLimited, type ChunkSummary } from "../domain/Chunk.js"
+import { ChunkRefused } from "../domain/Problems.js"
 import type { Toolchain } from "../domain/Project.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Blobs } from "./Blobs.js"
@@ -47,12 +48,12 @@ export class WorkBundles extends Context.Service<
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<WorkBundle, NotFound | Conflict>
+    ) => Effect.Effect<WorkBundle, NotFound | ChunkRefused>
     readonly checkoutWithBundle: (
       projectSlug: string,
       chunkId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<LeaseWithBundle, NotFound | Conflict | CheckoutLimited | ProjectAccessDenied>
+    ) => Effect.Effect<LeaseWithBundle, NotFound | ChunkRefused | CheckoutLimited | ProjectAccessDenied>
   }
 >()("rehydra/services/WorkBundles") {
   static readonly layer = Layer.effect(
@@ -241,7 +242,10 @@ export class WorkBundles extends Context.Service<
             LIMIT 1
           `.pipe(Effect.orDie)
           if (holds[0] === undefined) {
-            return yield* new Conflict()
+            return yield* new ChunkRefused({
+              reason: "lease_gone",
+              detail: "You do not hold this chunk. Its lease expired, was released, or was cleared."
+            })
           }
           return yield* buildBundle(row)
         }

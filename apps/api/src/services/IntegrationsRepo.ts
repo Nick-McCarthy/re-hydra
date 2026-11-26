@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto"
 import { PgClient } from "@effect/sql-pg"
 import { Context, Effect, Layer } from "effect"
-import { BadRequest, Conflict, Forbidden, NotFound } from "effect/http-api/HttpApiError"
+import { Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import type { Integration, IntegrationUnit, StartIntegration } from "../domain/Integration.js"
 import type { SourceLanguage, Toolchain } from "../domain/Project.js"
 import { hideBytes } from "../domain/diagnostics.js"
+import { IntegrationRefused, InvalidRequest } from "../domain/Problems.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { ProjectAuth } from "./ProjectAuth.js"
@@ -68,7 +69,7 @@ export class IntegrationsRepo extends Context.Service<
       slug: string,
       userId: Uuid,
       payload: StartIntegration
-    ) => Effect.Effect<Integration, NotFound | Forbidden | BadRequest | Conflict>
+    ) => Effect.Effect<Integration, NotFound | Forbidden | InvalidRequest | IntegrationRefused>
   }
 >()("rehydra/services/IntegrationsRepo") {
   static readonly layer = Layer.effect(
@@ -185,10 +186,18 @@ export class IntegrationsRepo extends Context.Service<
           `
           const binaryId = payload.binaryId ?? binaries[0]?.id
           if (binaryId === undefined || !binaries.some((row) => row.id === binaryId)) {
-            return yield* new BadRequest()
+            return yield* new InvalidRequest({
+              reason: "unknown_binary",
+              detail: binaryId === undefined
+                ? "This project has no program to build yet."
+                : `${binaryId} is not a program in this project.`
+            })
           }
           if (payload.binaryId === undefined && binaries.length > 1) {
-            return yield* new BadRequest()
+            return yield* new InvalidRequest({
+              reason: "binary_required",
+              detail: `This project has ${binaries.length} programs. Name one with binaryId.`
+            })
           }
 
           const projectRows = yield* sql<{
@@ -225,15 +234,28 @@ export class IntegrationsRepo extends Context.Service<
           `
 
           const distinct = [...new Set(matched.map((row) => asLanguage(row.language)))]
-          if (payload.language === undefined && distinct.length !== 1) {
-            return yield* new Conflict()
+          if (payload.language === undefined && distinct.length > 1) {
+            return yield* new IntegrationRefused({
+              reason: "mixed_languages",
+              detail: `Matched functions use more than one language (${distinct.join(", ")}). Name one with language.`
+            })
           }
           const language = payload.language ?? distinct[0] ?? asLanguage(project.language)
           const chosen = matched.filter((row) => asLanguage(row.language) === language)
-          if (chosen.length < 2) return yield* new Conflict()
+          if (chosen.length < 2) {
+            return yield* new IntegrationRefused({
+              reason: "too_few_matches",
+              detail: `A build links at least two matched functions; this program has ${chosen.length} in ${language}.`
+            })
+          }
           const names = new Set<string>()
           for (const row of chosen) {
-            if (names.has(row.name)) return yield* new Conflict()
+            if (names.has(row.name)) {
+              return yield* new IntegrationRefused({
+                reason: "duplicate_names",
+                detail: `Two matched functions are both named ${row.name}. Rename one before building.`
+              })
+            }
             names.add(row.name)
           }
 
@@ -243,7 +265,12 @@ export class IntegrationsRepo extends Context.Service<
               AND status IN ('queued', 'running')
             LIMIT 1
           `
-          if (active[0] !== undefined) return yield* new Conflict()
+          if (active[0] !== undefined) {
+            return yield* new IntegrationRefused({
+              reason: "build_running",
+              detail: `A build of this program is already queued or running (${active[0].id}).`
+            })
+          }
 
           const recipe = yield* sql<{ readonly id: string }>`
             SELECT r.id
@@ -253,7 +280,12 @@ export class IntegrationsRepo extends Context.Service<
               AND r.state IN ('queued', 'claimed')
             LIMIT 1
           `
-          if (recipe[0] !== undefined) return yield* new Conflict()
+          if (recipe[0] !== undefined) {
+            return yield* new IntegrationRefused({
+              reason: "recipe_check_running",
+              detail: "A compiler recipe check is running for this program. Try again when it finishes."
+            })
+          }
 
           const integrationId = randomUUID()
           const summary = `Linking ${chosen.length} matched functions`

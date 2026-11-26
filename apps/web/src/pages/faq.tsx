@@ -532,7 +532,8 @@ export function FaqPage() {
           </li>
           <li>
             <Code>hydra types propose</Code> sends your edited <Code>types.h</Code> as a type
-            proposal, and <Code>hydra types unresolved</Code> marks a type the headers lack.
+            proposal. Maintainers mark a type the headers lack with{" "}
+            <Code>hydra types unresolved</Code>.
           </li>
           <li>
             <Code>hydra import</Code> uploads a Ghidra export, and{" "}

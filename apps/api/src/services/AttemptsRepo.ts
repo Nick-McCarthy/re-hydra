@@ -1,10 +1,12 @@
 import { PgClient } from "@effect/sql-pg"
 import { Context, Effect, Layer } from "effect"
-import { Conflict, NotFound } from "effect/http-api/HttpApiError"
+import { NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import type { AttemptResult, AttemptSummary } from "../domain/Attempt.js"
 import { hideBytes } from "../domain/diagnostics.js"
 import { SOURCE_LICENSE } from "../domain/Moderation.js"
+import { ChunkRefused } from "../domain/Problems.js"
+import { explainChunkRefusal } from "./chunkRefusals.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Blobs } from "./Blobs.js"
 import { ProjectChunkStats } from "./ProjectChunkStats.js"
@@ -55,7 +57,7 @@ export class AttemptsRepo extends Context.Service<
       readonly userId: Uuid
       readonly leaseToken: Uuid
       readonly source: string
-    }) => Effect.Effect<AttemptResult, NotFound | Conflict | ProjectAccessDenied>
+    }) => Effect.Effect<AttemptResult, NotFound | ChunkRefused | ProjectAccessDenied>
   }
 >()("rehydra/services/AttemptsRepo") {
   static readonly layer = Layer.effect(
@@ -156,24 +158,6 @@ export class AttemptsRepo extends Context.Service<
         }))
       })
 
-      const leaseMissing = Effect.fn("AttemptsRepo.leaseMissing")(function*(
-        projectSlug: string,
-        chunkId: Uuid
-      ) {
-        const exists = yield* sql<{ readonly id: string }>`
-          SELECT c.id
-          FROM chunks c
-          INNER JOIN projects p ON p.id = c.project_id
-          WHERE p.slug = ${projectSlug}
-            AND c.id = ${chunkId}
-          LIMIT 1
-        `.pipe(Effect.orDie)
-        if (exists[0] === undefined) {
-          return yield* new NotFound()
-        }
-        return yield* new Conflict()
-      })
-
       /**
        * One transaction from the lease check to the job row (audit A-003).
        * The chunk row is locked first, so a release, clear, sweep, or second
@@ -217,7 +201,13 @@ export class AttemptsRepo extends Context.Service<
           LIMIT 1
         `.pipe(Effect.orDie)
         if (holders[0] === undefined) {
-          return yield* leaseMissing(options.projectSlug, options.chunkId)
+          return yield* explainChunkRefusal(sql, {
+            projectSlug: options.projectSlug,
+            chunkId: options.chunkId,
+            userId: options.userId,
+            purpose: "lease",
+            leaseToken: options.leaseToken
+          })
         }
 
         // The bucket put is network I/O, so it stays outside the row lock.
@@ -278,7 +268,11 @@ export class AttemptsRepo extends Context.Service<
             chunk.lease_user_id === options.userId && chunk.lease_token === options.leaseToken
           if (chunk.state !== "leased") {
             // `validating` means a submission is already in flight (A-002).
-            return yield* new Conflict()
+            return yield* new ChunkRefused(
+              chunk.state === "validating"
+                ? { reason: "validating", detail: "A submission for this chunk is being checked. Wait for its result." }
+                : { reason: "lease_gone", detail: "This chunk is no longer leased to you." }
+            )
           }
 
           let lease: LeaseRow | undefined
@@ -386,8 +380,14 @@ export class AttemptsRepo extends Context.Service<
           }
 
           // Any failure from here rolls the move to `validating` back.
-          if (lease === undefined || lease.type_revision_id === null) {
-            return yield* new Conflict()
+          if (lease === undefined) {
+            return yield* new ChunkRefused({ reason: "lease_gone", detail: "Your lease expired. Check the chunk out again." })
+          }
+          if (lease.type_revision_id === null) {
+            return yield* new ChunkRefused({
+              reason: "no_types",
+              detail: "The project has no type revision yet, so nothing can be compiled."
+            })
           }
 
           const attemptRows = yield* sql<{ readonly id: string }>`
@@ -408,7 +408,7 @@ export class AttemptsRepo extends Context.Service<
 
           const attemptId = attemptRows[0]?.id
           if (attemptId === undefined) {
-            return yield* new Conflict()
+            return yield* Effect.die("INSERT INTO attempts returned no row")
           }
 
           const jobRows = yield* sql<{ readonly id: string }>`
@@ -436,7 +436,7 @@ export class AttemptsRepo extends Context.Service<
 
           const jobId = jobRows[0]?.id
           if (jobId === undefined) {
-            return yield* new Conflict()
+            return yield* Effect.die("INSERT INTO jobs returned no row")
           }
 
           yield* stats.refresh(lease.project_id)
