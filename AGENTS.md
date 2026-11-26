@@ -27,12 +27,67 @@ This project uses **Effect 4**. Before writing or changing Effect code:
 - Keep the feedback loop tight: run `npm run typecheck` (Effect-patched `tsc` via `@effect/tsgo`) after Effect changes
 - Editor: workspace TypeScript SDK + Effect language service (`@effect/language-service` via `@effect/tsgo`). Prefer the workspace TS server / tsgo when Cursor offers it
 
+### Effect patterns
+
+Distilled from `repos/effect/LLMS.md`; the vendored tree wins when they disagree.
+
+```ts
+import { Context, Effect, Layer, Schema } from "effect"
+
+// Inline work
+const program = Effect.gen(function*() {
+  yield* Effect.log("starting")
+  return yield* new SomeError({ message: "boom" }) // always `return yield*` on error exits
+})
+
+// Reusable functions: do not wrap Effect.gen in a plain function
+export const loadChunk = Effect.fn("loadChunk")(function*(id: string) {
+  yield* Effect.logInfo("loading", id)
+  return id
+})
+
+export const validateSize = Effect.fnUntraced(function*(size: number) {
+  if (!Number.isInteger(size) || size <= 0) {
+    return yield* new SomeError({ message: "invalid size" })
+  }
+  return size
+})
+
+export class SomeError extends Schema.TaggedError<SomeError>()("SomeError", {
+  message: Schema.String
+}) {}
+
+// Services: Context.Service with a static layer
+export class ChunksRepo extends Context.Service<ChunksRepo, {
+  get(id: string): Effect.Effect<unknown, ChunksRepoError>
+}>()("rehydra/services/ChunksRepo") {
+  static readonly layer = Layer.effect(
+    ChunksRepo,
+    Effect.gen(function*() {
+      const get = Effect.fn("ChunksRepo.get")(function*(id: string) {
+        return { id }
+      })
+      return ChunksRepo.of({ get })
+    })
+  )
+}
+
+export class ChunksRepoError extends Schema.TaggedError<ChunksRepoError>()(
+  "ChunksRepoError",
+  { cause: Schema.Defect() }
+) {}
+```
+
+**Schema.** Use it for all untrusted input (HTTP payloads, env parsing where applicable). Prefer `Schema.Struct`, `Schema.Class`, `Schema.TaggedError` over manual parsing. For deeper idioms, read `repos/effect/packages/effect/SCHEMA.md` in chunks.
+
+**HTTP.** Define routes with `HttpApi` / `HttpApiGroup` / `HttpApiEndpoint` in `apps/api/src/Api.ts`; implement with `HttpApiBuilder.group`; serve with `HttpRouter.serve` + `NodeHttpServer.layer`; keep OpenAPI via `HttpApiScalar.layer`. Errors the client sees are `HttpApiError.Problem` classes in `apps/api/src/domain/Problems.ts`, with a `reason` where the client must tell cases apart. New endpoints are closed to work-scoped tokens unless annotated `AllowWorkToken`.
+
 ### SQL / migrations pitfalls
 
-- `@effect/sql-pg` uses the extended query protocol → **one SQL statement per `sql.unsafe` call**. Multi-statement DDL must go through `apps/api/src/db/execSqlScript.ts`.
+- Use `SqlClient` from `effect/sql` and `PgClient.layer` / `layerConfig` from `@effect/sql-pg`. Migrations go through `PgMigrator` + `Migrator.fromRecord` (register each in `apps/api/src/db/migrate.ts`).
+- `@effect/sql-pg` uses the extended query protocol → **one SQL statement per call** (`cannot insert multiple commands into a prepared statement`). Multi-statement DDL must go through `apps/api/src/db/execSqlScript.ts`.
+- Exclusive checkout stays a single conditional `UPDATE ... RETURNING` on `chunks`.
 - After any chunk state change, call `ProjectChunkStats.refresh(projectId)` so the project board counts stay correct.
-
-Optional project-local pattern notes: `agent-patterns/`.
 
 ## Vendored repositories
 
