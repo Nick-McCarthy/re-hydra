@@ -162,7 +162,7 @@ This waits until the us-east-1 pool is dull. The writer stays in us-east-1. The 
 
 ## Next
 
-In this order. The first decides whether re-hydra can match retail games at all. The second (done) and third make the lease and match code safer to change before the fourth extends what a match checks.
+In this order. The first decides whether re-hydra can match retail games at all. The second and third (both done) make the lease and match code safer to change before the fourth extends what a match checks.
 
 Alongside these, launch work goes on: the us-east-1 deploy (First deployment above) and the open foundations items, agreements before launch and the built CLI before the npm release ([foundations-plan.md](foundations-plan.md)).
 
@@ -188,9 +188,18 @@ Now `ChunkState` (`apps/api/src/services/ChunkState.ts`) owns every transition: 
 
 ### 3. Unit tests for the lease and match rules
 
-The lease rules are tested end to end today: the verify scripts need the API, Postgres, and often matchd, and some wait on the sweeper. matchd's masking has unit tests (21 files); the API's lease and match rules have none.
+Done 2026-11-26. Before it, the lease rules were tested only end to end: the verify scripts need the API, Postgres, and often matchd, and some wait on the sweeper.
 
-Now that step 2 exists, test each `ChunkState` method directly against Postgres, inside a transaction that is rolled back: which states it accepts, the lease columns after it, the per-user hold cap, competing leases, expiry by the database clock, a job result applying once, and a miss extending the lease. They run in CI's verify job, which already has Postgres.
+Now `chunkState.leases.db.test.ts` and `chunkState.matches.db.test.ts` (28 tests, about a second) call each `ChunkState` method directly against Postgres. Each test runs in a transaction that is rolled back; the harness is `apps/api/src/testing/db.ts`. They cover:
+
+- which states each transition accepts and what it refuses, and the lease columns after it;
+- competing leases: the `max_concurrent_leases` limit, one per user, promotion of the oldest live one, a competing holder who submits;
+- heartbeats, misses, and expiry by the database clock: `lease_hours`, the `max_hold_hours` cap, never shortening a lease (A-010, A-023);
+- a result applying once and only to its own lease (A-001), one submission in flight (A-002), a job with no result and the five-minute backstop (A-004);
+- going stale, inline assembly, integration reopens, unresolved types, fuse;
+- the board counts matching a fresh count after each change.
+
+`npm run verify` runs them first, on its fresh database, before it starts the API, so CI's verify job runs them too. By hand: `TEST_DATABASE_URL=<a migrated database> npm run test:db -w @re-hydra/api`. The per-user hold cap is in `ChunksRepo.checkout`, not `ChunkState`, so `verify-checkout-loop` still covers it.
 
 ### 4. Matching beyond one function
 

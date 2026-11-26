@@ -88,7 +88,7 @@ export class ChunksRepoError extends Schema.TaggedError<ChunksRepoError>()(
 
 - Use `SqlClient` from `effect/sql` and `PgClient.layer` / `layerConfig` from `@effect/sql-pg`. Migrations go through `PgMigrator` + `Migrator.fromRecord` (register each in `apps/api/src/db/migrate.ts`).
 - `@effect/sql-pg` uses the extended query protocol → **one SQL statement per call** (`cannot insert multiple commands into a prepared statement`). Multi-statement DDL must go through `apps/api/src/db/execSqlScript.ts`.
-- Chunk state, leases, the current match, the fuse parent, and `chunk_leases` change only through `ChunkState` (`apps/api/src/services/ChunkState.ts`). Its methods join the caller's transaction and recount the project board. `chunkStateWrites.test.ts` fails on such a write anywhere else. Need a new transition? Add a method there.
+- Chunk state, leases, the current match, the fuse parent, and `chunk_leases` change only through `ChunkState` (`apps/api/src/services/ChunkState.ts`). Its methods join the caller's transaction and recount the project board. `chunkStateWrites.test.ts` fails on such a write anywhere else. Need a new transition? Add a method there, with a test in `chunkState.*.db.test.ts`.
 - Exclusive checkout stays a single conditional `UPDATE ... RETURNING` on `chunks` (`ChunkState.claim`).
 
 ## Vendored repositories
@@ -118,6 +118,7 @@ npm run api:migrate           # after pulling a new migration
 npm run api:admin -- grant you@example.com   # site admin (/admin); also revoke, list, delete-user
 npm run typecheck             # all workspaces; or api:, cli:, matchd:, web:typecheck
 npm test                      # unit tests (api, cli, matchd)
+npm run verify -- --only chunk-state   # ChunkState against Postgres; each test rolls back
 npm run verify                # end-to-end scripts on a fresh database (needs postgres; matchd for some)
 npm run verify -- --only <name>   # one script; --list shows them
 ```
