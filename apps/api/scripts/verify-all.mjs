@@ -45,9 +45,15 @@ const SCRIPT_TIMEOUT_MS = 10 * 60_000
 /**
  * Every verify script, in run order. `api` is extra API configuration (the
  * API restarts when it differs from the previous script's); `matchd` means
- * the script compiles; `manual` says why a script cannot run here.
+ * the script compiles; `manual` says why a script cannot run here. `tests`
+ * are node:test files run against the database with no API (each test rolls
+ * back, so later scripts see the seeded database unchanged).
  */
 const scripts = [
+  {
+    name: "chunk-state-tests",
+    tests: ["src/services/chunkState.leases.db.test.ts", "src/services/chunkState.matches.db.test.ts"]
+  },
   { name: "verify-token-scopes" },
   { name: "verify-access" },
   { name: "verify-agent-input" },
@@ -123,9 +129,9 @@ const reachable = async (url) => {
 }
 
 /** Runs node with tsx on a TypeScript entry point; resolves with the exit code. */
-const runNode = (argv, { env, log, timeoutMs }) =>
+const runNode = (argv, { env, log, timeoutMs, cwd = root }) =>
   new Promise((resolve) => {
-    const child = spawn(process.execPath, argv, { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] })
+    const child = spawn(process.execPath, argv, { cwd, env, stdio: ["ignore", "pipe", "pipe"] })
     child.stdout.pipe(log, { end: false })
     child.stderr.pipe(log, { end: false })
     const timer = timeoutMs ? setTimeout(() => child.kill(), timeoutMs) : undefined
@@ -249,6 +255,29 @@ try {
   }
 
   for (const s of toRun) {
+    if (s.tests) {
+      const started = Date.now()
+      const log = openLog(s.name)
+      const code = await runNode(["--import", "tsx", "--test", ...s.tests], {
+        cwd: path.join(root, "apps/api"),
+        env: { ...cleanEnv(), TEST_DATABASE_URL: databaseUrl },
+        log,
+        timeoutMs: SCRIPT_TIMEOUT_MS
+      })
+      await new Promise((r) => log.end(r))
+      const text = readFileSync(logPath(s.name), "utf8")
+      const count = (label) => text.match(new RegExp(`^ℹ ${label} (\\d+)`, "m"))?.[1]
+      const summary = count("tests") ? `${count("pass")}/${count("tests")} checks passed` : ""
+      const ok = code === 0
+      results.push({ name: s.name, ok })
+      console.log(`${ok ? "PASS" : "FAIL"}  ${s.name.padEnd(28)} ${summary.padEnd(22)} ${((Date.now() - started) / 1000).toFixed(0)}s`)
+      if (!ok) {
+        // node:test lists each failure twice: where it ran, and in its summary.
+        const failures = [...new Set(text.split("\n").filter((l) => /^✖ (?!failing tests)/.test(l)))]
+        console.log((failures.length > 0 ? failures.join("\n") : tail(logPath(s.name), 25)).replace(/^/gm, "      "))
+      }
+      continue
+    }
     const proxyPort = await freePort()
     const extra = s.api ? s.api({ listFile, proxyPort }) : {}
     if (!api || api.key !== JSON.stringify(extra)) {
