@@ -2,7 +2,7 @@ import { execSqlScript } from "../execSqlScript.js"
 
 /**
  * What the content policy promises before it is published
- * (docs/content-policy.md section 6): site admins, suspended accounts,
+ * (docs/policy/content-policy.md section 6): site admins, suspended accounts,
  * agreeing to the policy at sign-up, a rights confirmation on each import,
  * reports from users, and a record of every moderation action.
  */

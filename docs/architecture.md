@@ -19,7 +19,7 @@ flowchart LR
 | Piece | Today |
 | --- | --- |
 | Web | Vite app. Login, project board, checkout, submit, attempts, heartbeat, types, follows, integration builds |
-| CLI | `hydra` login, checkout, submit, heartbeat, release |
+| CLI | `hydra`: the work loop, types, import, integration builds, and the agent skill |
 | API | Effect HTTP API. Leases, attempts, proposals, the match worker, the link worker, the lease sweeper |
 | Postgres | The only writer. Job rows stay here |
 | matchd | One warm process per compiler image, plus extra copies when that image's interactive queue waits |
@@ -113,7 +113,7 @@ ELF objects are read with `objdump -d -r`. COFF objects are read with `llvm-objd
 
 Postgres is the schema in [db-schema/schema.md](db-schema/schema.md). Accounts, membership, chunk state, leases, attempts, revisions, matches, and job rows are writer data. Two writers must not update the same chunk.
 
-`project_chunk_stats` is a cache. Refresh it with `ProjectChunkStats.refresh` on every chunk state change. Do not update the counts ad hoc. Reputation is computed: current matches minus `proposal_regressions`. It is not a table.
+`project_chunk_stats` is a cache, recounted after every chunk state change (the rule is in AGENTS.md). Reputation is computed: current matches minus `proposal_regressions`. It is not a table.
 
 `jobs.sources` stores path and content hash, not file text. The worker loads bytes from blobs.
 
@@ -123,7 +123,22 @@ Object storage, read replicas, and a compiler registry addressed by digest are t
 
 This part is design. It is not deployed. The local scaler is the one-site form of "add compile capacity when interactive wait exceeds 30 seconds." A second site is the next capacity step, and it waits until this site's pool is dull.
 
-The API has one database URL and one bucket. A second site adds a replica client for board and profile reads, a nearest-bucket read with fallback to the home bucket, and a signed work-bundle URL with that same fallback. Checkout, submit, heartbeat, match commit, and expiry stay on the writer. Compile routing is already `MATCHD_URL` and `MATCHD_ROUTES`. The roadmap's second-region section is the cutover list.
+These destinations are already settings:
+
+- `MATCHD_URL` and `MATCHD_ROUTES` can send a compile to a matchd process in another region. The job already carries the source and the original bytes, so that worker does not read the bucket.
+- `BLOB_S3_ENDPOINT`, `BLOB_S3_BUCKET`, and `BLOB_S3_REGION` name one bucket.
+- `DATABASE_URL` names one database.
+- `projects.home_region` is stored and shown. Nothing routes a request by it.
+
+`MATCHD_SCALE=docker` starts another container on the local Docker daemon. That copy is the busy-image step. A site in another region is a matchd process running there.
+
+Code to write before a second site:
+
+- Two database clients. Checkout, submit, heartbeat, match commit, and expiry use the us-east-1 writer. Board and profile reads can use the replica in the API's region. The checkout response the client shows is the writer's response.
+- Blob reads try the bucket in the API's region, then the us-east-1 bucket when the object is not there yet. Puts stay on the us-east-1 bucket.
+- A signed download URL for a work bundle, with that same fallback. Today the API loads the bytes through the single endpoint and sends them on.
+
+After that code, the new region is a Postgres replica, a replicated bucket, a matchd pool with the same image digests, and an API pointed at those three. A project whose writer lives in Europe is a further change: the API would send that project's writes to its own writer, and only one writer may grant a lease for a chunk.
 
 Move bytes and compiles toward the contributor. Keep the lease decision on a single writer for that project.
 
@@ -173,13 +188,17 @@ Job rows stay in Postgres until claim traffic competes with lease writes. Scale 
 
 A paused writer does not hand the lease to a second writer. Promoting a replica is a deliberate failover of that one home, with one sweeper afterward.
 
-### Before a second site
+### Checks before a second site
 
 - Two concurrent checkouts of one chunk produce one lease and one conflict.
 - A duplicate job result does not create a second match or clear someone else's later lease.
 - Expiry uses the database clock. A heartbeat cannot extend a hold past `max_hold_hours`.
 - A worker without the image does not report a match from a different digest.
 - Killing a matchd node mid-compile returns the job to the queue, and the later result still applies once.
+
+## Content policy and moderation
+
+The owner who imports an export affirms they have the right to share that binary: the import asks for three confirmations, and the API refuses an import without them and records who confirmed. The policy is [policy/content-policy.md](policy/content-policy.md); sign-up requires agreeing to it. Reports go to a queue that site admins work from `/admin`. Admin is a flag on the user, read from the database on every request, and set only from the command line. Every admin action writes a row to `moderation_actions` in the same transaction as the change. Imports are checked against a known-malware SHA-256 list that a worker in the API refreshes daily. The roadmap has the details of each.
 
 ## Out of scope
 
@@ -191,5 +210,3 @@ A paused writer does not hand the lease to a second writer. Promoting a replica 
 - Organizations, billing, and private projects.
 - Treating a linked whole-image match as the checkout success state.
 - Per-city matchd. Sandboxes stay in the few sites that can host them.
-
-The owner who imports an export affirms they have the right to share that binary: the import form asks for three confirmations, and the API refuses an import without them and records who confirmed. The draft policy for copyrighted software and malware is [content-policy.md](content-policy.md); the site shows it at `/policy`, and sign-up requires agreeing to it. Reports go to a queue that site admins work from `/admin`. Admin is a flag on the user, read from the database on every request, and set only from the command line. Archiving, post removal, and suspension each write a row to `moderation_actions` in the same transaction. Imports are checked against a known-malware SHA-256 list (MalwareBazaar) that a background worker in the API refreshes daily; a listed program is refused, programs already on the site are re-checked after each refresh, and admins are emailed about every hit.

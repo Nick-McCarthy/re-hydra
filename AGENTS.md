@@ -3,9 +3,11 @@
 ## Start here
 
 1. **`docs/roadmap.md`** — what is built, compilers, capacity, next work (read first in a new chat)
-2. `docs/architecture.md` — how the system runs today, and the later multi-site design
-3. `docs/db-schema/schema.md` — Postgres schema of record
-4. `docs/db-schema/schema-reasoning.md` — why the schema is shaped that way
+2. `docs/architecture.md` — how the system runs today, the product rules, and the later multi-site design
+3. `docs/db-schema/schema.md` — Postgres schema of record; `schema-reasoning.md` beside it says why
+4. `docs/foundations-plan.md` — early decisions being revisited; the next items of work come from here
+
+`README.md` has the workspace layout, the full list of docs, and first-time setup. Policy drafts are in `docs/policy/` (the web shows them, so they are user-facing text). The 2026-11 audit is in `docs/audit/`.
 
 ## Effect (required reading)
 
@@ -103,37 +105,21 @@ Update with:
 git subtree pull --prefix=repos/effect https://github.com/Effect-TS/effect.git main --squash
 ```
 
-## Workspace layout
-
-- `apps/api` — Effect HTTP API (start here for backend work)
-- `apps/cli` — contributor CLI (`hydra`), typed against `@re-hydra/api` HttpApi
-- `apps/matchd` — compile + normalized compare (service-token only)
-- `apps/web` — Vite React client (login, profiles, project board, checkout/submit, attempts, auto-heartbeat)
-- `docs/` — roadmap, architecture, schema
-- `compose.yaml` — local Postgres + matchd. The Compose files live in `docker-yml/`
-
 ## Local commands
 
+First-time setup (Docker, `.env`, migrate, seed) is the quick start in `README.md`. Day to day:
+
 ```bash
-docker compose up -d          # requires Docker Desktop running
-npm install
-npm run api:migrate
-npm run api:seed
-npm run api:admin -- grant you@example.com   # site admin (/admin); also revoke, list
-npm run matchd                # or: docker compose up -d matchd
-npm run api
-npm run web
-npm run api:typecheck
+npm run api                   # http://localhost:3000, OpenAPI at /docs
+npm run web                   # http://localhost:5173
+npm run matchd                # host compiler; or: docker compose up -d matchd
 npm run hydra -- --help
-npm run cli:typecheck
-npm run matchd:typecheck
-npm run web:typecheck
-npm run typecheck             # all workspaces
+npm run api:migrate           # after pulling a new migration
+npm run api:admin -- grant you@example.com   # site admin (/admin); also revoke, list, delete-user
+npm run typecheck             # all workspaces; or api:, cli:, matchd:, web:typecheck
 npm test                      # unit tests (api, cli, matchd)
 npm run verify                # end-to-end scripts on a fresh database (needs postgres; matchd for some)
+npm run verify -- --only <name>   # one script; --list shows them
 ```
 
-## Current milestone focus
-
-- **Done:** Milestones 1–4 (claim/match, types, directory, integration build and C++)
-- **Next:** see `docs/roadmap.md`. A second site is design-only. One-site match capacity (route, claimers, sandbox, extra copies) is in place
+CI (`.github/workflows/ci.yml`) runs typecheck, unit tests, the web build, and `npm run verify` on every push to main and every pull request.

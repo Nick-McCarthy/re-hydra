@@ -1,10 +1,10 @@
 # Audit phases 1–2: purpose and architecture
 
-Status: done 2026-11-22 against `main` at `cd2a88feb`. Phases from [../audit-plan.md](../audit-plan.md). Findings are logged in [../audit-findings.md](../audit-findings.md) as `A-xxx`.
+Status: done 2026-11-22 against `main` at `cd2a88feb`. Phases from [plan.md](plan.md). Findings are logged in [findings.md](findings.md) as `A-xxx`.
 
 Method: I read the docs, then the code for every chunk state write in `apps/api/src/services`, the migrations' constraints, the HTTP surface in `apps/api/src/Api.ts`, the web client (`apps/web/src/lib/api.ts`, pages), the CLI commands, and the matchd relocation tables. Nothing was run yet. Each finding is marked CONFIRMED (the code path can be read end to end) or PLAUSIBLE (needs a reproduction in phase 5 or 6).
 
-**Update 2026-11-22:** A-001 to A-006 are fixed. The invariant table below is the state at audit time. The current state is in [../audit-plan.md](../audit-plan.md#progress) and the changes are in [../audit-changelog.md](../audit-changelog.md).
+**Update 2026-11-22:** A-001 to A-006 are fixed. The invariant table below is the state at audit time. The current state is in [plan.md](plan.md#progress) and the changes are in [changelog.md](changelog.md).
 
 ## Phase 1 — Purpose and product
 

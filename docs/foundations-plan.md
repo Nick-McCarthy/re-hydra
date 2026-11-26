@@ -17,84 +17,35 @@ The project is four weeks old (first commit 2026-10-28). Milestones 1–4 came f
 | 7a | Line endings | Done | — | S |
 | 7b | Addresses as decimal strings | Keep the type, add hex | Any time | S |
 | 7c | Google Fonts | Done | — | S |
-| 7d | Tests run by hand | Done (CI not yet seen running) | — | M |
+| 7d | Tests run by hand | Done | — | M |
 
-Suggested order: 7a, 3a, 1, 2, 7c, and 7d (done), then 3, and 5 when the npm release is near.
+Done items keep only why they were the way they were and what changed; the full analysis is in git history. Next: the rest of 3 (agreements), then 5 and 7b together when the npm release is near.
 
 ---
 
 ## 1. Errors that say why
 
-**Done.** `apps/api/src/domain/Problems.ts` holds the problems; `chunkRefusals.ts` explains why a lease operation found nothing to change; `Problems.test.ts` guards against new bare errors. The CLI's guessing is gone. The rest of this section is the analysis it was based on.
+**Done.** Every bare `Conflict` and `BadRequest` became an `HttpApiError.Problem` in `apps/api/src/domain/Problems.ts` with a `reason` and a `detail`; `chunkRefusals.ts` explains why a lease operation found nothing to change; `Problems.test.ts` fails on a new bare error; the CLI shows the server's detail instead of guessing. What clients see is in the roadmap ("Refusals say why").
 
-**Today.** The API returns bare `HttpApiError` classes in most places: `new Conflict()` 42 times, `new BadRequest()` 6, `new Forbidden()` 10, `new NotFound()` 77. Sixteen errors already use the better pattern, `HttpApiError.Problem` (RFC 9457 problem details with a `type` URL and a title): `CheckoutLimited`, `ProjectAccessDenied`, `DiscussionRefused`, `SignInLimited`, and the auth errors. `IntegrationsRepo.start` alone returns a bare `Conflict` for five different causes (fewer than two matches, duplicate names, a build already running, a recipe check running, mixed languages). The CLI guesses between them.
+**Why it was like this.** Bare errors are the zero-effort default, and the first client (the web app) was written alongside the API, so it knew why a call could fail. The `Problem` classes arrived where a person needed a specific message: sign-in, suspension, the checkout limit.
 
-**Why it is probably like this.**
-
-- Bare errors are the zero-effort default in `HttpApiError`, and the first client was the web app, written alongside the API, so it knew which call could fail and why.
-- The `Problem` classes arrive where a person needed a specific message: sign-in, sign-up, suspension, the checkout limit (git: first used in the matchd scaling work and widened in audit phase 4).
-- Some vagueness is deliberate: password reset does not reveal which emails have accounts (`PasswordResets.ts`, audit A-040). Those answers must stay vague. Projects are all publicly visible (members-only limits who may check out, not who may look), so `NotFound` hides nothing else today; that changes if private projects are added.
-
-**Plan.**
-
-1. Keep the answers that must not reveal whether an account exists (password reset, and sign-up per A-040's decision). Mark them in a comment so nobody adds a reason later.
-2. Replace each bare `Conflict` and `BadRequest` with a `Problem` per cause, or one `Problem` per endpoint with a `reason` code. `Problem` already carries an optional `detail` string. For example `IntegrationRefused` with reason `too_few_matches`, `duplicate_names`, `build_running`, `recipe_check_running`, `mixed_languages`.
-3. Start with the endpoints agents and the CLI use: checkout, submit, heartbeat, release, integrate, type proposal accept and recheck, import.
-4. Delete the guessing in the CLI (`explainFailure`'s generic Conflict text, the integrate and accept fallbacks) once the server names the reason. Show the server's `detail` instead.
-5. Add a lint-style test: no bare `new Conflict()` in `apps/api/src/services`.
+**Still true.** Answers that must not reveal whether an account exists (password reset, and sign-up per A-040) stay vague on purpose; do not add a reason to them. Projects are all publicly visible, so `NotFound` hides nothing today; that changes if private projects are added.
 
 ## 2. Scoped tokens
 
-**Done, with two changes from the plan below.** Migration 027 adds `access_tokens.scope` (`work` or `all`; existing tokens are `all`, new ones default to `work`). There are two scopes, not three: a separate `maintain` scope would only differ from `all` by excluding account settings, and nothing needs that yet. The check is in the Authorization middleware as an allow-list: an endpoint a work token may call is annotated `AllowWorkToken` in `Api.ts` (18 of them), so a new endpoint is closed to agents by default. A refused call is a 403 `TokenScopeRefused` with a detail. The profile page picks the scope and shows it on each token. Token expiry (step 5) is not done.
+**Done (migration 027), with two scopes instead of three.** `access_tokens.scope` is `work` or `all`. A separate `maintain` scope would only have differed from `all` by excluding account settings, and nothing needs that yet. The check is an allow-list in the Authorization middleware (`AllowWorkToken` in `Api.ts`), so new endpoints are closed to agents by default. What users see is in the roadmap ("Profile tokens have a scope").
 
-**Today.** `access_tokens` (migration 011) has a label, a hash, and revocation. A token has the full power of its owner. `hydra integrate --confirm-cost` is the only thing between an agent and a costly build, and it is a client-side check.
+**Why it was like this.** Migration 011 added tokens so the CLI could survive a password change. At the time a person ran every command, so scopes only mattered once the agent skill let something else hold the token.
 
-**Why it is probably like this.** Migration 010 replaced magic-link sign-in with passwords. The CLI then needed a credential that survives a password change, and 011 added one (schema-reasoning: "they stay valid across a password change until revoked"). At the time a person ran every command, and `instructions.agent` told the agent to stop before submitting. Scopes only matter once something other than the person holds the token, which became true with the agent skill.
-
-**Plan.**
-
-1. Migration: `access_tokens.scopes text[] NOT NULL DEFAULT '{all}'`. Existing tokens keep full power.
-2. Define a few scopes, not one per endpoint: `work` (list, checkout, submit, heartbeat, release, attempts, propose types, mark unresolved), `maintain` (integrate, accept and recheck proposals, import, project settings, members), `all`.
-3. Check the scope in the authorization middleware (`AuthorizationLive.ts`), next to the role checks. Sessions from the browser are always `all`.
-4. Profile page: choose scopes when creating a token; default `work`. `hydra skill install` and the FAQ tell people to give agents a `work` token.
-5. Optionally an expiry on tokens (`expires_at`), with 90 days as the default for new ones.
-6. Then `--confirm-cost` can stay as a courtesy, and the real control is the server refusing `integrate` to a `work` token.
+**Still open.** An expiry on tokens (`expires_at`), with 90 days as the default for new ones.
 
 ## 3. Account deletion and agreements
 
-**Today.** There is no account deletion and no display-name change. The foreign keys to `users` show two eras:
+**Done: deletion and display-name change (migration 028).** What users see, and the rules (owners archive or hand off first, work stays as "deleted account", strikes kept against an email hash), are in the roadmap and the privacy policy; the foreign-key rules are in the schema's migration 028 section. The shared code is `apps/api/src/services/accountDeletion.ts`, checked by `verify-account-deletion.mjs`.
 
-- Migrations 001–008 (projects, attempts, matches, imports, type revisions, proposals, `project_events`, integrations) use `REFERENCES users (id)` with no `ON DELETE` rule, so deleting a user fails while any of those rows exist.
-- Migrations 015 onward choose deliberately: `ON DELETE SET NULL` for authorship that should outlive the account (posts, moderation actions, reports), `CASCADE` for personal rows (follows, sessions, tokens, join requests).
+**Why it was like this.** Migrations 001–008 were the core mechanism (claim, match, prove), written before accounts had a lifecycle, so their references to `users` had no `ON DELETE` rule. By migration 015 deletion was being thought about, which is why later tables chose deliberately. 3a was a bug in that gap: strikes cascaded, so deleting an account reset its strikes. Migration 026 made it `RESTRICT` until deletion could keep a hash of the email.
 
-Sign-up records one agreement: `users.policy_version` and `policy_accepted_at`, for the content policy only (`POLICY_VERSION = "content-policy-draft-2026-11"`).
-
-**Why it is probably like this.** The early migrations were the core mechanism (claim, match, prove), written before accounts had a lifecycle. By the time the discussion and moderation tables were designed, deletion was being thought about, which is why their rules are explicit. The agreement columns came with the content policy work, when it was the only document.
-
-**3a. A bug, fixed in migration 026.** `strikes.user_id` is `ON DELETE CASCADE` (migration 024). If deletion is ever built, an account with two strikes can delete itself, sign up again, and start at zero, which defeats the repeat-infringer rule (content policy section 3). Migration 026 makes it `ON DELETE RESTRICT`: deleting an account with strikes fails. When deletion is built, it decides what to keep (for example a hash of the email, so a re-registration can be matched) before removing the user.
-
-**Plan.**
-
-1. Decide the rules, then write them into the privacy policy's retention table:
-   - Attempts and matches: keep (CC0, others build on them); detach from the user and show "deleted account".
-   - Projects owned by the user: transfer to a maintainer, or archive.
-   - Posts: keep with a null author (already the rule).
-   - `project_events`, imports, proposals: keep with a null actor.
-   - Strikes and moderation records: keep for the retention period (see 3a).
-2. Migration: switch every `REFERENCES users (id)` from 001–008 to the chosen rule. `NOT NULL` columns that become `SET NULL` drop the `NOT NULL`, and the web shows "deleted account" where the name was.
-3. `DELETE /v1/me` with password confirmation; a button on the account page; an admin action for requests by email.
-4. Display-name change on the account page (the privacy policy already promises corrections).
-**Done (migration 028).** Steps 1–4:
-
-- Every reference to `users` from 001–008 has a rule. SET NULL (dropping `NOT NULL`) for projects and type revisions created, attempts, matches, imports, type proposals and reviews, unresolved types, `project_events`, proposal regressions, integrations, a chunk's leaseholder, blocks made, and strikes. CASCADE for competing leases (`chunk_leases`) and ownership offers made.
-- `POST /v1/auth/delete-account` (password confirmation; not open to work tokens) and `PATCH /v1/auth/me` for the display name. Both are on the web's Account page (`/account`). `npm run api:admin -- delete-user <email> [--archive-projects]` handles requests by email.
-- Shared rules in `apps/api/src/services/accountDeletion.ts`. Refused for a suspended account, for an owner of projects that are not archived unless they ask to archive them, and while one of the account's submissions is being checked. Leased chunks go back to the pool at once and their competing leases are released, as blocking does. Strikes keep a SHA-256 of the email (`strikes.email_hash`); sign-up with that email takes them back.
-- An archived project whose owner deleted their account has no owner and cannot be restored.
-- The web, CLI, and API show "deleted account" where an author is null. Checked by `apps/api/scripts/verify-account-deletion.mjs`.
-
-Still open:
-
-5. Agreements: a table `agreements (user_id, document, version, accepted_at)` for content policy, terms, and privacy. Backfill the existing column into it. Sign-up asks for all three. When a document's version changes, ask signed-in users to accept it again.
+**Still open: agreements.** Sign-up records one agreement, for the content policy only (`users.policy_version`, `policy_accepted_at`). Plan: a table `agreements (user_id, document, version, accepted_at)` for content policy, terms, and privacy; backfill the existing columns into it; sign-up asks for all three; when a document's version changes, ask signed-in users to accept it again.
 
 ## 4. Policy before features
 
@@ -137,11 +88,7 @@ Still open:
 
 ### 7a. Line endings
 
-**Today.** No `.gitattributes`. The repo is edited on Windows, files are a mix of LF and CRLF, and every commit warns.
-
-**Why.** Nobody added one; the default `core.autocrlf` on Windows hid it.
-
-**Done.** `.gitattributes` sets `* text=auto eol=lf` (`*.bat`/`*.cmd` CRLF, binaries marked). The index was already all LF, because `core.autocrlf=true` converted on every commit, so renormalizing changed no files. What changed is checkout: files are now written with LF whatever a machine's `autocrlf` is. Files already on disk keep CRLF until they are next checked out or rewritten. `apps/matchd/Dockerfile.ps1` is the PlayStation image, not PowerShell, so `.ps1` stays LF.
+**Done.** `.gitattributes` sets `* text=auto eol=lf` (`*.bat`/`*.cmd` CRLF, binaries marked), so checkouts are LF whatever a machine's `core.autocrlf` is. The repo is edited on Windows and had no `.gitattributes`; `autocrlf` hid the mix. `apps/matchd/Dockerfile.ps1` is the PlayStation image, not PowerShell, so `.ps1` stays LF.
 
 ### 7b. Addresses as decimal strings
 
@@ -153,27 +100,11 @@ Still open:
 
 ### 7c. Google Fonts
 
-**Done.** The web app imports IBM Plex Sans (400, 500, 600) and Mono (400, 500) from `@fontsource` in `main.tsx`, so Vite bundles the font files and serves them from the site. `index.html` no longer links Google, the production CSP allows only `'self'` for styles and fonts, and the Google Fonts line is gone from the privacy policy. The rest of this section is the analysis it was based on.
-
-**Today.** `index.html` loads IBM Plex Sans and Mono from Google. Audit A-037's content security policy allows `fonts.googleapis.com` and `fonts.gstatic.com` on purpose (audit change log).
-
-**Why.** The quickest way to get the typeface; the CSP was written to allow what was already there.
-
-**Plan.** Add `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` (only the weights used: 400, 500, 600), import them in `main.tsx`, remove the Google links, tighten the CSP to `'self'` for fonts and styles, and delete the Google Fonts paragraph from the privacy policy.
+**Done.** IBM Plex Sans and Mono come from `@fontsource`, bundled by Vite and served by the site; the production CSP allows only `'self'` for styles and fonts, and the privacy policy no longer mentions Google. They had been loaded from Google as the quickest way to get the typeface, and A-037's CSP was written to allow what was already there.
 
 ### 7d. One test runner, in CI
 
-**Done.** `npm run verify` (`apps/api/scripts/verify-all.mjs`) does step 1: a fresh `rehydra_test_*` database, migrate and seed, the API on a free port with only the settings each script needs (never `apps/api/.env`), every script in turn, then the database is dropped. Compiling scripts are skipped without matchd. Three scripts stay manual: `verify-flags` (every compiler image) and `verify-phase3` and `verify-small-fixes` (the `scale100k` project). Two scripts were made independent of run order: `verify-report-emails` marks earlier reports notified first, and `verify-password-reset` takes the web origin from `AUDIT_APP_URL`. `npm test` runs the API, CLI, and matchd unit tests. `.github/workflows/ci.yml` does step 2 with both jobs; it has not run on GitHub yet. Step 3: `dogfood.mjs` is deleted, since `verify-checkout-loop` covers it. The rest of this section is the analysis it was based on.
-
-**Today.** 37 API unit tests and 5 CLI tests run with `node --test`. Twenty-one `apps/api/scripts/verify-*.mjs` scripts test real behaviour (access, limits, moderation, malware, the checkout loop) but each one needs a hand-started API on port 3100 and the `rehydra_audit` database, set up as its header describes. There is no CI (no `.github/`). The roadmap's "checked by hand" notes come from this.
-
-**Why.** The verify scripts were written during the audit to prove each fix end to end, which they do well. Each was run once by the person fixing the finding, so starting the API by hand was cheap.
-
-**Plan.**
-
-1. One script, `npm run verify`, that creates a fresh database, runs migrations, starts the API (and matchd where a script needs it) on a free port, runs every verify script in turn, and tears everything down.
-2. A GitHub Actions workflow: typecheck, unit tests, then `npm run verify` with a Postgres service container. matchd-dependent scripts can run in a second job, since they need the compiler images.
-3. Fix `fixtures/link/dogfood.mjs` (it stops at `decoy` since the call-target check) or drop it from the run.
+**Done.** `npm run verify` runs every end-to-end script on a fresh database, and GitHub Actions runs it with typecheck, unit tests, and the web build (how it works: the roadmap). Three scripts stay manual: `verify-flags` (every compiler image) and `verify-phase3` and `verify-small-fixes` (the `scale100k` project). The scripts were written during the audit, each run once by hand against an API on port 3100, so nothing ran them together.
 
 ---
 

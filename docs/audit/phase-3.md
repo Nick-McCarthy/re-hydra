@@ -1,6 +1,6 @@
 # Audit phase 3: data and schema
 
-Status: done 2026-11-23 on branch `audit/phase-3-schema`, off `main` at `f5418cf9b`. Plan: [../audit-plan.md](../audit-plan.md). Findings: [../audit-findings.md](../audit-findings.md). Changes: [../audit-changelog.md](../audit-changelog.md).
+Status: done 2026-11-23 on branch `audit/phase-3-schema`, off `main` at `f5418cf9b`. Plan: [plan.md](plan.md). Findings: [findings.md](findings.md). Changes: [changelog.md](changelog.md).
 
 All current data is test data, and production starts with an empty database. So migration 012 only needs to apply cleanly to an empty database. It has no repair steps.
 

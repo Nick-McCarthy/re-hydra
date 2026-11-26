@@ -6,26 +6,26 @@ Status: in progress. Written 2026-11-22 against `main` at `cd2a88feb` with uncom
 
 | Item | State | Where |
 | --- | --- | --- |
-| Phase 1 — Purpose | Done 2026-11-22 | [audit/phase-1-2.md](audit/phase-1-2.md) |
-| Phase 2 — Architecture | Done 2026-11-22 | [audit/phase-1-2.md](audit/phase-1-2.md) |
-| Fixes A-001 to A-006 | Done 2026-11-22, merged to `main` locally (`c065901a7`) | [audit-changelog.md](audit-changelog.md) |
-| Security fixes A-019, A-020, A-021, A-025 | Done 2026-11-23, merged to `main` locally (`e5aa1b7ed`) | [audit-changelog.md](audit-changelog.md) |
-| Housekeeping: merge, rebuild 17 matchd images, recreate containers | Done 2026-11-23. Found A-027 | [audit-changelog.md](audit-changelog.md) |
-| A-027 sandbox seccomp profile | Done 2026-11-23, merged to `main` locally (`f5418cf9b`) | [audit-changelog.md](audit-changelog.md), [../docker-yml/matchd-seccomp.md](../docker-yml/matchd-seccomp.md) |
-| Phase 3 — Schema | Done 2026-11-23, merged to `main` locally (`d2d49ec21`) | [audit/phase-3.md](audit/phase-3.md) |
-| Phase 4 — Security review | Done 2026-11-23 (branch `audit/phase-4-security`) | [audit/phase-4.md](audit/phase-4.md) |
-| A-032 and A-041 inline assembly and reputation | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [audit-changelog.md](audit-changelog.md) |
-| A-034 and A-035 body size and rate limits | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [audit-changelog.md](audit-changelog.md) |
-| A-013 flag allow-list and memory cap | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [audit-changelog.md](audit-changelog.md) |
-| A-036 bundle text reaching the agent | Fixed 2026-11-23, pushed to `main` (`0b5b55142`) | [audit-changelog.md](audit-changelog.md) |
-| Small fixes A-010, A-014, A-015, A-018, A-026, A-028, A-033, A-038 | Fixed 2026-11-23, pushed to `main` (`6ceea7694`) | [audit-changelog.md](audit-changelog.md) |
-| A-007 call targets | Fixed 2026-11-24, pushed to `main` (`6ceea7694`) | [audit-changelog.md](audit-changelog.md) |
-| A-037, A-039, A-040 headers, pinned sources, password cost | Fixed 2026-11-24, pushed to `main` (`1ed2ec9bf`) | [audit-changelog.md](audit-changelog.md) |
-| A-012 open vs members-only projects, block list | Fixed 2026-11-24, pushed to `main` (`bdeee5e42`) | [audit-changelog.md](audit-changelog.md) |
-| A-011 members, roles, ownership transfer | Fixed 2026-11-24, pushed to `main` (`06435a565`) | [audit-changelog.md](audit-changelog.md) |
+| Phase 1 — Purpose | Done 2026-11-22 | [phase-1-2.md](phase-1-2.md) |
+| Phase 2 — Architecture | Done 2026-11-22 | [phase-1-2.md](phase-1-2.md) |
+| Fixes A-001 to A-006 | Done 2026-11-22, merged to `main` locally (`c065901a7`) | [changelog.md](changelog.md) |
+| Security fixes A-019, A-020, A-021, A-025 | Done 2026-11-23, merged to `main` locally (`e5aa1b7ed`) | [changelog.md](changelog.md) |
+| Housekeeping: merge, rebuild 17 matchd images, recreate containers | Done 2026-11-23. Found A-027 | [changelog.md](changelog.md) |
+| A-027 sandbox seccomp profile | Done 2026-11-23, merged to `main` locally (`f5418cf9b`) | [changelog.md](changelog.md), [docker-yml/matchd-seccomp.md](../../docker-yml/matchd-seccomp.md) |
+| Phase 3 — Schema | Done 2026-11-23, merged to `main` locally (`d2d49ec21`) | [phase-3.md](phase-3.md) |
+| Phase 4 — Security review | Done 2026-11-23 (branch `audit/phase-4-security`) | [phase-4.md](phase-4.md) |
+| A-032 and A-041 inline assembly and reputation | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [changelog.md](changelog.md) |
+| A-034 and A-035 body size and rate limits | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [changelog.md](changelog.md) |
+| A-013 flag allow-list and memory cap | Fixed 2026-11-23, pushed to `main` (`8953d8407`) | [changelog.md](changelog.md) |
+| A-036 bundle text reaching the agent | Fixed 2026-11-23, pushed to `main` (`0b5b55142`) | [changelog.md](changelog.md) |
+| Small fixes A-010, A-014, A-015, A-018, A-026, A-028, A-033, A-038 | Fixed 2026-11-23, pushed to `main` (`6ceea7694`) | [changelog.md](changelog.md) |
+| A-007 call targets | Fixed 2026-11-24, pushed to `main` (`6ceea7694`) | [changelog.md](changelog.md) |
+| A-037, A-039, A-040 headers, pinned sources, password cost | Fixed 2026-11-24, pushed to `main` (`1ed2ec9bf`) | [changelog.md](changelog.md) |
+| A-012 open vs members-only projects, block list | Fixed 2026-11-24, pushed to `main` (`bdeee5e42`) | [changelog.md](changelog.md) |
+| A-011 members, roles, ownership transfer | Fixed 2026-11-24, pushed to `main` (`06435a565`) | [changelog.md](changelog.md) |
 | Phases 5–8 | Not started | — |
 
-Findings: [audit-findings.md](audit-findings.md). 41 logged, 40 fixed, 1 closed as not applicable (A-024), none open. Phases 5–8 remain.
+Findings: [findings.md](findings.md). 41 logged, 40 fixed, 1 closed as not applicable (A-024), none open. Phases 5–8 remain.
 
 Invariant status after the fixes:
 
@@ -242,7 +242,7 @@ Phases 3 and 4 can run in parallel after phase 2. Fix Critical and High findings
 
 ## Early signals
 
-Found while writing this plan. The three matchd token items are fixed (A-019 to A-021). The rest are open.
+Found while writing this plan. Since fixed: the three matchd token items (A-019 to A-021), rate limits and body size (A-034, A-035), and CI (foundations plan 7d; CLI unit tests exist, web still has none). The Docker daemon dependency is still open.
 
 - matchd bearer compared with `!==` (`apps/matchd/src/http/MatchdAuth.ts`). Phase 4.
 - `MATCHD_TOKEN` silently defaults to `dev-matchd-token` in API, scaler, and matchd. Phase 4, 7.
@@ -254,7 +254,7 @@ Found while writing this plan. The three matchd token items are fixed (A-019 to 
 
 ## Finding format
 
-One row per finding in `docs/audit-findings.md` (created when the audit starts):
+One row per finding in `docs/audit/findings.md` (created when the audit starts):
 
 | Id | Phase | Severity | Invariant | Location | Finding | Reproduction | Fix | State |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

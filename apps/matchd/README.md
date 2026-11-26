@@ -2,7 +2,7 @@
 
 Compile + normalized instruction compare, plus a link step that places matched functions at their original addresses. The API is the only client (service bearer token).
 
-Prefer `docker compose up -d matchd` on Windows. The image includes gcc, g++, and binutils. See `docs/roadmap.md`.
+Prefer `docker compose up -d matchd` on Windows. The default image includes gcc, g++, and binutils; the other compiler images and what each target supports are in [docs/roadmap.md](../../docs/roadmap.md#compilers).
 
 ## Local
 
@@ -47,7 +47,7 @@ Compiles with `-c` inside the image sandbox (`MATCHD_SANDBOX=bwrap`): no network
 
 `POST /v1/link-jobs`
 
-Same auth. Body is `language`, `headers`, and `units[]` of `{ symbol, address, size, originalBytesBase64, source }`. Each unit is compiled alone with `-ffunction-sections`, then `ld` places `.text.<symbol>` at `address`. The section has to be the same length as the original range, and those bytes have to match. A longer section fails even when the original bytes are a prefix. `compilerOk` is false when the compiler or the link itself fails. A unit with `passed: false` is the chunk to reopen. Unresolved calls are left unresolved so one missing callee does not fail the link.
+Same auth. Body is the toolchain, `language`, `headers`, `units[]` of `{ symbol, address, size, originalBytesBase64, source }`, and optional `symbols` (the original addresses of functions and data this build does not link) (`src/domain/Job.ts`). A unit with `passed: false` is the chunk to reopen; `compilerOk` is false when the compiler or the link itself fails. How the link places functions, defines known symbols, and blanks base-relative references is in [docs/architecture.md](../../docs/architecture.md#compile); which targets support it is in the roadmap.
 
 ## Pinned sources
 

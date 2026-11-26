@@ -2,7 +2,7 @@ import { Link } from "react-router-dom"
 import { MarkdownDocument } from "@/components/markdown-document"
 // One copy of the text: the page shows the document in docs/, sections 1–5.
 // Section 6 is the build checklist and stays out of the public page.
-import policySource from "../../../../docs/content-policy.md?raw"
+import policySource from "../../../../docs/policy/content-policy.md?raw"
 
 const publicPart = (source: string) => {
   const end = source.search(/^## 6./m)

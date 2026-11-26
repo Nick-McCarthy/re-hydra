@@ -16,7 +16,7 @@ Measured on 2026-11-24 on a 16-thread desktop (Docker Desktop, 16 CPUs, 8 GB), w
 
 ## How a job flows
 
-A submit inserts a `jobs` row. Each API process runs `MATCHD_WORKERS` (4) claimers, which take jobs from Postgres with `FOR UPDATE SKIP LOCKED` and post them to the matchd process for that image (`MATCHD_ROUTES`). matchd itself has no concurrency limit, so the claimers set it: 4 jobs in flight per API process. Each job runs a handful of sandboxed processes (inline-asm scan, compile, nm, objdump) with a 30 s cap per process and a 1 GB data cap. `MATCHD_SCALE=docker` adds up to 4 local copies of an image once an interactive job has waited 30 s.
+How jobs are queued, claimed, and routed is in [architecture.md](architecture.md#match-queue). What matters for capacity: matchd has no concurrency limit of its own, so the claimers set it, `MATCHD_WORKERS` (4) jobs in flight per API process. Each job runs a handful of sandboxed processes (inline-asm scan, compile, nm, objdump) with a 30 s cap per process and a 1 GB data cap. `MATCHD_SCALE=docker` adds up to 4 local copies of an image once an interactive job has waited 30 s.
 
 The GBA compiler being fetched from GitHub only happens when the image is **built**. Once the image is in a registry, a new GBA node starts as fast as any other: one image pull (0.9–1.9 GB) and about 10 s to boot.
 
