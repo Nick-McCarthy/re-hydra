@@ -12,7 +12,7 @@
     "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
     "start": "tsx --env-file-if-exists=.env src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test src/services/matchdRoutes.test.ts src/services/matchdScale.test.ts src/http/rateLimit.test.ts src/domain/agentInstructions.test.ts src/services/callCheck.test.ts src/services/malwareList.test.ts src/auth/password.test.ts src/domain/diagnostics.test.ts src/domain/Problems.test.ts",
+    "test": "node --import tsx --test src/services/matchdRoutes.test.ts src/services/matchdScale.test.ts src/http/rateLimit.test.ts src/domain/agentInstructions.test.ts src/services/callCheck.test.ts src/services/malwareList.test.ts src/auth/password.test.ts src/domain/diagnostics.test.ts src/domain/Problems.test.ts src/services/chunkStateWrites.test.ts",
     "migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
     "seed": "tsx --env-file-if-exists=.env src/db/seed.ts",
     "blobs:copy": "tsx --env-file-if-exists=.env src/db/copyBlobs.ts",

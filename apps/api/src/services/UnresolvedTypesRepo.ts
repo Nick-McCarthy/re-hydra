@@ -6,7 +6,7 @@ import { ProjectRefused } from "../domain/Problems.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { ProjectAuth } from "./ProjectAuth.js"
-import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { ChunkState } from "./ChunkState.js"
 
 type Row = {
   readonly id: string
@@ -54,7 +54,7 @@ export class UnresolvedTypesRepo extends Context.Service<
     Effect.gen(function*() {
       const sql = yield* SqlClient.SqlClient
       const auth = yield* ProjectAuth
-      const stats = yield* ProjectChunkStats
+      const chunkState = yield* ChunkState
       const activity = yield* Activity
 
       const listActive = Effect.fn("UnresolvedTypesRepo.listActive")(
@@ -118,24 +118,7 @@ export class UnresolvedTypesRepo extends Context.Service<
             return yield* Effect.die("INSERT INTO unresolved_types returned no row")
           }
 
-          yield* sql`
-            UPDATE chunks c
-            SET
-              state = 'blocked',
-              lease_user_id = NULL,
-              lease_token = NULL,
-              lease_expires_at = NULL,
-              hold_started_at = NULL,
-              updated_at = now()
-            FROM chunk_type_refs ctr
-            WHERE ctr.chunk_id = c.id
-              AND ctr.type_name = ${payload.typeName.trim()}
-              AND c.project_id = ${projectId}
-              AND c.fuse_parent_id IS NULL
-              AND c.state IN ('open', 'stale')
-          `
-
-          yield* stats.refresh(projectId)
+          yield* chunkState.blockForType(projectId, payload.typeName.trim())
           yield* activity.record({
             projectId,
             actorId: userId,
@@ -171,37 +154,8 @@ export class UnresolvedTypesRepo extends Context.Service<
             return yield* new NotFound()
           }
 
-          // Still blocked by another unresolved type?
-          yield* sql`
-            UPDATE chunks c
-            SET
-              state = CASE
-                WHEN c.current_match_id IS NULL AND EXISTS (
-                  SELECT 1 FROM matches m
-                  WHERE m.chunk_id = c.id AND m.invalidated_at IS NOT NULL
-                ) THEN 'stale'::chunk_state
-                ELSE 'open'::chunk_state
-              END,
-              updated_at = now()
-            WHERE c.project_id = ${projectId}
-              AND c.state = 'blocked'
-              AND c.fuse_parent_id IS NULL
-              AND EXISTS (
-                SELECT 1 FROM chunk_type_refs ctr
-                WHERE ctr.chunk_id = c.id AND ctr.type_name = ${typeName}
-              )
-              AND NOT EXISTS (
-                SELECT 1
-                FROM chunk_type_refs ctr2
-                INNER JOIN unresolved_types ut
-                  ON ut.project_id = c.project_id
-                 AND ut.type_name = ctr2.type_name
-                 AND ut.cleared_at IS NULL
-                WHERE ctr2.chunk_id = c.id
-              )
-          `
-
-          yield* stats.refresh(projectId)
+          // Chunks still blocked by another unresolved type stay blocked.
+          yield* chunkState.unblockForType(projectId, typeName)
           yield* activity.record({
             projectId,
             actorId: userId,

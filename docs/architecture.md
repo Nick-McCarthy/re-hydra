@@ -113,7 +113,7 @@ ELF objects are read with `objdump -d -r`. COFF objects are read with `llvm-objd
 
 Postgres is the schema in [db-schema/schema.md](db-schema/schema.md). Accounts, membership, chunk state, leases, attempts, revisions, matches, and job rows are writer data. Two writers must not update the same chunk.
 
-`project_chunk_stats` is a cache, recounted after every chunk state change (the rule is in AGENTS.md). Reputation is computed: current matches minus `proposal_regressions`. It is not a table.
+Every chunk state and lease change goes through one service, `ChunkState`, which also recounts `project_chunk_stats`, a cache of the board counts (the rule is in AGENTS.md). Reputation is computed: current matches minus `proposal_regressions`. It is not a table.
 
 `jobs.sources` stores path and content hash, not file text. The worker loads bytes from blobs.
 

@@ -4,9 +4,8 @@ import { SqlClient } from "effect/sql"
 import { type BlockedUser, type BlockUserPayload, ProjectAccessDenied } from "../domain/Project.js"
 import type { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
-import { endUserLeasesOnProject } from "./PoolReturn.js"
 import { ProjectAuth } from "./ProjectAuth.js"
-import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { ChunkState } from "./ChunkState.js"
 
 const toIso = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString()
@@ -50,7 +49,7 @@ export class ProjectModeration extends Context.Service<
       const sql = yield* SqlClient.SqlClient
       const auth = yield* ProjectAuth
       const activity = yield* Activity
-      const stats = yield* ProjectChunkStats
+      const chunkState = yield* ChunkState
 
       const loadBlocks = (projectId: string) =>
         sql<{
@@ -116,7 +115,7 @@ export class ProjectModeration extends Context.Service<
             RETURNING user_id
           `
           // Their leases here end now, as a maintainer's "clear lease" would.
-          yield* endUserLeasesOnProject(sql, activity.releaseSideLeases, projectId, payload.userId)
+          yield* chunkState.endUserLeases({ userId: payload.userId, projectId })
           // A-011: a blocked contributor stops being a member, and loses any
           // pending ownership offer. Owners and maintainers were refused above.
           yield* sql`
@@ -141,7 +140,6 @@ export class ProjectModeration extends Context.Service<
               summary: "A user was blocked from this project"
             })
           }
-          yield* stats.refresh(projectId)
         })).pipe(Effect.orDie)
 
         return yield* loadBlocks(projectId)

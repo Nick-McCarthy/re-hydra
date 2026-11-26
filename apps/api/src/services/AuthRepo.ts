@@ -29,7 +29,7 @@ import { signInEmailRule } from "../http/rateLimit.js"
 import { RateLimits } from "./RateLimits.js"
 import { POLICY_VERSION } from "../domain/Moderation.js"
 import type { AccountDeletionRefused } from "../domain/Problems.js"
-import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { ChunkState } from "./ChunkState.js"
 import { type DeletedAccount, deleteUserAccount, reclaimStrikes } from "./accountDeletion.js"
 
 const hashToken = (token: string): Buffer =>
@@ -118,7 +118,7 @@ export class AuthRepo extends Context.Service<
     Effect.gen(function*() {
       const sql = yield* SqlClient.SqlClient
       const limits = yield* RateLimits
-      const stats = yield* ProjectChunkStats
+      const chunkState = yield* ChunkState
       const sessionTtlDays = 30
       const dummyHash = yield* hashPassword("re-hydra-credential-placeholder").pipe(Effect.orDie)
 
@@ -496,10 +496,7 @@ export class AuthRepo extends Context.Service<
         }
         const deleted = yield* deleteUserAccount(sql, userId, {
           archiveOwnedProjects: payload.archiveOwnedProjects === true
-        }).pipe(Effect.catchTag("SqlError", Effect.die))
-        for (const projectId of deleted.touchedProjectIds) {
-          yield* stats.refresh(projectId)
-        }
+        }).pipe(Effect.provideService(ChunkState, chunkState), Effect.catchTag("SqlError", Effect.die))
         return deleted
       })
 

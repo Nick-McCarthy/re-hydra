@@ -88,8 +88,8 @@ export class ChunksRepoError extends Schema.TaggedError<ChunksRepoError>()(
 
 - Use `SqlClient` from `effect/sql` and `PgClient.layer` / `layerConfig` from `@effect/sql-pg`. Migrations go through `PgMigrator` + `Migrator.fromRecord` (register each in `apps/api/src/db/migrate.ts`).
 - `@effect/sql-pg` uses the extended query protocol → **one SQL statement per call** (`cannot insert multiple commands into a prepared statement`). Multi-statement DDL must go through `apps/api/src/db/execSqlScript.ts`.
-- Exclusive checkout stays a single conditional `UPDATE ... RETURNING` on `chunks`.
-- After any chunk state change, call `ProjectChunkStats.refresh(projectId)` so the project board counts stay correct.
+- Chunk state, leases, the current match, the fuse parent, and `chunk_leases` change only through `ChunkState` (`apps/api/src/services/ChunkState.ts`). Its methods join the caller's transaction and recount the project board. `chunkStateWrites.test.ts` fails on such a write anywhere else. Need a new transition? Add a method there.
+- Exclusive checkout stays a single conditional `UPDATE ... RETURNING` on `chunks` (`ChunkState.claim`).
 
 ## Vendored repositories
 

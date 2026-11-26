@@ -17,6 +17,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import { deleteUserAccount } from "../services/accountDeletion.js"
+import { ChunkState } from "../services/ChunkState.js"
 import { ProjectChunkStats } from "../services/ProjectChunkStats.js"
 import { SqlLive } from "./SqlLive.js"
 
@@ -51,10 +52,6 @@ const program = Effect.gen(function*() {
       })
     ))
     if (outcome === undefined) return
-    const stats = yield* ProjectChunkStats
-    for (const projectId of outcome.touchedProjectIds) {
-      yield* stats.refresh(projectId)
-    }
     yield* Console.log(`Deleted the account for ${email}.`)
     for (const project of outcome.archivedProjects) {
       yield* Console.log(`Archived ${project.name} (${project.slug}).`)
@@ -97,6 +94,9 @@ const program = Effect.gen(function*() {
     `
   }))
   yield* Console.log(grant ? `${email} is now an admin.` : `${email} is no longer an admin.`)
-}).pipe(Effect.provide(Layer.mergeAll(ProjectChunkStats.layer.pipe(Layer.provideMerge(SqlLive)), NodeServices.layer)))
+}).pipe(Effect.provide(Layer.mergeAll(
+  ChunkState.layer.pipe(Layer.provide(ProjectChunkStats.layer), Layer.provideMerge(SqlLive)),
+  NodeServices.layer
+)))
 
 NodeRuntime.runMain(program)
