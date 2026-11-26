@@ -7,10 +7,12 @@ import type {
   AccessTokenCreatedBody,
   AccessTokenSummary,
   ChangePasswordPayload,
+  DeleteAccountPayload,
   SessionResponse,
   SignInPayload,
   SignUpPayload,
   TokenScope,
+  UpdateProfilePayload,
   UserProfile
 } from "../domain/Auth.js"
 import {
@@ -26,6 +28,9 @@ import type { Uuid } from "../domain/Uuid.js"
 import { signInEmailRule } from "../http/rateLimit.js"
 import { RateLimits } from "./RateLimits.js"
 import { POLICY_VERSION } from "../domain/Moderation.js"
+import type { AccountDeletionRefused } from "../domain/Problems.js"
+import { ProjectChunkStats } from "./ProjectChunkStats.js"
+import { type DeletedAccount, deleteUserAccount, reclaimStrikes } from "./accountDeletion.js"
 
 const hashToken = (token: string): Buffer =>
   createHash("sha256").update(token, "utf8").digest()
@@ -79,6 +84,14 @@ export class AuthRepo extends Context.Service<
       userId: Uuid,
       payload: ChangePasswordPayload
     ) => Effect.Effect<SessionResponse, PasswordRejected>
+    readonly updateProfile: (
+      userId: Uuid,
+      payload: UpdateProfilePayload
+    ) => Effect.Effect<UserProfile, AccountRejected>
+    readonly deleteAccount: (
+      userId: Uuid,
+      payload: DeleteAccountPayload
+    ) => Effect.Effect<DeletedAccount, PasswordRejected | AccountDeletionRefused>
     readonly findUserBySessionToken: (
       token: string
     ) => Effect.Effect<Option.Option<UserProfile>>
@@ -105,6 +118,7 @@ export class AuthRepo extends Context.Service<
     Effect.gen(function*() {
       const sql = yield* SqlClient.SqlClient
       const limits = yield* RateLimits
+      const stats = yield* ProjectChunkStats
       const sessionTtlDays = 30
       const dummyHash = yield* hashPassword("re-hydra-credential-placeholder").pipe(Effect.orDie)
 
@@ -172,10 +186,14 @@ export class AuthRepo extends Context.Service<
 
         const passwordHash = yield* hashPassword(payload.password).pipe(Effect.orDie)
         const userId = randomUUID()
-        yield* sql`
-          INSERT INTO users (id, email, display_name, password_hash, policy_version, policy_accepted_at)
-          VALUES (${userId}, ${email}, ${displayName}, ${passwordHash}, ${POLICY_VERSION}, now())
-        `.pipe(
+        yield* sql.withTransaction(Effect.gen(function*() {
+          yield* sql`
+            INSERT INTO users (id, email, display_name, password_hash, policy_version, policy_accepted_at)
+            VALUES (${userId}, ${email}, ${displayName}, ${passwordHash}, ${POLICY_VERSION}, now())
+          `
+          // Strikes outlive a deleted account (content policy 3).
+          yield* reclaimStrikes(sql, userId, email)
+        })).pipe(
           Effect.catchTag("SqlError", (error) => {
             if (error.message.includes("users_email") || error.message.includes("duplicate key")) {
               return Effect.fail(
@@ -435,10 +453,62 @@ export class AuthRepo extends Context.Service<
         Effect.orDie
       )
 
+      const updateProfile = Effect.fn("AuthRepo.updateProfile")(function*(
+        userId: Uuid,
+        payload: UpdateProfilePayload
+      ) {
+        const displayName = payload.displayName.trim()
+        if (displayName.length === 0) {
+          return yield* new AccountRejected({ detail: "Enter a display name." })
+        }
+        const rows = yield* sql<{
+          readonly id: string
+          readonly email: string
+          readonly display_name: string
+          readonly is_admin: boolean
+        }>`
+          UPDATE users SET display_name = ${displayName}
+          WHERE id = ${userId}
+          RETURNING id, email, display_name, is_admin
+        `.pipe(Effect.orDie)
+        if (rows[0] === undefined) {
+          return yield* Effect.die(new Error("signed-in user not found"))
+        }
+        return toProfile(rows[0])
+      })
+
+      const deleteAccount = Effect.fn("AuthRepo.deleteAccount")(function*(
+        userId: Uuid,
+        payload: DeleteAccountPayload
+      ) {
+        const rows = yield* sql<{ readonly password_hash: string | null }>`
+          SELECT password_hash FROM users WHERE id = ${userId} LIMIT 1
+        `.pipe(Effect.orDie)
+        const stored = rows[0]?.password_hash ?? null
+        const matches = yield* passwordMatches(payload.password, stored).pipe(Effect.orDie)
+        if (stored === null) {
+          return yield* new PasswordRejected({
+            detail: "This account has no password. Set one with \"Forgot password\" on the sign-in page, then delete the account."
+          })
+        }
+        if (!matches) {
+          return yield* new PasswordRejected({ detail: "The password is wrong." })
+        }
+        const deleted = yield* deleteUserAccount(sql, userId, {
+          archiveOwnedProjects: payload.archiveOwnedProjects === true
+        }).pipe(Effect.catchTag("SqlError", Effect.die))
+        for (const projectId of deleted.touchedProjectIds) {
+          yield* stats.refresh(projectId)
+        }
+        return deleted
+      })
+
       return AuthRepo.of({
         signUp,
         signIn,
         changePassword,
+        updateProfile,
+        deleteAccount,
         findUserBySessionToken,
         findUserByAccessToken,
         createAccessToken,

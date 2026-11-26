@@ -56,15 +56,15 @@ export class ProjectModeration extends Context.Service<
         sql<{
           readonly user_id: string
           readonly display_name: string
-          readonly blocked_by: string
-          readonly blocked_by_name: string
+          readonly blocked_by: string | null
+          readonly blocked_by_name: string | null
           readonly reason: string
           readonly created_at: Date | string
         }>`
           SELECT b.user_id, u.display_name, b.blocked_by, bu.display_name AS blocked_by_name, b.reason, b.created_at
           FROM project_blocks b
           INNER JOIN users u ON u.id = b.user_id
-          INNER JOIN users bu ON bu.id = b.blocked_by
+          LEFT JOIN users bu ON bu.id = b.blocked_by
           WHERE b.project_id = ${projectId}
           ORDER BY b.created_at DESC
         `.pipe(
@@ -73,7 +73,7 @@ export class ProjectModeration extends Context.Service<
             rows.map((row): BlockedUser => ({
               userId: row.user_id as Uuid,
               displayName: row.display_name,
-              blockedBy: row.blocked_by as Uuid,
+              blockedBy: row.blocked_by as Uuid | null,
               blockedByName: row.blocked_by_name,
               reason: row.reason,
               createdAt: toIso(row.created_at)

@@ -397,7 +397,7 @@ function ThreadView(props: {
           </CardTitle>
         )}
         <CardDescription>
-          Started by {thread.authorName ?? "a removed user"} on {when(thread.createdAt)}
+          Started by {thread.authorName ?? "a deleted account"} on {when(thread.createdAt)}
           {thread.chunkId && thread.chunkName ? (
             <>
               {" "}· about{" "}
@@ -542,7 +542,7 @@ function PostItem(props: {
               {post.authorName}
             </Link>
           ) : (
-            <span>a removed user</span>
+            <span>a deleted account</span>
           )}{" "}
           · {when(post.createdAt)}
           {post.editedAt && !post.deleted ? <span title={when(post.editedAt)}> · edited</span> : null}

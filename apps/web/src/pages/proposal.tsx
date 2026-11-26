@@ -160,12 +160,16 @@ export function ProposalPage() {
         </div>
         <p className="text-sm text-muted-foreground">
           Opened by{" "}
-          <Link
-            to={`/users/${proposal.createdBy}`}
-            className="underline underline-offset-2"
-          >
-            {proposal.createdBy.slice(0, 8)}
-          </Link>{" "}
+          {proposal.createdBy !== null ? (
+            <Link
+              to={`/users/${proposal.createdBy}`}
+              className="underline underline-offset-2"
+            >
+              {proposal.createdBy.slice(0, 8)}
+            </Link>
+          ) : (
+            "a deleted account"
+          )}{" "}
           · {new Date(proposal.createdAt).toLocaleString()}
         </p>
       </div>

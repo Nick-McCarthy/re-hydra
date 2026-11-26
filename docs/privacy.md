@@ -72,19 +72,21 @@ We do not sell your information, and we do not use it for advertising.
 
 | What | How long |
 | --- | --- |
-| Your account | Until you ask us to delete it |
+| Your account | Until you delete it on the account page, or ask us to |
 | Sessions | They stop working after 30 days or when you log out; the records are kept `[for N days]` |
 | Profile tokens | Until you revoke them; the records are kept `[for N days]` after that |
 | Password reset links | They stop working when they expire or are used |
-| Submitted source and attempts | Kept after your account is deleted, because it is released under CC0 and others build on it. `[decision: shown as from a deleted account, or under your display name]` |
-| Posts | `[decision: deleted with the account, or kept and shown as from a deleted account]` |
-| Reports, strikes, and moderation records | `[N years]`, to apply the repeat-infringer rule and keep a record of notices |
+| Submitted source and attempts | Kept after your account is deleted, because it is released under CC0 and others build on it. Shown as from a deleted account, with no name |
+| Posts | Kept after your account is deleted, shown as from a deleted account |
+| Projects you own | Before deleting your account, offer ownership to someone, or archive the projects as part of deleting it. Archived projects stay readable |
+| Reports, strikes, and moderation records | `[N years]`, to apply the repeat-infringer rule and keep a record of notices. When you delete your account, strikes are kept against a one-way hash of your email address, not the address itself; a new account with that address takes them back |
 | Backups | `[N days]` |
 
 ## 7. Your choices and rights
 
-- Change your password on the account page, revoke profile tokens on your profile page, and log out to end a session.
-- Ask for a copy of your information, a correction (for example a new display name), or deletion of your account, by writing to `[privacy@re-hydra.dev]`. We answer within `[30 days]`. `[Account deletion is by request until it is built into the profile page.]`
+- Change your display name and password on the account page, revoke profile tokens on your profile page, and log out to end a session.
+- Delete your account on the account page. Your email, password, sessions, tokens, follows, and memberships are deleted at once. A suspended account cannot be deleted while it is suspended.
+- Ask for a copy of your information, a correction (for example a new display name), or deletion of your account, by writing to `[privacy@re-hydra.dev]`. We answer within `[30 days]`.
 - **EU and UK:** you also have the right to restrict or object to processing, to receive your information in a portable form, and to complain to your data protection authority.
 - **California:** we do not sell or share personal information as the CCPA defines it.
 

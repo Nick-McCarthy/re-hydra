@@ -148,7 +148,7 @@ export function ProjectAccessCard(props: {
                 <li key={b.userId} className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{b.displayName}</span>
                   <span className="text-xs text-muted-foreground">
-                    by {b.blockedByName}, {new Date(b.createdAt).toLocaleDateString()}
+                    by {b.blockedByName ?? "a deleted account"}, {new Date(b.createdAt).toLocaleDateString()}
                     {b.reason ? ` · ${b.reason}` : ""}
                   </span>
                   <Button size="sm" variant="outline" onClick={() => void unblock(b.userId)} disabled={busy}>

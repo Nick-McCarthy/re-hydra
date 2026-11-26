@@ -13,7 +13,7 @@ type Row = {
   readonly project_id: string
   readonly type_name: string
   readonly reason: string
-  readonly created_by: string
+  readonly created_by: string | null
   readonly created_at: Date | string
   readonly cleared_at: Date | string | null
 }

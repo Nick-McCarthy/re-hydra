@@ -126,7 +126,7 @@ const DataLive = Layer.mergeAll(
   BlobsLive,
   RateLimits.layer,
   Moderation.layer.pipe(Layer.provide(RateLimits.layer)),
-  AuthRepo.layer.pipe(Layer.provide(RateLimits.layer)),
+  AuthRepo.layer.pipe(Layer.provide(RateLimits.layer), Layer.provide(StatsLive)),
   PasswordResets.layer.pipe(Layer.provide(RateLimits.layer), Layer.provide(Mailer.layer)),
   Layer.provideMerge(MatchdClient.layer, MatchdPool.layer)
 ).pipe(Layer.provide(SqlLive))

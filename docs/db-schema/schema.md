@@ -1179,6 +1179,24 @@ ALTER TABLE access_tokens
     CHECK (scope IN ('work', 'all'));
 ```
 
+## Account deletion — migration 028
+
+Every reference to `users` gets a deliberate `ON DELETE` rule, so a user can be deleted (foundations plan 3). The work outlives the account with a null author, shown as "deleted account"; the rows that only mean something while the person exists go with them.
+
+| Rule | Columns |
+| --- | --- |
+| `SET NULL` (`NOT NULL` dropped) | `projects.created_by`, `type_revisions.created_by`, `chunks.lease_user_id`, `attempts.user_id`, `matches.user_id`, `imports.created_by`, `type_proposals.created_by`, `type_proposals.revalidation_started_by`, `type_proposals.reviewed_by`, `unresolved_types.created_by`, `unresolved_types.cleared_by`, `project_events.actor_id`, `proposal_regressions.caused_by`, `integrations.started_by`, `project_blocks.blocked_by`, `strikes.user_id` |
+| `CASCADE` | `chunk_leases.user_id`, `ownership_transfers.offered_by` |
+
+`strikes.email_hash` (bytea, SHA-256 of the trimmed, lower-cased email) is set just before the user is deleted; a sign-up with that email takes the strikes back. Migration 026's `RESTRICT` on `strikes.user_id` becomes `SET NULL`.
+
+`chunks.lease_user_id` going null does not by itself satisfy the lease CHECK: the deletion returns leased chunks to the pool first and refuses while one is `validating`.
+
+```sql
+ALTER TABLE strikes ADD COLUMN IF NOT EXISTS email_hash bytea;
+CREATE INDEX IF NOT EXISTS strikes_email_hash ON strikes (email_hash) WHERE user_id IS NULL;
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.

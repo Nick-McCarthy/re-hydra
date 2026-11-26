@@ -445,7 +445,7 @@ const attempts = Command.make(
       const status = row.matched === true ? "matched" : row.matched === false ? "miss" : "pending"
       const score = row.score === null ? "" : `  ${row.score}`
       yield* Console.log(
-        `${row.createdAt}  ${status.padEnd(8)}  ${row.displayName}${score}`
+        `${row.createdAt}  ${status.padEnd(8)}  ${row.displayName ?? "deleted account"}${score}`
       )
       const detail = row.diagnostics?.split("\n")[0]
       if (detail !== undefined && detail.length > 0) {
@@ -596,7 +596,7 @@ const show = Command.make(
     lines.push(`  attempts:  ${attemptRows.length}${matched > 0 ? ` (${matched} matched)` : ""}`)
     if (best !== undefined) {
       const result = best.matched === true ? "matched" : best.score === null ? "pending" : `score ${best.score}`
-      lines.push(`  best:      ${result} by ${best.displayName}`)
+      lines.push(`  best:      ${result} by ${best.displayName ?? "a deleted account"}`)
     }
     lines.push(`  id:        ${summary.id}`)
     yield* say({ ...summary, attempts: attemptRows.length, matchedAttempts: matched, best: best ?? null }, lines)

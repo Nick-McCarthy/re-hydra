@@ -116,8 +116,8 @@ export class AttemptsRepo extends Context.Service<
         const rows = yield* sql<{
           readonly id: string
           readonly chunk_id: string
-          readonly user_id: string
-          readonly display_name: string
+          readonly user_id: string | null
+          readonly display_name: string | null
           readonly score: string | number | null
           readonly matched: boolean | null
           readonly compiler_ok: boolean | null
@@ -137,7 +137,7 @@ export class AttemptsRepo extends Context.Service<
             a.created_at,
             a.finished_at
           FROM attempts a
-          INNER JOIN users u ON u.id = a.user_id
+          LEFT JOIN users u ON u.id = a.user_id
           WHERE a.chunk_id = ${chunkId}
           ORDER BY a.score DESC NULLS LAST, a.created_at DESC
           LIMIT 50
@@ -151,7 +151,7 @@ export class AttemptsRepo extends Context.Service<
           score: row.score === null ? null : Number(row.score),
           matched: row.matched,
           compilerOk: row.compiler_ok,
-          diagnostics: chunk.sees_all || row.user_id === viewerId ? row.diagnostics : hideBytes(row.diagnostics),
+          diagnostics: chunk.sees_all || (row.user_id !== null && row.user_id === viewerId) ? row.diagnostics : hideBytes(row.diagnostics),
           best: chunk.best_attempt_id === row.id,
           createdAt: toIso(row.created_at),
           finishedAt: row.finished_at === null ? null : toIso(row.finished_at)

@@ -18,8 +18,9 @@ export type AttemptResult = typeof AttemptResult.Type
 export const AttemptSummary = Schema.Struct({
   id: Uuid,
   chunkId: Uuid,
-  userId: Uuid,
-  displayName: Schema.String,
+  /** null once the person deleted their account ("deleted account"). */
+  userId: Schema.NullOr(Uuid),
+  displayName: Schema.NullOr(Schema.String),
   score: Schema.NullOr(Schema.Finite),
   matched: Schema.NullOr(Schema.Boolean),
   compilerOk: Schema.NullOr(Schema.Boolean),

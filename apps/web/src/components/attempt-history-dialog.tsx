@@ -71,9 +71,13 @@ export function AttemptHistoryDialog({
                 <React.Fragment key={attempt.id}>
                   <tr className="border-b align-top last:border-0">
                     <td className="px-4 py-2">
-                      <Link to={`/users/${attempt.userId}`} className="underline-offset-2 hover:underline">
-                        {attempt.displayName}
-                      </Link>
+                      {attempt.userId !== null ? (
+                        <Link to={`/users/${attempt.userId}`} className="underline-offset-2 hover:underline">
+                          {attempt.displayName}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">Deleted account</span>
+                      )}
                       {attempt.best ? (
                         <Badge variant="success" className="ml-2">
                           best

@@ -21,7 +21,8 @@ export const TypeProposal = Schema.Struct({
   title: Schema.String,
   description: Schema.String,
   state: ProposalState,
-  createdBy: Uuid,
+  /** null once the author deleted their account. */
+  createdBy: Schema.NullOr(Uuid),
   revalidationStartedBy: Schema.optionalKey(Uuid),
   reviewedBy: Schema.optionalKey(Uuid),
   /** Owners and maintainers at the time the proposal was read. */
@@ -73,7 +74,8 @@ export const UnresolvedType = Schema.Struct({
   projectId: Uuid,
   typeName: Schema.String,
   reason: Schema.String,
-  createdBy: Uuid,
+  /** null once the author deleted their account. */
+  createdBy: Schema.NullOr(Uuid),
   createdAt: Schema.String,
   clearedAt: Schema.optionalKey(Schema.String)
 }).annotate({ identifier: "UnresolvedType" })
