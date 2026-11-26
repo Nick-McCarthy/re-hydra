@@ -183,6 +183,7 @@ A project whose writer lives in Europe is a further change. The API would send t
 
 ## Still open
 
+- Foundations: error reasons, scoped tokens, account deletion, a built CLI package, shared rate limits, and smaller fixes. Each with its likely reason and a plan in [foundations-plan.md](foundations-plan.md).
 - A second site, after this site's pool is dull. The writer stays single. The second-region section lists the code and the settings.
 - A microVM sandbox. The image sandbox, the flag allow-list, and the 1 GB per-compile data cap are the boundary that runs today.
 - Xbox 360 and PlayStation 5, until a public compiler emits the retail object format.

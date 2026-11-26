@@ -1159,6 +1159,16 @@ CREATE INDEX malware_hits_unnotified ON malware_hits (created_at) WHERE notified
 ALTER TABLE moderation_actions ADD COLUMN malware_hit_id uuid REFERENCES malware_hits (id) ON DELETE SET NULL;
 ```
 
+## Strikes outlive the account — migration 026
+
+`strikes.user_id` changes from `ON DELETE CASCADE` to `ON DELETE RESTRICT`. Deleting an account with strikes now fails instead of erasing them, so a person cannot reset the repeat-infringer count by deleting the account and signing up again. Account deletion, when it is built, decides what to keep first (foundations plan 3a).
+
+```sql
+ALTER TABLE strikes DROP CONSTRAINT IF EXISTS strikes_user_id_fkey;
+ALTER TABLE strikes ADD CONSTRAINT strikes_user_id_fkey
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT;
+```
+
 ## Foreign-key deferral note
 
 `chunks.best_attempt_id` and `chunks.current_match_id` are nullable and added after the child tables exist. Do not use circular `NOT NULL` FKs.
