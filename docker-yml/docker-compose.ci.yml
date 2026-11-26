@@ -1,12 +1,14 @@
 # CI only (.github/workflows/ci.yml). On hosts with AppArmor (Ubuntu, so
 # GitHub's runners), Docker confines every container with its docker-default
-# profile, which denies the mounts bwrap makes inside its user namespace, so
-# matchd's sandbox self-test fails and matchd exits. Docker Desktop has no
-# AppArmor, which is why the plain compose file works there. The seccomp
-# profile still applies. See docker-yml/matchd-seccomp.md.
+# profile, which denies the mounts bwrap makes inside its user namespace
+# ("bwrap: Failed to make / slave: Permission denied"), so matchd's sandbox
+# self-test fails and matchd exits. Docker Desktop has no AppArmor, which is
+# why the plain compose file works there. See docker-yml/matchd-seccomp.md.
+#
+# Only the added option is listed: Compose appends this list to the seccomp
+# entry in docker-compose.yml, and Compose 2.x refuses a repeated entry.
 #   docker compose -f compose.yaml -f docker-yml/docker-compose.ci.yml up -d matchd
 services:
   matchd:
     security_opt:
-      - seccomp=docker-yml/matchd-seccomp.json
       - apparmor=unconfined
