@@ -37,12 +37,12 @@ RUN git init /tmp/mwcc-rs \
 WORKDIR /app
 
 COPY package.json ./
-RUN npm install
+RUN npm install --omit=dev
 
 COPY tsconfig.json ./
 COPY src ./src
 # The driver runs several times per job. Bundled to plain JS it starts in tens
-# of milliseconds; through `npx tsx` each call cost about 460 ms.
+# of milliseconds; through tsx each call cost about 460 ms.
 RUN node_modules/.bin/esbuild src/drivers/mwcc-cc.ts --bundle --platform=node --format=esm --outfile=/opt/drivers/mwcc-cc.mjs
 COPY drivers/mwcc-cc /usr/local/bin/mwcc-cc
 RUN sed -i 's/\r$//' /usr/local/bin/mwcc-cc && chmod +x /usr/local/bin/mwcc-cc
@@ -61,4 +61,4 @@ ENV MATCHD_TIMEOUT_MS=30000
 ENV MATCHD_SANDBOX=bwrap
 
 EXPOSE 3001
-CMD ["npx", "tsx", "src/main.ts"]
+CMD ["node", "--import", "tsx", "src/main.ts"]
