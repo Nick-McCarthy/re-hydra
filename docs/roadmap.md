@@ -204,6 +204,14 @@ An isolated match compares the function's code bytes. Every place the code refer
 3. **Files.** A project-level split map says which address ranges were one source file. The integration build compiles per file, with its static functions, function order, and flags, instead of one function per compile.
 4. **The whole program, checked locally.** The server keeps only the program's hash, by design (content policy), and that does not change. `hydra build` compiles the project's files with its split map and linker script and compares the result with the contributor's own copy of the program. The site records the output hash and compares it with `binaries.sha256`, which it already stores.
 
+**Leases.** The lease stays on one chunk: a function or, after step 2, one data item. Nothing larger is leased. A file lease would let one person hold a hundred functions for two days. Checks above one chunk run over what has already matched, the way the integration build does today.
+
+- Read-only data a function alone uses belongs to its chunk, so its lease covers it. Bytes two functions share (a common string, a file's constant pool) belong to neither lease; the isolated match leaves them out and the file build checks them.
+- A data chunk is a chunk of another kind, with the same checkout, heartbeat, submit, expiry, and hold cap.
+- What makes up a file (the split map, function order, the file's flags, its static variables and shared declarations) is shared project state, like `types.h`. It changes through proposals that a maintainer accepts, not through a lease. A checkout includes the file's shared declarations, so a function's isolated compile sees the same context as the file build.
+- The file build runs once a file's chunks have all matched, or when a maintainer starts it, using each chunk's matched source. When it disagrees with a chunk that matched alone (static functions, inlining, or order can change the code), that chunk reopens with the byte comparison, as an integration miss does today with `integration.txt`. Functions that only match together are fused into one chunk with one lease, as today.
+- The whole-program check takes no lease. A reported hash proves nothing by itself, since anyone can report the original hash without building. Record each report with its account and the exact source revision, and mark the program matching only after independent confirmations from different accounts (or accounts the maintainers trust).
+
 ## Still open
 
 - Foundations: agreements (the rest of item 3), a built CLI package, shared rate limits, and smaller fixes. Each with its likely reason and a plan in [foundations-plan.md](foundations-plan.md).
