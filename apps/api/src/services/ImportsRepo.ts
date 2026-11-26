@@ -1,10 +1,6 @@
 import { createHash, randomUUID } from "node:crypto"
 import { Context, Effect, Layer } from "effect"
-import {
-  Conflict,
-  Forbidden,
-  NotFound
-} from "effect/http-api/HttpApiError"
+import { Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import { ImportRejected, type GhidraExportPayload, type ImportResult } from "../domain/Import.js"
 import { Uuid } from "../domain/Uuid.js"
@@ -102,7 +98,7 @@ export class ImportsRepo extends Context.Service<
       userId: Uuid,
       payload: GhidraExportPayload,
       rightsConfirmed: boolean
-    ) => Effect.Effect<ImportResult, NotFound | Forbidden | ImportRejected | Conflict>
+    ) => Effect.Effect<ImportResult, NotFound | Forbidden | ImportRejected>
   }
 >()("rehydra/services/ImportsRepo") {
   static readonly layer = Layer.effect(
@@ -212,7 +208,7 @@ export class ImportsRepo extends Context.Service<
 
             const binaryId = binaries[0]?.id
             if (binaryId === undefined) {
-              return yield* new Conflict()
+              return yield* Effect.die("INSERT INTO binaries returned no row")
             }
 
             yield* sql`

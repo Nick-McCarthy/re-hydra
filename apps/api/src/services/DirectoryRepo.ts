@@ -1,5 +1,6 @@
 import { Context, Effect, Layer } from "effect"
-import { Conflict, NotFound } from "effect/http-api/HttpApiError"
+import { NotFound } from "effect/http-api/HttpApiError"
+import { InvalidRequest } from "../domain/Problems.js"
 import { SqlClient } from "effect/sql"
 import type { FollowedProject, FollowState, ProjectEvent, UserSearchHit } from "../domain/Directory.js"
 import { likeContains } from "../domain/Directory.js"
@@ -61,11 +62,11 @@ export class DirectoryRepo extends Context.Service<
     readonly followUser: (
       followeeId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<FollowState, NotFound | Conflict>
+    ) => Effect.Effect<FollowState, NotFound | InvalidRequest>
     readonly unfollowUser: (
       followeeId: Uuid,
       userId: Uuid
-    ) => Effect.Effect<FollowState, NotFound | Conflict>
+    ) => Effect.Effect<FollowState, NotFound | InvalidRequest>
     readonly userFollowState: (
       followeeId: Uuid,
       userId: Uuid
@@ -361,7 +362,7 @@ export class DirectoryRepo extends Context.Service<
         userId: Uuid
       ) {
         if (followeeId === userId) {
-          return yield* new Conflict()
+          return yield* new InvalidRequest({ reason: "follow_self", detail: "You cannot follow yourself." })
         }
         const rows = yield* sql<{ readonly followee_id: string | null }>`
           WITH target AS (
@@ -387,7 +388,7 @@ export class DirectoryRepo extends Context.Service<
         userId: Uuid
       ) {
         if (followeeId === userId) {
-          return yield* new Conflict()
+          return yield* new InvalidRequest({ reason: "follow_self", detail: "You cannot follow yourself." })
         }
         const users = yield* sql<{ readonly id: string }>`
           SELECT id FROM users WHERE id = ${followeeId} LIMIT 1

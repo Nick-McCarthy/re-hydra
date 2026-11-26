@@ -160,6 +160,11 @@ const tagOf = (error: unknown): string | undefined =>
     ? error._tag
     : undefined
 
+const reasonOf = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null && "reason" in error && typeof error.reason === "string"
+    ? error.reason
+    : undefined
+
 const detailOf = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null && "detail" in error && typeof error.detail === "string" &&
     error.detail.length > 0
@@ -174,7 +179,7 @@ export const leaseGone = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(
     Effect.mapError((error) => {
       const tag = tagOf(error)
-      if (tag === "Conflict" || tag === "NotFound") {
+      if (tag === "NotFound" || tag === "Conflict" || (tag === "ChunkRefused" && reasonOf(error) === "lease_gone")) {
         return new HydraExit({
           code: ExitCode.noLease,
           message: detailOf(error) ??
@@ -197,7 +202,13 @@ export const explainFailure = (error: unknown, baseUrl: string): HydraExit => {
       return new HydraExit({ code: 1, message: detail ?? "Not allowed." })
     case "NotFound":
       return new HydraExit({ code: 1, message: detail ?? "Not found. Check the project slug and the chunk." })
+    case "ChunkRefused":
+      return new HydraExit({
+        code: reasonOf(error) === "lease_gone" ? ExitCode.noLease : 1,
+        message: detail ?? "Not possible on this chunk now."
+      })
     case "Conflict":
+      // An older server, before refusals carried a reason.
       return new HydraExit({ code: 1, message: detail ?? "Not possible in the current state (the server gave no reason)." })
     case "HttpClientError":
     case "RequestError":

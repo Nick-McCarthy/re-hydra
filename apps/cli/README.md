@@ -64,8 +64,8 @@ Inside a checkout the project comes from `.lease.json`; elsewhere pass `--projec
 - `hydra types show [--out <file>]` — the current type revision, open proposals, and unresolved types; `--out` writes the headers
 - `hydra types propose [file] --title <text> [--description <text>] [--affects a,b]` — propose the whole headers file (default: `types.h` in the checkout, edited) as the next revision. `--affects` limits which matched chunks are rechecked
 - `hydra types proposals [id] [--out <file>]` — list proposals, or show one with its recheck progress
-- `hydra types unresolved [type] [--reason <text>]` — list unresolved types, or mark one the headers get wrong or lack
-- Maintainers: `hydra types recheck <id>`, `hydra types accept <id>`, `hydra types unresolved <type> --clear`
+- `hydra types unresolved` — list unresolved types
+- Maintainers: `hydra types recheck <id>`, `hydra types accept <id>`, `hydra types unresolved <type> [--reason <text>]` to mark a type the headers get wrong or lack, and `--clear` to clear it
 
 ### Project
 
@@ -97,7 +97,7 @@ For scripts and agents:
 | 2 | `submit`: the attempt did not match (a miss or a compile error). `integrate`: the build failed |
 | 3 | `submit` or `integrate`: still running when `--wait` ran out |
 | 4 | Not signed in, or the session or token was refused |
-| 5 | No `.lease.json` here, or the server no longer has the lease (expired, released) |
+| 5 | No `.lease.json` here, or the server no longer has the lease (expired, released, cleared) |
 | 6 | `next`: no open chunk to take |
 
 ### Work bundle

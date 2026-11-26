@@ -7,7 +7,6 @@ import {
 } from "effect/http-api"
 import {
   BadRequest,
-  Conflict,
   Forbidden,
   NotFound,
   Unauthorized
@@ -127,6 +126,7 @@ import {
   ResolveReportPayload,
   Strike
 } from "./domain/Moderation.js"
+import { ChunkRefused, IntegrationRefused, InvalidRequest, ProjectRefused, ProposalRefused } from "./domain/Problems.js"
 import { Uuid } from "./domain/Uuid.js"
 import { Authorization } from "./http/Authorization.js"
 
@@ -274,14 +274,14 @@ export const UsersGroup = HttpApiGroup.make("users")
     HttpApiEndpoint.post("follow", "/users/:userId/follow", {
       params: { userId: Uuid },
       success: FollowState,
-      error: [Unauthorized, NotFound, Conflict]
+      error: [Unauthorized, NotFound, InvalidRequest]
     }).middleware(Authorization)
   )
   .add(
     HttpApiEndpoint.delete("unfollow", "/users/:userId/follow", {
       params: { userId: Uuid },
       success: FollowState,
-      error: [Unauthorized, NotFound, Conflict]
+      error: [Unauthorized, NotFound, InvalidRequest]
     }).middleware(Authorization)
   )
 
@@ -342,7 +342,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
       params: { projectSlug: ProjectSlug },
       payload: AddMemberPayload,
       success: Schema.Array(ProjectMember),
-      error: [Unauthorized, Forbidden, NotFound, Conflict, ProjectAccessDenied]
+      error: [Unauthorized, Forbidden, NotFound, ProjectRefused, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
@@ -372,7 +372,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
       params: { projectSlug: ProjectSlug },
       payload: OfferOwnershipPayload,
       success: OwnershipOfferState,
-      error: [Unauthorized, Forbidden, NotFound, Conflict, ProjectAccessDenied]
+      error: [Unauthorized, Forbidden, NotFound, ProjectRefused, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
@@ -470,7 +470,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
     HttpApiEndpoint.post("create", "/projects", {
       payload: CreateProjectPayload,
       success: ProjectCreated,
-      error: [Unauthorized, Conflict, NotFound, FlagsRejected]
+      error: [Unauthorized, ProjectRefused, NotFound, FlagsRejected]
     }).middleware(Authorization)
   )
   .add(
@@ -506,7 +506,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
       params: { projectSlug: ProjectSlug },
       payload: UpdateProjectSettings,
       success: ProjectSummary,
-      error: [Unauthorized, Forbidden, NotFound, BadRequest, FlagsRejected]
+      error: [Unauthorized, Forbidden, NotFound, InvalidRequest, FlagsRejected]
     }).middleware(Authorization)
   )
   .add(
@@ -528,7 +528,7 @@ export const ProjectsGroup = HttpApiGroup.make("projects")
       params: { projectSlug: ProjectSlug },
       payload: StartIntegration,
       success: Integration,
-      error: [Unauthorized, Forbidden, NotFound, BadRequest, Conflict]
+      error: [Unauthorized, Forbidden, NotFound, InvalidRequest, IntegrationRefused]
     }).middleware(Authorization)
   )
 
@@ -570,7 +570,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
         chunkId: Uuid
       },
       success: WorkBundle,
-      error: [Unauthorized, NotFound, Conflict]
+      error: [Unauthorized, NotFound, ChunkRefused]
     }).middleware(Authorization)
   )
   .add(
@@ -580,7 +580,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
         chunkId: Uuid
       },
       success: LeaseCreatedWithBundle,
-      error: [Unauthorized, NotFound, Conflict, CheckoutLimited, ProjectAccessDenied]
+      error: [Unauthorized, NotFound, ChunkRefused, CheckoutLimited, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
@@ -591,7 +591,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       },
       payload: LeaseTokenPayload,
       success: ChunkSummary,
-      error: [Unauthorized, NotFound, Conflict]
+      error: [Unauthorized, NotFound, ChunkRefused]
     }).middleware(Authorization)
   )
   .add(
@@ -602,7 +602,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       },
       payload: LeaseTokenPayload,
       success: LeaseResponse,
-      error: [Unauthorized, NotFound, Conflict, ProjectAccessDenied]
+      error: [Unauthorized, NotFound, ChunkRefused, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
@@ -613,7 +613,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       },
       payload: SubmitPayload,
       success: AttemptAccepted,
-      error: [Unauthorized, NotFound, Conflict, ProjectAccessDenied]
+      error: [Unauthorized, NotFound, ChunkRefused, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
@@ -634,7 +634,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       },
       payload: SetChunkLanguage,
       success: ChunkSummary,
-      error: [Unauthorized, Forbidden, NotFound, Conflict]
+      error: [Unauthorized, Forbidden, NotFound, ChunkRefused]
     }).middleware(Authorization)
   )
   .add(
@@ -645,7 +645,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
       },
       payload: SetChunkInlineAsm,
       success: ChunkSummary,
-      error: [Unauthorized, Forbidden, NotFound, Conflict]
+      error: [Unauthorized, Forbidden, NotFound, ChunkRefused]
     }).middleware(Authorization)
   )
   .add(
@@ -655,7 +655,7 @@ export const ChunksGroup = HttpApiGroup.make("chunks")
         chunkId: Uuid
       },
       success: ChunkSummary,
-      error: [Unauthorized, Forbidden, NotFound, Conflict]
+      error: [Unauthorized, Forbidden, NotFound, ChunkRefused]
     }).middleware(Authorization)
   )
 
@@ -670,7 +670,7 @@ export const ImportsGroup = HttpApiGroup.make("imports").add(
     query: { rightsConfirmed: Schema.optional(Schema.String.check(Schema.isMaxLength(10))) },
     payload: GhidraExportPayload,
     success: ImportAccepted,
-    error: [Unauthorized, Forbidden, NotFound, BadRequest, ImportRejected, Conflict]
+    error: [Unauthorized, Forbidden, NotFound, BadRequest, ImportRejected]
   }).middleware(Authorization)
 )
 
@@ -701,7 +701,7 @@ export const TypesGroup = HttpApiGroup.make("types")
       params: { projectSlug: ProjectSlug },
       payload: CreateTypeProposalPayload,
       success: TypeProposalCreated,
-      error: [Unauthorized, Forbidden, NotFound, Conflict, ProjectAccessDenied]
+      error: [Unauthorized, Forbidden, NotFound, ProposalRefused, ProjectAccessDenied]
     }).middleware(Authorization)
   )
   .add(
@@ -711,7 +711,7 @@ export const TypesGroup = HttpApiGroup.make("types")
       {
         params: { projectSlug: ProjectSlug, proposalId: Uuid },
         success: TypeProposal,
-        error: [Unauthorized, Forbidden, NotFound, Conflict]
+        error: [Unauthorized, Forbidden, NotFound, ProposalRefused]
       }
     ).middleware(Authorization)
   )
@@ -722,7 +722,7 @@ export const TypesGroup = HttpApiGroup.make("types")
       {
         params: { projectSlug: ProjectSlug, proposalId: Uuid },
         success: TypeProposal,
-        error: [Unauthorized, Forbidden, NotFound, Conflict]
+        error: [Unauthorized, Forbidden, NotFound, ProposalRefused]
       }
     ).middleware(Authorization)
   )
@@ -738,7 +738,7 @@ export const TypesGroup = HttpApiGroup.make("types")
       params: { projectSlug: ProjectSlug },
       payload: MarkUnresolvedPayload,
       success: UnresolvedMarked,
-      error: [Unauthorized, Forbidden, NotFound, Conflict]
+      error: [Unauthorized, Forbidden, NotFound, ProjectRefused]
     }).middleware(Authorization)
   )
   .add(
@@ -751,7 +751,7 @@ export const TypesGroup = HttpApiGroup.make("types")
           typeName: Schema.String.check(Schema.isMinLength(1))
         },
         success: UnresolvedType,
-        error: [Unauthorized, Forbidden, NotFound, Conflict]
+        error: [Unauthorized, Forbidden, NotFound, ProjectRefused]
       }
     ).middleware(Authorization)
   )
@@ -760,7 +760,7 @@ export const TypesGroup = HttpApiGroup.make("types")
       params: { projectSlug: ProjectSlug },
       payload: FusePayload,
       success: ChunkSummary.pipe(HttpApiSchema.status("Created")),
-      error: [Unauthorized, Forbidden, NotFound, BadRequest, Conflict]
+      error: [Unauthorized, Forbidden, NotFound, InvalidRequest, ProjectRefused]
     }).middleware(Authorization)
   )
 

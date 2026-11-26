@@ -1,7 +1,8 @@
 import { Context, Effect, Layer } from "effect"
-import { Conflict, Forbidden, NotFound } from "effect/http-api/HttpApiError"
+import { Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import type { MarkUnresolvedPayload, UnresolvedType } from "../domain/Types.js"
+import { ProjectRefused } from "../domain/Problems.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { ProjectAuth } from "./ProjectAuth.js"
@@ -40,12 +41,12 @@ export class UnresolvedTypesRepo extends Context.Service<
       projectSlug: string,
       userId: Uuid,
       payload: MarkUnresolvedPayload
-    ) => Effect.Effect<UnresolvedType, NotFound | Forbidden | Conflict>
+    ) => Effect.Effect<UnresolvedType, NotFound | Forbidden | ProjectRefused>
     readonly clear: (
       projectSlug: string,
       typeName: string,
       userId: Uuid
-    ) => Effect.Effect<UnresolvedType, NotFound | Forbidden | Conflict>
+    ) => Effect.Effect<UnresolvedType, NotFound | Forbidden | ProjectRefused>
   }
 >()("rehydra/services/UnresolvedTypesRepo") {
   static readonly layer = Layer.effect(
@@ -95,7 +96,10 @@ export class UnresolvedTypesRepo extends Context.Service<
             LIMIT 1
           `
           if (existing[0] !== undefined) {
-            return yield* new Conflict()
+            return yield* new ProjectRefused({
+              reason: "already_marked",
+              detail: `${payload.typeName.trim()} is already marked unresolved.`
+            })
           }
 
           const inserted = yield* sql<Row>`
@@ -111,7 +115,7 @@ export class UnresolvedTypesRepo extends Context.Service<
           `
           const row = inserted[0]
           if (row === undefined) {
-            return yield* new Conflict()
+            return yield* Effect.die("INSERT INTO unresolved_types returned no row")
           }
 
           yield* sql`

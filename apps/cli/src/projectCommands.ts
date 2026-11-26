@@ -168,23 +168,8 @@ const typesAccept = Command.make(
     yield* ensureUrl
     const projectSlug = yield* projectOr(project)
     const client = yield* ApiClient
-    const proposal = yield* client.types.acceptProposal({ params: { projectSlug, proposalId: id } }).pipe(
-      // The server says only 409; the proposal's state says why.
-      Effect.catchTag("Conflict", () =>
-        Effect.gen(function*() {
-          const current = yield* client.types.getProposal({ params: { projectSlug, proposalId: id } })
-          const why = {
-            open: `Recheck it first: hydra types recheck ${id}`,
-            revalidating: `Still rechecking (${current.revalidationDone}/${current.revalidationTotal}). Try again when it is done.`,
-            ready: "It is ready but the server refused; a newer type revision may have been accepted since. Propose again.",
-            accepted: "It is already accepted.",
-            rejected: "It was rejected: some matches failed against these headers.",
-            withdrawn: "It was withdrawn."
-          }[current.state]
-          return yield* new HydraExit({ code: 1, message: why })
-        })
-      )
-    )
+    // A refusal says why (not rechecked yet, still rechecking, same reviewer).
+    const proposal = yield* client.types.acceptProposal({ params: { projectSlug, proposalId: id } })
     yield* say(proposal, [`Accepted "${proposal.title}". New checkouts get the new headers; run hydra refresh in open ones.`])
   })
 ).pipe(Command.withDescription("Maintainers: accept a rechecked proposal as the next type revision"))
@@ -345,31 +330,16 @@ export const integrate = Command.make(
         params: { projectSlug },
         payload: Option.isSome(binary) ? { binaryId: binary.value } : {}
       }).pipe(
-        // The server answers 400 and 409 without a reason; work out the likely one.
-        Effect.catchTag("BadRequest", () =>
+        // The server says why it refused; add the CLI's flag where it names a field.
+        Effect.catchTag("InvalidRequest", (error) =>
           Effect.fail(
             new HydraExit({
               code: 1,
-              message: Option.isSome(binary)
-                ? `${binary.value} is not a program in ${projectSlug}.`
-                : `${projectSlug} has more than one program. Pass --binary <id> (shown by hydra list --json as binaryId).`
+              message: error.reason === "binary_required"
+                ? `${error.detail ?? "Name a program."} Pass --binary <id> (shown by hydra list --json as binaryId).`
+                : error.detail ?? error.message
             })
           )
-        ),
-        Effect.catchTag("Conflict", () =>
-          Effect.gen(function*() {
-            const matched = yield* client.chunks.list({
-              params: { projectSlug },
-              query: { state: "matched", limit: 500 }
-            })
-            return yield* new HydraExit({
-              code: 1,
-              message: matched.length < 2
-                ? `A build links at least two matched functions; ${projectSlug} has ${matched.length}.`
-                : "A build could not start: one may already be running (hydra integrate --last), a recipe " +
-                  "check may be running, two matched functions share a name, or matches use more than one language."
-            })
-          })
         )
       )
       if (!root.json) yield* Console.log(`Started integration build ${build.id}…`)

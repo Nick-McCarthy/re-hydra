@@ -8,7 +8,7 @@ The project is four weeks old (first commit 2026-10-28). Milestones 1–4 came f
 
 | # | Item | Verdict | When | Size |
 | --- | --- | --- | --- | --- |
-| 1 | Errors without a reason | Change | Before launch | M |
+| 1 | Errors without a reason | Done | — | M |
 | 2 | Tokens can do everything | Change | Before launch | M |
 | 3 | Account deletion and agreements | Change; 3a done | Before launch | M |
 | 4 | Policy written after the features | Process; mostly caught up | Ongoing | S |
@@ -19,11 +19,13 @@ The project is four weeks old (first commit 2026-10-28). Milestones 1–4 came f
 | 7c | Google Fonts | Change | Before launch | S |
 | 7d | Tests run by hand | Change | Before launch | M |
 
-Suggested order: 7a and 3a (done), then 1, 2, 7c, 7d, 3, and 5 when the npm release is near.
+Suggested order: 7a, 3a, and 1 (done), then 2, 7c, 7d, 3, and 5 when the npm release is near.
 
 ---
 
 ## 1. Errors that say why
+
+**Done.** `apps/api/src/domain/Problems.ts` holds the problems; `chunkRefusals.ts` explains why a lease operation found nothing to change; `Problems.test.ts` guards against new bare errors. The CLI's guessing is gone. The rest of this section is the analysis it was based on.
 
 **Today.** The API returns bare `HttpApiError` classes in most places: `new Conflict()` 42 times, `new BadRequest()` 6, `new Forbidden()` 10, `new NotFound()` 77. Sixteen errors already use the better pattern, `HttpApiError.Problem` (RFC 9457 problem details with a `type` URL and a title): `CheckoutLimited`, `ProjectAccessDenied`, `DiscussionRefused`, `SignInLimited`, and the auth errors. `IntegrationsRepo.start` alone returns a bare `Conflict` for five different causes (fewer than two matches, duplicate names, a build already running, a recipe check running, mixed languages). The CLI guesses between them.
 

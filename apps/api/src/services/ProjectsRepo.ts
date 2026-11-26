@@ -1,12 +1,13 @@
 import { PgClient } from "@effect/sql-pg"
 import { checkFlagsForImage } from "@re-hydra/matchd/flagPolicy"
 import { Context, Effect, Layer } from "effect"
-import { BadRequest, Conflict, Forbidden, NotFound } from "effect/http-api/HttpApiError"
+import { Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import { likeContains } from "../domain/Directory.js"
 import type { UpdateProjectSettings } from "../domain/Directory.js"
 import type { ProjectMembership } from "../domain/Profile.js"
 import type { CreateProjectPayload, ProjectSummary } from "../domain/Project.js"
+import { InvalidRequest, ProjectRefused } from "../domain/Problems.js"
 import { FlagsRejected } from "../domain/Project.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
@@ -96,12 +97,12 @@ export class ProjectsRepo extends Context.Service<
     readonly create: (
       userId: Uuid,
       payload: CreateProjectPayload
-    ) => Effect.Effect<ProjectSummary, Conflict | NotFound | FlagsRejected>
+    ) => Effect.Effect<ProjectSummary, ProjectRefused | NotFound | FlagsRejected>
     readonly updateSettings: (
       slug: string,
       userId: Uuid,
       payload: UpdateProjectSettings
-    ) => Effect.Effect<ProjectSummary, NotFound | Forbidden | BadRequest | FlagsRejected>
+    ) => Effect.Effect<ProjectSummary, NotFound | Forbidden | InvalidRequest | FlagsRejected>
   }
 >()("rehydra/services/ProjectsRepo") {
   static readonly layer = Layer.effect(
@@ -277,7 +278,7 @@ export class ProjectsRepo extends Context.Service<
 
           const projectId = inserted[0]?.id
           if (projectId === undefined) {
-            return yield* new Conflict()
+            return yield* new ProjectRefused({ reason: "slug_taken", detail: `The project name ${payload.slug} is taken. Choose another.` })
           }
 
           yield* sql`
@@ -306,7 +307,7 @@ export class ProjectsRepo extends Context.Service<
           payload.flags === undefined &&
           payload.checkoutPolicy === undefined
         ) {
-          return yield* new BadRequest()
+          return yield* new InvalidRequest({ reason: "nothing_to_change", detail: "The request changes no setting." })
         }
 
         const rows = yield* sql<{

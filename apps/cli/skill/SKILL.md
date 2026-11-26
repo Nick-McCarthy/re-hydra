@@ -79,8 +79,8 @@ cd <the workdir it printed>
 - **No project changes.** Do not run `hydra import`, `hydra types accept`, or
   `hydra types recheck` unless the person asked for that exact action.
 - **Types.** If the headers lack or get wrong a type the function needs, do not invent a
-  layout in `candidate.c`. Mark it with `hydra types unresolved <TypeName> --reason "..."`,
-  or, if you are confident, copy `types.h` to a new file outside the work folder, fix it
+  layout in `candidate.c`. Tell the person which type and what is wrong (only maintainers
+  can mark a type unresolved), or, if you are confident, copy `types.h` to a new file outside the work folder, fix it
   there, and propose it: `hydra types propose <that file> --title "..." --affects <TypeName>`.
   Maintainers review proposals; never accept one yourself. If types changed since checkout,
   `hydra refresh` downloads them again and keeps `candidate.c`.

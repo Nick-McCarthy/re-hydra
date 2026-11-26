@@ -1,14 +1,10 @@
 import { randomUUID } from "node:crypto"
 import { Context, Effect, Layer, Option } from "effect"
-import {
-  BadRequest,
-  Conflict,
-  Forbidden,
-  NotFound
-} from "effect/http-api/HttpApiError"
+import { Forbidden, NotFound } from "effect/http-api/HttpApiError"
 import { SqlClient } from "effect/sql"
 import type { ChunkSummary } from "../domain/Chunk.js"
 import type { FusePayload } from "../domain/Types.js"
+import { InvalidRequest, ProjectRefused } from "../domain/Problems.js"
 import { Uuid } from "../domain/Uuid.js"
 import { Activity } from "./Activity.js"
 import { Blobs } from "./Blobs.js"
@@ -41,7 +37,7 @@ export class FuseRepo extends Context.Service<
       payload: FusePayload
     ) => Effect.Effect<
       ChunkSummary,
-      NotFound | Forbidden | Conflict | BadRequest
+      NotFound | Forbidden | ProjectRefused | InvalidRequest
     >
   }
 >()("rehydra/services/FuseRepo") {
@@ -66,7 +62,7 @@ export class FuseRepo extends Context.Service<
 
         const ids = [...new Set(payload.chunkIds)]
         if (ids.length < 2) {
-          return yield* new BadRequest()
+          return yield* new InvalidRequest({ reason: "too_few_chunks", detail: "Fusing needs at least two different chunks." })
         }
 
         return yield* sql.withTransaction(Effect.gen(function*() {
@@ -92,13 +88,19 @@ export class FuseRepo extends Context.Service<
 
           for (const m of members) {
             if (m.binary_id !== binaryId) {
-              return yield* new BadRequest()
+              return yield* new InvalidRequest({
+                reason: "different_programs",
+                detail: "All chunks to fuse must come from the same program."
+              })
             }
             if (m.fuse_parent_id !== null) {
-              return yield* new Conflict()
+              return yield* new ProjectRefused({ reason: "already_fused", detail: `${m.name} is already part of a fused chunk.` })
             }
             if (m.state !== "open" && m.state !== "stale" && m.state !== "matched") {
-              return yield* new Conflict()
+              return yield* new ProjectRefused({
+                reason: "not_fusable",
+                detail: `${m.name} is ${m.state}. Only open, stale, or matched chunks can be fused.`
+              })
             }
             if (m.state === "matched") {
               yield* sql`
@@ -125,7 +127,7 @@ export class FuseRepo extends Context.Service<
           )
           const size = end - start
           if (size <= 0) {
-            return yield* new BadRequest()
+            return yield* new InvalidRequest({ reason: "empty_span", detail: "The chosen chunks cover no bytes." })
           }
 
           const parts: Array<Buffer> = []
@@ -134,7 +136,10 @@ export class FuseRepo extends Context.Service<
           for (const m of sorted) {
             const bytes = yield* blobs.get(m.bytes_sha256)
             if (Option.isNone(bytes)) {
-              return yield* new Conflict()
+              return yield* new ProjectRefused({
+                reason: "bytes_missing",
+                detail: `The stored bytes of ${m.name} are missing, so it cannot be fused.`
+              })
             }
             parts.push(Buffer.from(bytes.value))
             const pseudo = yield* blobs.get(m.pseudocode_sha256)
@@ -233,7 +238,7 @@ export class FuseRepo extends Context.Service<
 
           const parent = parents[0]
           if (parent === undefined) {
-            return yield* new Conflict()
+            return yield* Effect.die("fused parent chunk disappeared")
           }
 
           yield* stats.refresh(projectId)

@@ -1,5 +1,6 @@
 import { Context, Effect, Layer } from "effect"
-import { Conflict, Forbidden, NotFound } from "effect/http-api/HttpApiError"
+import { Forbidden, NotFound } from "effect/http-api/HttpApiError"
+import { ProjectRefused } from "../domain/Problems.js"
 import { SqlClient } from "effect/sql"
 import {
   type AddMemberPayload,
@@ -41,7 +42,7 @@ export class ProjectMembers extends Context.Service<
       projectSlug: string,
       actorId: Uuid,
       payload: AddMemberPayload
-    ) => Effect.Effect<Members, NotFound | Forbidden | Conflict | ProjectAccessDenied>
+    ) => Effect.Effect<Members, NotFound | Forbidden | ProjectRefused | ProjectAccessDenied>
     readonly changeRole: (
       projectSlug: string,
       actorId: Uuid,
@@ -62,7 +63,7 @@ export class ProjectMembers extends Context.Service<
       projectSlug: string,
       actorId: Uuid,
       payload: OfferOwnershipPayload
-    ) => Effect.Effect<OwnershipOfferState, NotFound | Forbidden | Conflict | ProjectAccessDenied>
+    ) => Effect.Effect<OwnershipOfferState, NotFound | Forbidden | ProjectRefused | ProjectAccessDenied>
     readonly accept: (
       projectSlug: string,
       actorId: Uuid
@@ -204,7 +205,9 @@ export class ProjectMembers extends Context.Service<
           return yield* new ProjectAccessDenied({ detail: "Only the owner can add maintainers." })
         }
         const target = yield* findTarget(projectId, payload.userId)
-        if (target.role !== null) return yield* new Conflict()
+        if (target.role !== null) {
+          return yield* new ProjectRefused({ reason: "already_member", detail: `This person is already a ${target.role} of the project.` })
+        }
         if (target.blocked) {
           return yield* new ProjectAccessDenied({ detail: "This user is blocked from the project. Lift the block first." })
         }
@@ -214,7 +217,9 @@ export class ProjectMembers extends Context.Service<
           ON CONFLICT (project_id, user_id) DO NOTHING
           RETURNING user_id
         `.pipe(Effect.orDie)
-        if (inserted[0] === undefined) return yield* new Conflict()
+        if (inserted[0] === undefined) {
+          return yield* new ProjectRefused({ reason: "already_member", detail: "This person is already a member of the project." })
+        }
         yield* sql`
           UPDATE join_requests SET state = 'approved', resolved_at = now(), resolved_by = ${actorId}
           WHERE project_id = ${projectId} AND user_id = ${payload.userId} AND state = 'open'
@@ -343,7 +348,12 @@ export class ProjectMembers extends Context.Service<
           return true
         })).pipe(Effect.orDie)
         // One open offer at a time: withdraw the current one first.
-        if (!created) return yield* new Conflict()
+        if (!created) {
+          return yield* new ProjectRefused({
+            reason: "offer_open",
+            detail: "An ownership offer is already open. Withdraw it before making another."
+          })
+        }
         return { offer: yield* loadOpenOffer(projectId).pipe(Effect.orDie) } satisfies OwnershipOfferState
       })
 
