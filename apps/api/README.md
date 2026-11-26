@@ -1,35 +1,22 @@
 # @re-hydra/api
 
-Effect 4 HTTP API for exclusive chunk checkout, matchd-backed normalized matching, and a later integration build that links those matches at their original addresses.
-
-Implementation status: **Milestones 1–4 complete**. See `docs/roadmap.md`.
+Effect 4 HTTP API: exclusive chunk checkout, matchd-backed normalized matching, type proposals, the integration build, the directory, discussion, and moderation. How it fits together is [docs/architecture.md](../../docs/architecture.md); the tables are [docs/db-schema/schema.md](../../docs/db-schema/schema.md).
 
 ## Stack
 
-- Effect 4 (`effect`, `effect/http-api`, `effect/sql`)
-- `@effect/platform-node` HTTP server
+- Effect 4 (`effect`, `effect/http-api`, `effect/sql`) on `@effect/platform-node`
 - `@effect/sql-pg` + Postgres 16
-- Declarative `HttpApi` (OpenAPI via Scalar at `/docs`)
-- Email and password auth → bearer sessions
-- Ghidra export import + work bundles on checkout
-- Match worker claims jobs and calls `matchd` (compile + normalized compare)
+- Declarative `HttpApi` in `src/Api.ts`, shared with the CLI. OpenAPI (Scalar) at `/docs` is the endpoint reference
+- Email and password auth → bearer sessions; profile tokens (`work` or `all` scope) for the CLI and agents
 
-## Local setup
+## Running
 
-```bash
-# from repo root
-docker compose up -d
-cp apps/api/.env.example apps/api/.env   # if needed
-npm install
-npm run api:migrate
-npm run api:seed
-npm run api
-```
+Setup is the quick start in the root [README.md](../../README.md). Then:
 
 - API: http://localhost:3000/v1/health
-- Docs: http://localhost:3000/docs
+- Endpoint reference: http://localhost:3000/docs
 
-Seed prints a session bearer token and sets the local password for `dev@re-hydra.local` to `rehydra-dev`.
+`npm run api:seed` sets the local password for `dev@re-hydra.local` to `rehydra-dev` and prints a session token.
 
 ## Auth
 
@@ -40,13 +27,15 @@ curl -s -X POST http://localhost:3000/v1/auth/sign-in \
 
 curl -s -X POST http://localhost:3000/v1/auth/sign-up \
   -H 'content-type: application/json' \
-  -d '{"email":"ada@example.com","displayName":"Ada","password":"a-long-password"}'
+  -d '{"email":"ada@example.com","displayName":"Ada","password":"a-long-password","acceptPolicy":true}'
 ```
 
 ## Import (owner / maintainer)
 
+`rightsConfirmed=true` affirms the three statements of content policy 2.3; the import form and `hydra import --confirm-rights` ask for them.
+
 ```bash
-curl -s -X POST http://localhost:3000/v1/projects/demo/imports \
+curl -s -X POST "http://localhost:3000/v1/projects/demo/imports?rightsConfirmed=true" \
   -H "authorization: Bearer <session>" \
   -H 'content-type: application/json' \
   -d @export.json
@@ -75,95 +64,25 @@ Export JSON shape (camelCase):
 }
 ```
 
-Re-import updates open/stale/blocked chunks in place and skips lease/match disruption for leased/validating/matched rows.
+Re-importing updates open, stale, and blocked chunks in place and leaves leased, validating, and matched rows alone.
 
-`npm run api:seed` also creates project `sample` from `fixtures/sample/export.json` when that slug is missing. Those three functions are real `gcc -O2` output (`fixtures/sample/funcs.c`). Rebuild the JSON with `node fixtures/sample/build.mjs` (needs the `re-hydra-matchd` image).
+## Seed fixtures
 
-## Checkout + work bundle
+| Slug | What it is |
+| --- | --- |
+| `demo` | One chunk, `parse_header`, a single `ret`. An empty function under `-O2` can match |
+| `sample` | `skip_space`, `header_size`, and `parse_header`: real `gcc -O2` output of `fixtures/sample/funcs.c`, compiled together. An isolated resubmit of `parse_header` will not match; the leaves can. Rebuild with `node fixtures/sample/build.mjs` (needs the `re-hydra-matchd` image) |
+| `link` | `leaf` and `caller` linked at `0x401000` and `0x401040`. `decoy` can match in isolation and then fail the integration build |
 
-```bash
-# returns lease + full work bundle (bytes, pseudocode, types, neighbors, best attempt)
-curl -s -X POST http://localhost:3000/v1/projects/demo/chunks/<chunkId>/checkout \
-  -H "authorization: Bearer <session>"
+## Background workers
 
-# re-fetch bundle while you hold the lease
-curl -s http://localhost:3000/v1/projects/demo/chunks/<chunkId>/bundle \
-  -H "authorization: Bearer <session>"
-```
+All run inside the API process (`src/main.ts`):
 
-## Endpoints
+- **Match worker** (`MatchWorker.ts`) — `MATCHD_WORKERS` claimers take interactive and type-recheck jobs, and one takes recipe rechecks; each calls matchd and applies the result once
+- **Integration worker** (`IntegrationWorker.ts`) — runs integration builds through matchd's link step
+- **Lease sweeper** (`LeaseSweeper.ts`) — every 30 s: expires leases, promotes competing leases, recounts recently changed projects
+- **matchd scaler** (`MatchdScaler.ts`) — with `MATCHD_SCALE=docker`, starts and stops extra local copies of a busy image
+- **Report notifier** (`ReportNotifier.ts`) — emails site admins about new reports
+- **Malware list** (`MalwareHashes.ts`) — refreshes the known-malware hash list, rechecks programs, and emails admins about hits
 
-| Method | Path | Auth |
-| --- | --- | --- |
-| GET | `/v1/health` | no |
-| POST | `/v1/auth/sign-up` | no |
-| POST | `/v1/auth/sign-in` | no |
-| POST | `/v1/auth/password` | Bearer session |
-| GET | `/v1/auth/me` | Bearer session |
-| POST | `/v1/auth/logout` | Bearer session. A profile token is not revoked. |
-| POST | `/v1/auth/tokens` | Bearer. Body `{ "label" }`. Returns the secret once. |
-| GET | `/v1/auth/tokens` | Bearer. Active tokens, without the secret. |
-| DELETE | `/v1/auth/tokens/:tokenId` | Bearer. Revoke one of your tokens. |
-| GET | `/v1/users?q=` | no (display-name search with reputation) |
-| GET | `/v1/users/:userId` | no (public profile, reputation, matched chunks) |
-| GET | `/v1/users/:userId/follow` | Bearer |
-| POST | `/v1/users/:userId/follow` | Bearer |
-| DELETE | `/v1/users/:userId/follow` | Bearer |
-| GET | `/v1/feed` | Bearer (activity from followed projects and people) |
-| GET | `/v1/following/users` | Bearer (users you follow) |
-| GET | `/v1/following/projects` | Bearer (projects you follow) |
-| GET | `/v1/projects?q=&language=&arch=` | no |
-| GET | `/v1/projects/:slug` | no |
-| GET | `/v1/projects/:slug/activity` | no |
-| GET | `/v1/projects/:slug/follow` | Bearer |
-| POST | `/v1/projects/:slug/follow` | Bearer |
-| DELETE | `/v1/projects/:slug/follow` | Bearer |
-| PATCH | `/v1/projects/:slug/settings` | Bearer (owner/maintainer). `{ maxConcurrentLeases?, maxHeldChunks?, language?: "c"\|"cpp", flags? }`. Language or flags recheck current matches |
-| PUT | `/v1/projects/:slug/chunks/:chunkId/language` | Bearer (owner/maintainer). `{ "language": "c"\|"cpp"\|null }` |
-| GET | `/v1/projects/:slug/integrations` | no |
-| GET | `/v1/projects/:slug/integrations/:id` | no |
-| POST | `/v1/projects/:slug/integrations` | Bearer (owner/maintainer). `{ binaryId?, language? }` links matched chunks |
-| GET | `/v1/projects/:slug/membership` | Bearer session |
-| POST | `/v1/projects` | Bearer session |
-| POST | `/v1/projects/:slug/imports` | Bearer (owner/maintainer) |
-| GET | `/v1/projects/:slug/type-environment` | no |
-| GET | `/v1/projects/:slug/type-proposals` | no |
-| GET | `/v1/projects/:slug/type-proposals/:id` | no |
-| POST | `/v1/projects/:slug/type-proposals` | Bearer (member) |
-| POST | `/v1/projects/:slug/type-proposals/:id/revalidate` | Bearer (owner/maintainer) |
-| GET | `/v1/projects/:slug/unresolved-types` | no |
-| POST | `/v1/projects/:slug/unresolved-types` | Bearer (owner/maintainer) |
-| POST | `/v1/projects/:slug/unresolved-types/:name/clear` | Bearer (owner/maintainer) |
-| POST | `/v1/projects/:slug/fuse` | Bearer (owner/maintainer) |
-| GET | `/v1/projects/:slug/chunks?state=&q=&limit=&offset=` | no. Omit `limit` to return every chunk. |
-| GET | `/v1/projects/:slug/chunks/:chunkId` | no |
-| GET | `/v1/projects/:slug/chunks/:chunkId/attempts` | no |
-| GET | `/v1/projects/:slug/chunks/:chunkId/bundle` | Bearer (lease holder) |
-| POST | `/v1/projects/:slug/chunks/:chunkId/checkout` | Bearer |
-| POST | `/v1/projects/:slug/chunks/:chunkId/release` | Bearer + `{ "leaseToken" }` |
-| POST | `/v1/projects/:slug/chunks/:chunkId/heartbeat` | Bearer + `{ "leaseToken" }` |
-| POST | `/v1/projects/:slug/chunks/:chunkId/submit` | Bearer + `{ "leaseToken", "source" }` |
-| POST | `/v1/projects/:slug/chunks/:chunkId/clear` | Bearer (owner/maintainer; leased only) |
-
-## matchd
-
-Submit enqueues a `jobs` row. The API process runs `MATCHD_WORKERS` claimers (4 by default). Each claimer takes one queued job, using `FOR UPDATE SKIP LOCKED`, and POSTs it to the matchd that has that job's compiler image. A claimer waits 2 seconds only when it found nothing to do. Worker 0 runs a recipe recheck only when no submit is queued. `MATCHD_URL` (`http://127.0.0.1:3001` by default) is the process for images that are not listed. `MATCHD_ROUTES` is a comma-separated list of `image=url` pairs for the other images. Several copies of one image are `url|url`, and a job goes to the copy with the fewest compiles in flight. `docker-yml/docker-compose.matchd-pool.yml` publishes the warm processes on their own host ports so they can stay up beside the default matchd. When `MATCHD_SCALE=docker` (the default) and an interactive job for an image has waited 30 seconds, the API starts one more local container of that image, up to `MATCHD_SCALE_MAX` (4). The warm process stays up. A copy is removed after that image has been idle for 60 seconds. The queue stays in Postgres.
-
-```bash
-docker compose up -d matchd
-# or: npm run matchd   # requires host gcc + objdump
-```
-
-A full normalized instruction match sets the chunk to `matched`. Misses return diagnostics and keep the lease.
-
-## Milestone 2 — shared types
-
-- **Type environment** — `GET /type-environment` returns the latest revision, header text, and type names referenced by chunks. Proposal get/create include the proposed headers; the list omits them.
-- **Type proposals** — create with new headers. `revalidate` enqueues matchd jobs for affected matched chunks. One owner or maintainer lands the revision while the project has one privileged member. Two or more leaves the proposal `ready` until a different owner or maintainer `accept`s. Survivors stay matched under a new revision; failures become `stale` and do not block accept.
-- **Unresolved types** — maintainer mark blocks open/stale chunks that reference the type; clear restores them when no other mark applies.
-- **Fuse** — maintainer merges 2+ chunks into one covering parent (members keep rows with `fuse_parent_id`).
-
-## Background fibers
-
-- **Match worker** — claim jobs (interactive + revalidation), call matchd, apply results / finalize proposals
-- **Lease sweeper** — expire forgotten leases every 30s
+Queue and routing settings (`MATCHD_URL`, `MATCHD_ROUTES`, `MATCHD_SCALE`) are described in [architecture.md](../../docs/architecture.md#match-queue).

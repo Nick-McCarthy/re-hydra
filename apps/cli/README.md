@@ -1,17 +1,10 @@
 # @re-hydra/cli
 
-Thin Effect CLI for the contributor loop: take the next open chunk or a named one, see what you hold, submit and see where the bytes differ, keep the lease alive, release. People and agents use it the same way.
-
-Part of **Milestone 1** (done). See `docs/roadmap.md`.
+Thin Effect CLI for the contributor loop: take the next open chunk or a named one, see what you hold, submit and see where the bytes differ, keep the lease alive, release. It also covers types, imports, and integration builds. People and agents use it the same way.
 
 ## Setup
 
-```bash
-# from repo root (API must be running)
-npm install
-npm run api:migrate && npm run api:seed
-npm run api
-```
+The API must be running (setup: the root [README.md](../../README.md)). Run the CLI from the repo root with `npm run hydra -- <command>`.
 
 ## Usage
 

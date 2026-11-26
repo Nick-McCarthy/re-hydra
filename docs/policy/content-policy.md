@@ -147,7 +147,7 @@ The policy promises things the product does not do yet:
 
 | Needed | Why | State |
 | --- | --- | --- |
-| Terms of use, and agreeing to them at sign-up | Makes the policy binding on users | Sign-up requires agreeing to this policy and stores the version (`content-policy-draft-2026-11`) and time. Terms of use and a privacy policy are drafted (`docs/terms.md`, `docs/privacy.md`, shown at `/terms` and `/privacy` and linked from the footer) and need legal review. Sign-up does not yet ask users to agree to them |
+| Terms of use, and agreeing to them at sign-up | Makes the policy binding on users | Sign-up requires agreeing to this policy and stores the version (`content-policy-draft-2026-11`) and time. Terms of use and a privacy policy are drafted (`docs/policy/terms.md`, `docs/policy/privacy.md`, shown at `/terms` and `/privacy` and linked from the footer) and need legal review. Sign-up does not yet ask users to agree to them |
 | A rights confirmation on import (section 2.3) | The importer takes responsibility for what they upload | Done: three checkboxes on the import form; the API refuses an import without `rightsConfirmed=true` and records who confirmed |
 | A decision on full-binary upload (`binaryBase64`) | Matching does not need it. Dropping it removes the riskiest thing stored | Done: dropped. The API refuses an export that carries it; only the program's hash is kept |
 | A license for submitted source (section 2.4), shown on the submit screen | Later contributors see and reuse submissions | Done: CC0 1.0. Shown under the Submit button, printed by `hydra submit`, stated in the agent instructions, and recorded on each attempt (`source_license`) |

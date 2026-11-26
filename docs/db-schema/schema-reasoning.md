@@ -107,10 +107,10 @@ A project page needs open / leased / matched counts. Counting `chunks` by state 
 
 ## Later migrations
 
-- `009` adds `projects.max_held_chunks` (default 8, cap 32). It limits how many chunks one person can hold on a project at once, so one account cannot sit on the whole board. Checkout enforces it under a per-user, per-project advisory lock, so parallel checkouts cannot both pass the count.
-- `010` replaces magic-link sign-in with scrypt password hashes on `users` and drops `magic_link_tokens`.
-- `011` adds `access_tokens` for the CLI. They are hashed like sessions and survive a password change until revoked.
-- `012` is indexes only. `jobs_one_active_interactive` makes the database refuse a second unfinished interactive job on one chunk, which backs the "one submission validating at a time" rule. The others came from query plans on a 100,000-chunk project: the board page, the stats recount, the sweeper's backstop, and job and match lookups by chunk or attempt.
+Each migration after `008` has a section in [schema.md](schema.md) that says what it changes and why. Two choices from them matter for this document's reasoning:
+
+- `012` backs the "one submission validating at a time" rule with a partial unique index (`jobs_one_active_interactive`), so the database refuses a second unfinished interactive job on one chunk.
+- `028` gives every reference to `users` an explicit `ON DELETE` rule: work outlives the account with a null author, and personal rows go with it.
 
 ## Open schema questions
 

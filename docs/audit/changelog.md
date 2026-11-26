@@ -1,6 +1,6 @@
 # Audit change log
 
-Changes made because of the audit. Newest first. Finding ids refer to [audit-findings.md](audit-findings.md). The plan is [audit-plan.md](audit-plan.md).
+Changes made because of the audit. Newest first. Finding ids refer to [findings.md](findings.md). The plan is [plan.md](plan.md).
 
 ## 2026-11-24 — Members, roles, and ownership transfer (A-011)
 
@@ -413,7 +413,7 @@ Branch `audit/phase-4-security`. Not committed yet.
 
 ## 2026-11-23 — Phase 4 security review (no code changes)
 
-Branch `audit/phase-4-security`, off `main` at `d2d49ec21`. Notes: [audit/phase-4.md](audit/phase-4.md).
+Branch `audit/phase-4-security`, off `main` at `d2d49ec21`. Notes: [phase-4.md](phase-4.md).
 
 - Added findings A-032 to A-040. A-013 is now confirmed live.
 - No code changed. The fix order is in the phase notes. A-032 (inline assembly) and A-013 (flags) need decisions first.
@@ -421,7 +421,7 @@ Branch `audit/phase-4-security`, off `main` at `d2d49ec21`. Notes: [audit/phase-
 
 ## 2026-11-23 — Phase 3: schema, races, and query plans
 
-Branch `audit/phase-3-schema`, off `main` at `f5418cf9b`. Not committed yet. Notes: [audit/phase-3.md](audit/phase-3.md).
+Branch `audit/phase-3-schema`, off `main` at `f5418cf9b`. Not committed yet. Notes: [phase-3.md](phase-3.md).
 
 ### Database
 

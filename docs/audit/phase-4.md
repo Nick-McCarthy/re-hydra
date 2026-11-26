@@ -1,6 +1,6 @@
 # Audit phase 4: security
 
-Status: review done 2026-11-23 on branch `audit/phase-4-security`, off `main` at `d2d49ec21`. A-032 was fixed afterwards on the same branch (see [../audit-changelog.md](../audit-changelog.md)). The other findings below are open. Plan: [../audit-plan.md](../audit-plan.md). Findings: [../audit-findings.md](../audit-findings.md).
+Status: review done 2026-11-23 on branch `audit/phase-4-security`, off `main` at `d2d49ec21`. A-032 was fixed afterwards on the same branch (see [changelog.md](changelog.md)). The other findings below are open. Plan: [plan.md](plan.md). Findings: [findings.md](findings.md).
 
 ## Method
 
